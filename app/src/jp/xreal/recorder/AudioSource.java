@@ -34,6 +34,7 @@ public final class AudioSource {
 
     public interface Listener {
         void onError(String message);
+        void onSilenceChanged(boolean silent);
     }
 
     private final Context context;
@@ -165,6 +166,8 @@ public final class AudioSource {
         ByteBuffer pcm = ByteBuffer.allocateDirect(readSize).order(ByteOrder.LITTLE_ENDIAN);
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         long lastPtsUs = 0;
+        AudioSilenceDetector silence = new AudioSilenceDetector(10L * RATE * BYTES_PER_FRAME);
+        boolean silenceWarning = false;
 
         try {
             wav = new RandomAccessFile(wavFile, "rw");
@@ -187,6 +190,12 @@ public final class AudioSource {
                 byte[] raw = new byte[n];
                 pcm.get(raw);
                 wav.write(raw);
+
+                boolean currentWarning = silence.update(raw);
+                if (currentWarning != silenceWarning) {
+                    silenceWarning = currentWarning;
+                    listener.onSilenceChanged(currentWarning);
+                }
 
                 // Split the 0.5 s read into chunks small enough for the AAC input buffer.
                 for (int off = 0; off < n; off += ENCODER_CHUNK_BYTES) {

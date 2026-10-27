@@ -39,6 +39,8 @@ public final class RecordService extends Service {
     private PowerManager.WakeLock wakeLock;
     private Thread worker;
     private volatile boolean stopRequested;
+    private volatile boolean audioSilenceDetected;
+    private volatile boolean audioSilenceEverDetected;
     private UsbDevice device;
 
     public static String getStatus() {
@@ -95,6 +97,8 @@ public final class RecordService extends Service {
 
             recording = true;
             stopRequested = false;
+            audioSilenceDetected = false;
+            audioSilenceEverDetected = false;
             status = "開始準備中...";
             worker = new Thread(new Runnable() {
                 @Override
@@ -191,6 +195,20 @@ public final class RecordService extends Service {
                             status = "音声エラー: " + message;
                             Log.e(TAG, "audio error: " + message);
                         }
+
+                        @Override
+                        public void onSilenceChanged(boolean silent) {
+                            audioSilenceDetected = silent;
+                            if (silent) {
+                                audioSilenceEverDetected = true;
+                            }
+                            status = silent ? "録画中: USB音声が10秒以上すべてゼロです"
+                                    : "録画中: USB音声の入力を検出";
+                            Log.w(TAG, "USB audio exact-zero warning=" + silent);
+                            NotificationManager nm = (NotificationManager)
+                                    getSystemService(Context.NOTIFICATION_SERVICE);
+                            nm.notify(NOTIFICATION_ID, buildNotification());
+                        }
                     });
             audio = finalAudio;
             audio.start();
@@ -222,6 +240,9 @@ public final class RecordService extends Service {
                     mp4File.getAbsolutePath(), uvc.getAccessUnits(),
                     audio.getFramesWritten(), wavFile.getAbsolutePath(),
                     hevcFile.getAbsolutePath());
+            if (audioSilenceEverDetected) {
+                status += "\n注意: USB音声が10秒以上すべてゼロでした";
+            }
         } catch (Throwable t) {
             status = "録画エラー: " + t.getClass().getSimpleName() + ": " + t.getMessage();
             Log.e(TAG, "recording failed", t);
@@ -277,7 +298,9 @@ public final class RecordService extends Service {
             b = new Notification.Builder(this);
         }
         return b.setContentTitle("XREAL Recorder")
-                .setContentText("録画中（UVC HEVC + USB mic）")
+                .setContentText(audioSilenceDetected
+                        ? "USB音声が10秒以上すべてゼロです"
+                        : "録画中（UVC HEVC + USB mic）")
                 .setSmallIcon(android.R.drawable.ic_menu_camera)
                 .setContentIntent(pi)
                 .setOngoing(true)
