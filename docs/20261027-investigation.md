@@ -33,5 +33,4 @@
 
 - 警告追加版で20.5秒の WAV を録画し、984,000フレーム中、左右合計 70,792 サンプルが非ゼロ（最大絶対値 2,883,584）。この試験では10秒連続ゼロの警告は発生せず、実機で警告表示自体は未検証。
 - 音声取得中に AudioRecord のルートと AudioRecordingConfiguration.isClientSilenced() を5秒間隔で読み、状態が変わったときと完全ゼロ警告の切り替わり時に WAV と同じディレクトリの *.wav.audio.log に記録するよう追加。録音データは記録しない。ログの書き込み失敗で録画は停止しない。5秒未満の変化を見逃す可能性があり、isClientSilenced=false はデバイスが正常な音を出している証明ではない。
-- ビルド・更新インストール後の23:23:57の実機試験で、audio.log に 
-oute=22/62/USB-Audio - XREAL 1S systemSilenced=false を確認。7.5秒・360,000フレームの WAV は非ゼロ 49,710 サンプル。
+- ビルド・更新インストール後の23:23:57の実機試験で、audio.log に `route=22/62/USB-Audio - XREAL 1S systemSilenced=false` を確認。7.5秒・360,000フレームの WAV は非ゼロ 49,710 サンプル。
