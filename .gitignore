@@ -1,0 +1,10 @@
+*
+!.gitignore
+!app/
+!app/**
+!scripts/
+!scripts/*.py
+!scripts/build.ps1
+!scripts/build.sh
+!docs/
+!docs/20261027-investigation.md
