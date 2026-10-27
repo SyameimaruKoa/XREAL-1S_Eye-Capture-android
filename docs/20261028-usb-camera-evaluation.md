@@ -32,6 +32,8 @@
 
 別プロジェクトの調査資料には RGB カメラの露出関連 SDK 要求名があるが、UVC HEVC 録画との関係や設定値は確認されていない。名前だけを根拠に機器へ送信しない。
 
+同資料 `.research/xreal-linux/docs/xreal-link-messages.md` には、SDK の `NRRgbCameraInitSetCompression`（要求 ID 10223、入力フィールド1が varint）も記載されている。圧縮設定を調べる具体的な候補だが、列挙値の意味、ビットレートとの関係、UVC 出力への適用、1S での動作は未確認。同資料の 52995 等の過去の無応答と別の制御プロトコルの説明を混同せず、値を推測して送信しない。
+
 保存済みディスクリプタの VideoControl IF9 を解析すると、Extension Unit 4 の GUID は `a29e7641-de04-47e3-8b2b-f4341aff003b`、制御ビットマップは `00 00 00` で、この記述上は利用可能な XU 制御が示されていない。IF9 に標準 Encoding Unit の記述も見当たらない。これは標準的な公開情報からビットレート制御を特定できなかったという結果であり、機器独自の制御や別経路が存在しない証明ではない。[Linux UVC ドライバーの説明](https://www.kernel.org/doc/html/v4.9/media/v4l-drivers/uvcvideo.html)では XU の直接照会にはユニットとセレクターが必要で、GET_INFO で GET/SET 対応を確認できるとしているが、未確認のセレクターを推測して変更することはしない。
 
 [XREAL の本体撮影・ファイル管理の公式案内](https://tutorials.xreal.com/docs/accessories/eye/how-to-use/capture-and-file-management/)は、直接撮影したファイルがグラス内に保存され、利用可能容量は 2 GB、転送モードで `XREAL/DCIM/` から取り出せると説明する。今回の本体録画は高ビットレート・左右別信号の音声を持つため、そのまま取り出す経路は短い撮影の比較対象となる。ただし容量・撮影時間の制限があり、連続長時間のスマートフォン録画や録画中の無変換転送を満たすことは確認できていない。
