@@ -5,6 +5,7 @@ import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioRecord;
+import android.media.AudioRecordingConfiguration;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
@@ -13,6 +14,8 @@ import android.os.SystemClock;
 import android.util.Log;
 
 import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -168,6 +171,8 @@ public final class AudioSource {
         long lastPtsUs = 0;
         AudioSilenceDetector silence = new AudioSilenceDetector(10L * RATE * BYTES_PER_FRAME);
         boolean silenceWarning = false;
+        long nextDiagnosticsNs = 0;
+        String previousDiagnostics = null;
 
         try {
             wav = new RandomAccessFile(wavFile, "rw");
@@ -191,9 +196,22 @@ public final class AudioSource {
                 pcm.get(raw);
                 wav.write(raw);
 
+                long nowNs = SystemClock.elapsedRealtimeNanos();
+                if (nowNs >= nextDiagnosticsNs) {
+                    String diagnostics = recordingDiagnostics();
+                    if (!diagnostics.equals(previousDiagnostics)) {
+                        Log.i(TAG, "audio recording state: " + diagnostics);
+                        writeDiagnostics("recording state: " + diagnostics);
+                        previousDiagnostics = diagnostics;
+                    }
+                    nextDiagnosticsNs = nowNs + 5_000_000_000L;
+                }
+
                 boolean currentWarning = silence.update(raw);
                 if (currentWarning != silenceWarning) {
                     silenceWarning = currentWarning;
+                    writeDiagnostics("exact-zero warning=" + currentWarning + " "
+                            + recordingDiagnostics());
                     listener.onSilenceChanged(currentWarning);
                 }
 
@@ -262,6 +280,29 @@ public final class AudioSource {
             }
             record = null;
             encoder = null;
+        }
+    }
+
+    private String recordingDiagnostics() {
+        try {
+            AudioDeviceInfo routed = record.getRoutedDevice();
+            AudioRecordingConfiguration config = record.getActiveRecordingConfiguration();
+            String route = routed == null ? "none"
+                    : routed.getType() + "/" + routed.getId() + "/" + routed.getProductName();
+            String silenced = config == null ? "unknown"
+                    : Boolean.toString(config.isClientSilenced());
+            return "route=" + route + " systemSilenced=" + silenced;
+        } catch (RuntimeException e) {
+            return "unavailable=" + e.getClass().getSimpleName();
+        }
+    }
+
+    private void writeDiagnostics(String message) {
+        File logFile = new File(wavFile.getAbsolutePath() + ".audio.log");
+        try (FileWriter out = new FileWriter(logFile, true)) {
+            out.write("elapsedRealtimeMs=" + SystemClock.elapsedRealtime() + " " + message + "\n");
+        } catch (IOException e) {
+            Log.w(TAG, "could not write audio diagnostics", e);
         }
     }
 
