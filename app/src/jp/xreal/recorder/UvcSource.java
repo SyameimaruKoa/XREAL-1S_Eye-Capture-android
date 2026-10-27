@@ -56,6 +56,7 @@ public final class UvcSource {
     private volatile boolean failed;
     private volatile String error = "";
     private volatile int accessUnits;
+    private byte[] previousAccessUnit;
 
     public UvcSource(UsbManager usbManager, UsbDevice device) {
         this.usbManager = usbManager;
@@ -251,6 +252,12 @@ public final class UvcSource {
         if (au.length < 4) {
             return csdSent;
         }
+        if (hasLongCommonPrefix(previousAccessUnit, au)) {
+            Log.w(TAG, "consecutive access units have a complete common prefix: previousBytes="
+                    + previousAccessUnit.length + " currentBytes=" + au.length
+                    + " auIndex=" + accessUnits);
+        }
+        previousAccessUnit = au;
         if (!csdSent) {
             byte[] csd = extractCsd(au);
             if (csd != null) {
@@ -266,6 +273,23 @@ public final class UvcSource {
         listener.onAccessUnit(au, frameStartNs);
         accessUnits++;
         return csdSent;
+    }
+
+    /** Diagnostic only: a common prefix is suspicious, not proof of corruption. */
+    static boolean hasLongCommonPrefix(byte[] previous, byte[] current) {
+        if (previous == null || current == null) {
+            return false;
+        }
+        int shorter = Math.min(previous.length, current.length);
+        if (shorter < 512) {
+            return false;
+        }
+        for (int i = 0; i < shorter; i++) {
+            if (previous[i] != current[i]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public void stop() {
