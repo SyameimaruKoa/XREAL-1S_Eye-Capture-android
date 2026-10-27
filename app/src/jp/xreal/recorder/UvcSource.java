@@ -218,6 +218,13 @@ public final class UvcSource {
                         lastFid = fid;
                         continue;
                     }
+                    int payloadStart = hlen + off;
+                    int payloadLength = n - payloadStart;
+                    if (hasLongCommonPrefix(previousAccessUnit, buf, payloadStart, payloadLength)) {
+                        Log.w(TAG, "raw USB payload matches previous AU prefix: previousBytes="
+                                + previousAccessUnit.length + " payloadBytes=" + payloadLength
+                                + " fid=" + fid + " eof=" + eof + " auIndex=" + accessUnits);
+                    }
                     haveFrame = true;
                     frameStartNs = SystemClock.elapsedRealtimeNanos();
                     frame.reset();
@@ -277,15 +284,23 @@ public final class UvcSource {
 
     /** Diagnostic only: a common prefix is suspicious, not proof of corruption. */
     static boolean hasLongCommonPrefix(byte[] previous, byte[] current) {
+        return current != null && hasLongCommonPrefix(previous, current, 0, current.length);
+    }
+
+    private static boolean hasLongCommonPrefix(byte[] previous, byte[] current,
+                                               int offset, int length) {
         if (previous == null || current == null) {
             return false;
         }
-        int shorter = Math.min(previous.length, current.length);
+        if (offset < 0 || length < 0 || offset > current.length - length) {
+            return false;
+        }
+        int shorter = Math.min(previous.length, length);
         if (shorter < 512) {
             return false;
         }
         for (int i = 0; i < shorter; i++) {
-            if (previous[i] != current[i]) {
+            if (previous[i] != current[offset + i]) {
                 return false;
             }
         }
