@@ -140,12 +140,28 @@ public final class UvcSource {
         int lastFid = -1;
         long frameStartNs = 0;
         int timeouts = 0;
+        long lastReadEndNs = 0;
+        int shortReads = 0;
+        int invalidHeaders = 0;
 
         try {
             while (running) {
+                long readStartNs = SystemClock.elapsedRealtimeNanos();
                 int n = connection.bulkTransfer(endpoint, buf, buf.length, 1000);
+                long readEndNs = SystemClock.elapsedRealtimeNanos();
+                long readMs = (readEndNs - readStartNs) / 1_000_000L;
+                long processingMs = lastReadEndNs == 0 ? 0
+                        : (readStartNs - lastReadEndNs) / 1_000_000L;
+                lastReadEndNs = readEndNs;
+                if (readMs >= 100 || processingMs >= 100) {
+                    Log.w(TAG, "bulk timing readMs=" + readMs + " processingMs="
+                            + processingMs + " bytes=" + n);
+                }
                 if (n < 0) {
                     timeouts++;
+                    if (timeouts == 1 || timeouts % 100 == 0) {
+                        Log.w(TAG, "bulk read returned " + n + ", consecutive=" + timeouts);
+                    }
                     if (timeouts > 100) {
                         throw new IllegalStateException("bulkTransfer timed out repeatedly");
                     }
@@ -153,6 +169,10 @@ public final class UvcSource {
                 }
                 timeouts = 0;
                 if (n < 2) {
+                    shortReads++;
+                    if (shortReads <= 3 || shortReads % 100 == 0) {
+                        Log.w(TAG, "short payload bytes=" + n + " count=" + shortReads);
+                    }
                     continue;
                 }
 
@@ -160,6 +180,11 @@ public final class UvcSource {
                 // truncates legal header lengths above 63.
                 int hlen = buf[0] & 0xff;
                 if (hlen < 2 || hlen > n) {
+                    invalidHeaders++;
+                    if (invalidHeaders <= 3 || invalidHeaders % 100 == 0) {
+                        Log.w(TAG, "invalid payload header length=" + hlen + " bytes="
+                                + n + " count=" + invalidHeaders);
+                    }
                     continue;
                 }
                 int flags = buf[1] & 0xff;
@@ -171,6 +196,8 @@ public final class UvcSource {
                             + " eof=" + eof + " existing=" + frame.size());
                 }
                 if (err) {
+                    Log.w(TAG, "UVC error flag fid=" + fid + " bytes=" + n
+                            + " discardedFrameBytes=" + frame.size());
                     frame.reset();
                     haveFrame = false;
                     lastFid = fid;
@@ -178,6 +205,8 @@ public final class UvcSource {
                 }
 
                 if (haveFrame && fid != lastFid) {
+                    Log.w(TAG, "FID changed before EOF: previous=" + lastFid
+                            + " current=" + fid + " frameBytes=" + frame.size());
                     csdSent = emitFrame(frame, frameStartNs, csdSent, listener);
                     haveFrame = false;
                 }
