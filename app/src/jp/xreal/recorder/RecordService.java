@@ -218,14 +218,6 @@ public final class RecordService extends Service {
                 Thread.sleep(200);
             }
 
-            if (uvc.isFailed()) {
-                status = "UVC停止: " + uvc.getError() + " / " + mp4File.getName();
-            } else if (audio.isFailed()) {
-                status = "音声停止: " + audio.getError() + " / " + mp4File.getName();
-            } else if (muxer.isFailed()) {
-                status = "Muxerエラー: " + muxer.getError() + " / " + mp4File.getName();
-            }
-
             audio.stop();
             uvc.stop();
             if (audio.isFailed()) {
@@ -235,11 +227,20 @@ public final class RecordService extends Service {
             hevcOut.close();
             hevcOut = null;
 
-            status = String.format(Locale.US,
-                    "保存完了: %s\nAU=%d audioFrames=%d\nWAV=%s\nHEVC=%s",
+            String result = String.format(Locale.US,
+                    "%s\nAU=%d audioFrames=%d\nWAV=%s\nHEVC=%s",
                     mp4File.getAbsolutePath(), uvc.getAccessUnits(),
                     audio.getFramesWritten(), wavFile.getAbsolutePath(),
                     hevcFile.getAbsolutePath());
+            if (uvc.isFailed()) {
+                status = "UVC停止: " + uvc.getError() + "\n" + result;
+            } else if (audio.isFailed()) {
+                status = "音声停止: " + audio.getError() + "\n" + result;
+            } else if (muxer.isFailed()) {
+                status = "Muxerエラー: " + muxer.getError() + "\n" + result;
+            } else {
+                status = "保存完了: " + result;
+            }
             if (audioSilenceEverDetected) {
                 status += "\n注意: USB音声が10秒以上すべてゼロでした";
             }
