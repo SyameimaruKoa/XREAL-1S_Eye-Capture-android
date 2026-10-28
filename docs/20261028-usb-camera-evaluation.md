@@ -188,4 +188,6 @@ Windows の別候補として [WASAPI RAW オプション](https://learn.microso
 
 続く試験では PortAudio の WASAPI 設定で排他・明示形式に加え RAW オプション値1を要求し、48 kHz・2ch・int32 で8秒・384,000フレームを取得した。左右は全フレーム一致し、ピーク23,613,198、RMS 約414,186。公開されている [PortAudio の WASAPI 実装](https://github.com/PortAudio/portaudio/blob/master/src/hostapi/wasapi/pa_win_wasapi.c)では RAW の設定要求が失敗してもログ後に処理を継続する場合があり、今回の録音成功だけでは RAW が実際に有効だったか確認できない。使用したバイナリの実装も別途確認が必要。物理マイクの独立性や未加工性は証明されていない。試験ファイルは `logs/windows_wasapi_raw_32.wav`（Git 管理外）。
 
+さらに同じ XREAL 入力デバイスを Windows の `IAudioClient2` から開き、録音を開始せず `SetClientProperties` に RAW を要求したところ、返値は `S_OK`（0x00000000）だった。Windows がこの別クライアントでの RAW 設定要求を受け入れたことは確認できたが、先の PortAudio 録音での設定結果を直接確認したわけではない。RAW が有効でも機器やドライバー等の常時処理は残り得るため、物理マイク個別の信号が得られる保証にはならない。
+
 [XREAL SDK 3.0/3.1 の公式リリースノート](https://developer.xreal.com/download/)は Eye 対応と Android での ControlGlasses 利用を記載している。SDK 2.4 の RGB カメラ項目には YUV_420_888 への変更も記載されるが、これは SDK が提供する画像形式の説明であり、今回の TCP HEVC の解像度・fps の変更方法や無変換録画機能を示すものではない。3.1 のダウンロードページには利用規約への同意項目があり、今回その同意や SDK ダウンロードは行っていない。手元の ControlGlasses 3.1 バイナリの文字列と既存プロトコル資料では、解像度指定値の意味を特定できなかった。
