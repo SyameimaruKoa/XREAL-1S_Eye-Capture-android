@@ -180,4 +180,6 @@ Windows の通常の DirectShow 音声入力と TCP 映像を約8秒重ねて短
 
 Windows の現在の DirectShow 入力形式一覧は2ch・16-bit・48 kHzを含むが、32-bit入力は列挙されなかった。先の同時試験の WAV は FFmpeg 出力を32-bit・48 kHzに指定したもので、入力側の形式を指定・記録していないため、それをデバイス本来の32-bit RAWとは扱えない。追加で DirectShow 入力を16-bit・48 kHz・2chと明示して約8秒録音したところ、383,136フレームの左右差の最大は3 LSB、左 RMS 約6.2 LSB、ピーク98 LSBだった。この静かな試験では独立性を評価できない。OS側のリサンプリングや処理を排除した証拠もなく、物理マイク個別の RAW 取得は未達。ファイルは `logs/windows_xreal_16bit_trial.wav`（Git 管理外）。
 
+Windows の別候補として [WASAPI RAW オプション](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/ne-audioclient-audclnt_streamoptions)と[排他モードの形式確認](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclient-isformatsupported)を調査した。RAW は OS の一部処理を回避するが、Microsoft の説明でもドライバー・ハードウェア等の常時処理は残り得るため、物理マイク個別の未加工信号を保証しない。現在の FFmpeg ビルドには WASAPI 入力がなく、XREAL の RAW 対応と排他形式は未検証。読み取り専用の PnP プロパティ一覧では RAW 対応プロパティを確認できなかったが、これだけで非対応とは判断しない。既知の危険な usbfs UAC 直接取得とは別の OS 音声 API として検討する。
+
 [XREAL SDK 3.0/3.1 の公式リリースノート](https://developer.xreal.com/download/)は Eye 対応と Android での ControlGlasses 利用を記載している。SDK 2.4 の RGB カメラ項目には YUV_420_888 への変更も記載されるが、これは SDK が提供する画像形式の説明であり、今回の TCP HEVC の解像度・fps の変更方法や無変換録画機能を示すものではない。3.1 のダウンロードページには利用規約への同意項目があり、今回その同意や SDK ダウンロードは行っていない。手元の ControlGlasses 3.1 バイナリの文字列と既存プロトコル資料では、解像度指定値の意味を特定できなかった。
