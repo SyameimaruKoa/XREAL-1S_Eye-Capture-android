@@ -160,11 +160,13 @@ public final class UvcSource {
         long lastReadEndNs = 0;
         int shortReads = 0;
         int invalidHeaders = 0;
+        long readSequence = 0;
 
         try {
             while (running) {
                 long readStartNs = SystemClock.elapsedRealtimeNanos();
                 int n = connection.bulkTransfer(endpoint, buf, buf.length, 1000);
+                long sequence = ++readSequence;
                 long readEndNs = SystemClock.elapsedRealtimeNanos();
                 long readMs = (readEndNs - readStartNs) / 1_000_000L;
                 long processingMs = lastReadEndNs == 0 ? 0
@@ -172,12 +174,13 @@ public final class UvcSource {
                 lastReadEndNs = readEndNs;
                 if (readMs >= 100 || processingMs >= 100) {
                     Log.w(TAG, "bulk timing readMs=" + readMs + " processingMs="
-                            + processingMs + " bytes=" + n);
+                            + processingMs + " bytes=" + n + " readSeq=" + sequence);
                 }
                 if (n < 0) {
                     timeouts++;
                     if (timeouts == 1 || timeouts % 100 == 0) {
-                        Log.w(TAG, "bulk read returned " + n + ", consecutive=" + timeouts);
+                        Log.w(TAG, "bulk read returned " + n + ", consecutive=" + timeouts
+                                + " readSeq=" + sequence);
                     }
                     if (timeouts > 100) {
                         throw new IllegalStateException("bulkTransfer timed out repeatedly");
@@ -210,7 +213,8 @@ public final class UvcSource {
                 boolean err = (flags & 0x40) != 0;
                 if (n > 65536 || eof) {
                     Log.i(TAG, "payload n=" + n + " hlen=" + hlen + " fid=" + fid
-                            + " eof=" + eof + " existing=" + frame.size());
+                            + " eof=" + eof + " existing=" + frame.size()
+                            + " readSeq=" + sequence);
                 }
                 if (err) {
                     Log.w(TAG, "UVC error flag fid=" + fid + " bytes=" + n
