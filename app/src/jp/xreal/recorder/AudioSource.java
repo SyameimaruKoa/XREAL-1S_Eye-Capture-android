@@ -274,9 +274,26 @@ public final class AudioSource {
             try {
                 if (wav != null) {
                     patchWav(wav);
+                }
+            } catch (Throwable t) {
+                if (!failed) {
+                    error = "WAV finalization failed: " + t.getClass().getSimpleName()
+                            + ": " + String.valueOf(t.getMessage());
+                    failed = true;
+                    listener.onError(error);
+                }
+            }
+            try {
+                if (wav != null) {
                     wav.close();
                 }
-            } catch (Throwable ignored) {
+            } catch (Throwable t) {
+                if (!failed) {
+                    error = "WAV close failed: " + t.getClass().getSimpleName()
+                            + ": " + String.valueOf(t.getMessage());
+                    failed = true;
+                    listener.onError(error);
+                }
             }
             record = null;
             encoder = null;
