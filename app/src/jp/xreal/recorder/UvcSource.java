@@ -119,6 +119,14 @@ public final class UvcSource {
         int n = connection.controlTransfer(0xA1, 0x81, 0x0100, iface.getId(),
                 current, current.length, 2000);
         if (n >= 26) {
+            ByteBuffer negotiated = ByteBuffer.wrap(current).order(ByteOrder.LITTLE_ENDIAN);
+            Log.i(TAG, "UVC probe GET_CUR bytes=" + n
+                    + " format=" + (current[2] & 0xff)
+                    + " frame=" + (current[3] & 0xff)
+                    + " interval=" + (negotiated.getInt(4) & 0xffffffffL)
+                    + " compressionQuality=" + (negotiated.getShort(12) & 0xffff)
+                    + " maxFrameBytes=" + (negotiated.getInt(18) & 0xffffffffL)
+                    + " maxPayloadBytes=" + (negotiated.getInt(22) & 0xffffffffL));
             int copy = Math.min(n, probe.length);
             System.arraycopy(current, 0, probe, 0, copy);
         }
