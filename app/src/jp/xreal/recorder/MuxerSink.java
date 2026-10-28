@@ -88,6 +88,10 @@ public final class MuxerSink {
             if (!started) {
                 if (pendingVideo.size() < MAX_PENDING_VIDEO) {
                     pendingVideo.add(new Sample(data, ptsUs, flags));
+                } else {
+                    failLocked(new IllegalStateException(
+                            "Video buffer limit reached while waiting for MP4 tracks; "
+                                    + "MP4 may be incomplete, check the raw HEVC file"));
                 }
                 return;
             }
