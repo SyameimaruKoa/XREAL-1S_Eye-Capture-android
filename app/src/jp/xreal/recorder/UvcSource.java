@@ -192,7 +192,8 @@ public final class UvcSource {
                 if (n < 2) {
                     shortReads++;
                     if (shortReads <= 3 || shortReads % 100 == 0) {
-                        Log.w(TAG, "short payload bytes=" + n + " count=" + shortReads);
+                        Log.w(TAG, "short payload bytes=" + n + " count=" + shortReads
+                                + " readSeq=" + sequence);
                     }
                     continue;
                 }
@@ -204,7 +205,7 @@ public final class UvcSource {
                     invalidHeaders++;
                     if (invalidHeaders <= 3 || invalidHeaders % 100 == 0) {
                         Log.w(TAG, "invalid payload header length=" + hlen + " bytes="
-                                + n + " count=" + invalidHeaders);
+                                + n + " count=" + invalidHeaders + " readSeq=" + sequence);
                     }
                     continue;
                 }
@@ -219,7 +220,7 @@ public final class UvcSource {
                 }
                 if (err) {
                     Log.w(TAG, "UVC error flag fid=" + fid + " bytes=" + n
-                            + " discardedFrameBytes=" + frame.size());
+                            + " discardedFrameBytes=" + frame.size() + " readSeq=" + sequence);
                     frame.reset();
                     haveFrame = false;
                     lastFid = fid;
@@ -228,7 +229,8 @@ public final class UvcSource {
 
                 if (haveFrame && fid != lastFid) {
                     Log.w(TAG, "FID changed before EOF: previous=" + lastFid
-                            + " current=" + fid + " frameBytes=" + frame.size());
+                            + " current=" + fid + " frameBytes=" + frame.size()
+                            + " readSeq=" + sequence);
                     csdSent = emitFrame(frame, frameStartNs, csdSent, listener);
                     haveFrame = false;
                 }
@@ -249,12 +251,14 @@ public final class UvcSource {
                     int payloadLength = n - payloadStart;
                     if (lastEofFid == fid) {
                         Log.w(TAG, "new frame has same FID as previous EOF: fid=" + fid
-                                + " auIndex=" + accessUnits + " payloadBytes=" + payloadLength);
+                                + " auIndex=" + accessUnits + " payloadBytes=" + payloadLength
+                                + " readSeq=" + sequence);
                     }
                     if (hasLongCommonPrefix(previousAccessUnit, buf, payloadStart, payloadLength)) {
                         Log.w(TAG, "raw USB payload matches previous AU prefix: previousBytes="
                                 + previousAccessUnit.length + " payloadBytes=" + payloadLength
-                                + " fid=" + fid + " eof=" + eof + " auIndex=" + accessUnits);
+                                + " fid=" + fid + " eof=" + eof + " auIndex=" + accessUnits
+                                + " readSeq=" + sequence);
                     }
                     haveFrame = true;
                     frameStartNs = SystemClock.elapsedRealtimeNanos();
