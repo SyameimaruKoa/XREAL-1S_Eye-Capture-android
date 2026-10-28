@@ -142,4 +142,6 @@ USB Camera の実機試験では、カメラを有効化後、元の HEVC 2048×
 
 この MP4 の音声は AAC 48 kHz・2ch だった。全区間を32-bit PCM に展開した1,215,488フレームについて比較したところ、左右のサンプルは全て一致した。無音ではなく左右のピークは 21,383,758、RMS は約792,632（32-bit PCM 値）だが、今回得た音声は独立したステレオではない。音声が XREAL とスマートフォンのどちらから取り込まれたか、AAC 以前にどこで同一化されたかは確認できていない。
 
+既存 USB Camera の設定ファイルを読み取ると `mjpg_bypass=true`、`mjpg_correction_2=false` だった。[アプリの過去の変更履歴の転載](https://apptopia.com/google-play/app/com.shenyaocn.android.usbcamera/about)には、MJPG ByPass を IP Camera Server 向けの再エンコード回避機能として追加した旨がある。前述のローカル録画とは別の出力経路であり、当該設定値だけでは現在のアプリバージョンで無変換配信されたことは証明できない。次に認証付きの一時サーバーで MJPEG ストリームを取得し、コーデック・受信量・画質・停止を検証する。独立音声は別途検証する。
+
 [XREAL SDK 3.0/3.1 の公式リリースノート](https://developer.xreal.com/download/)は Eye 対応と Android での ControlGlasses 利用を記載している。SDK 2.4 の RGB カメラ項目には YUV_420_888 への変更も記載されるが、これは SDK が提供する画像形式の説明であり、今回の TCP HEVC の解像度・fps の変更方法や無変換録画機能を示すものではない。3.1 のダウンロードページには利用規約への同意項目があり、今回その同意や SDK ダウンロードは行っていない。手元の ControlGlasses 3.1 バイナリの文字列と既存プロトコル資料では、解像度指定値の意味を特定できなかった。
