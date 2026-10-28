@@ -213,3 +213,5 @@ Windows の別候補として [WASAPI RAW オプション](https://learn.microso
 診断を含む APK を実機で起動し、UVC PROBE の GET_CUR 応答34 bytesを確認した。format=1、frame=1、interval=166666、wCompQuality=0、最大フレーム=5,242,880 bytes、最大 payload=262,144 bytes。要求した圧縮品質0に対する現在値の記録であり、変更可能性やビットレート設定値の証明ではない。約21.68秒の通常録画後はサービスが停止し、RAW と MP4 の VCL 1,288個はすべて一致。試験ファイルは Git 管理外。
 
 公開された [Linux UVC ドライバーの PROBE 交渉処理](https://github.com/torvalds/linux/blob/master/drivers/media/usb/uvc/uvc_video.c)を確認した。対応機器では PROBE の GET_MIN／GET_MAX で圧縮関連値を取得し、返された最大圧縮品質を使って再交渉する実装がある。これは一般の Linux 実装の事実であり、XREAL 1S が同要求に対応するか、値が HEVC ビットレートを変えるかは未確認。今回の実機では GET_CUR のみを記録し、GET_MIN／GET_MAX や設定変更は送っていない。次の候補は UVC に限った読み取り応答の確認で、値の有無と意味を確かめてから変更試験の可否を評価する。
+
+一時的な診断 APK で UVC PROBE に GET_MIN（0x82）と GET_MAX（0x83）を各1回送り、どちらも34 bytesの応答を得た。wCompQuality は双方とも0。format／frame は最小応答が1／1、最大応答が2／5、frame interval は両方166666、最大フレームサイズは15,728,640 bytes、最大 payload は262,144 bytesだった。GET_CUR は format／frame 1／1、wCompQuality 0、最大フレーム5,242,880 bytes、payload 262,144 bytesを返した。これらの応答は HEVC の有効な品質選択範囲やビットレート変更不可を証明しない。設定値の SET は通常録画で従来行うもののみで、診断用の追加操作は読み取り2件。短時間録画を通常停止し、診断後は Git 管理ソース由来の APK に戻した。
