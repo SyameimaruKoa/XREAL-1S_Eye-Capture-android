@@ -139,6 +139,7 @@ public final class UvcSource {
         boolean haveFrame = false;
         boolean csdSent = false;
         int lastFid = -1;
+        int lastEofFid = -1;
         long frameStartNs = 0;
         int timeouts = 0;
         long lastReadEndNs = 0;
@@ -220,6 +221,10 @@ public final class UvcSource {
                     }
                     int payloadStart = hlen + off;
                     int payloadLength = n - payloadStart;
+                    if (lastEofFid == fid) {
+                        Log.w(TAG, "new frame has same FID as previous EOF: fid=" + fid
+                                + " auIndex=" + accessUnits + " payloadBytes=" + payloadLength);
+                    }
                     if (hasLongCommonPrefix(previousAccessUnit, buf, payloadStart, payloadLength)) {
                         Log.w(TAG, "raw USB payload matches previous AU prefix: previousBytes="
                                 + previousAccessUnit.length + " payloadBytes=" + payloadLength
@@ -236,6 +241,7 @@ public final class UvcSource {
 
                 if (eof) {
                     csdSent = emitFrame(frame, frameStartNs, csdSent, listener);
+                    lastEofFid = fid;
                     haveFrame = false;
                 }
             }
