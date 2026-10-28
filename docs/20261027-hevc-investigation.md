@@ -56,3 +56,9 @@ UVC 受信側には、長い bulk 読み込み待ちと前回読み込み後の�
 参考として、[AOSP Android 15 の UsbDeviceConnection JNI](https://android.googlesource.com/platform/frameworks/base/+/android-15.0.0_r1/core/jni/android_hardware_UsbDeviceConnection.cpp) では、bulk 要求時に Java 配列をネイティブの USB 転送へ渡している。これは公開ソース上の構造であり、SC-52B の Samsung ビルドの同一性や、今回のデータ異常の原因を示す証拠ではない。
 
 保存済み `logs/goal_20261027_uvc_logcat.txt` 全体を再集計すると、`payload n=...` 行は13,180件で、記録された長さの最大は54,072 bytes、記録上のヘッダ長はすべて2、EOF はすべて true、既存フレーム長はすべて0だった。現行コードは EOF または65,536 bytes超の場合のみ payload 行を出すため、この集計は全 USB 読み込みの網羅的な検査ではない。また対象ログは19:36の異常録画時のログではない。従って異常時の入力や断片化、受信層の原因は判定できない。
+
+## 2026-10-28 診断付き UVC 実機試験
+
+ユーザーが XREAL をスマートフォンへ挿し換えた。USB の UVC 有効化後、現在のソースを一時ディレクトリでビルドし、既存署名で更新インストールした。2026-10-28 17:05:38 頃から録画し、約190.34秒で停止。スマートフォンは停止後も ADB に応答し、録画サービスは停止済み。MP4 は HEVC 2048×1512、平均約59.39 fps と AAC 音声を含む。RAW HEVC 全体の FFmpeg 復号エラー出力は0 bytes。RAW と MP4 から抽出した VCL NAL は各11,304個で順序・内容が一致した。映像の再エンコードは確認されない。
+
+別途保存した `logs/uvc_diagnostic_20261028.log` の範囲では、長い bulk 読み込みは開始直後の524 msが1件で、前方一致、EOF 前の FID 変化、UVC error flag、不正ヘッダ、読み込み失敗の警告は見つからなかった。ログの末尾は収集停止で途中切れしており、全操作を完全に網羅する証拠ではない。今回の録画では旧録画の参照エラーは再現せず、その原因や修正の証明にはならない。音声ログは USB 入力のルートと `systemSilenced=false` を示すが、録音内容・独立ステレオはこの試験では未確認。映像とログは Git 管理外。
