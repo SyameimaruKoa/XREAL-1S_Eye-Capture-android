@@ -173,8 +173,7 @@ public final class RecordService extends Service {
                     try {
                         finalHevc.write(annexB);
                     } catch (Exception e) {
-                        throw new IllegalStateException("RAW HEVC write failed: "
-                                + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
+                        throw new UvcSource.RawWriteException(e);
                     }
                     long ptsUs = Math.max(0L, (arrivalNs - t0Ns) / 1000L);
                     finalMuxer.writeVideo(annexB, ptsUs, UvcSource.isKeyFrame(annexB));

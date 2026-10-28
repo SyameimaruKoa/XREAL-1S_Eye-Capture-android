@@ -34,6 +34,13 @@ public final class UvcSource {
         void onError(String message);
     }
 
+    public static final class RawWriteException extends RuntimeException {
+        RawWriteException(Throwable cause) {
+            super("RAW HEVC write failed: " + cause.getClass().getSimpleName()
+                    + ": " + cause.getMessage(), cause);
+        }
+    }
+
     private static final class Nal {
         final int start;
         final int end;
@@ -246,7 +253,7 @@ public final class UvcSource {
                 }
             }
         } catch (Throwable t) {
-            if (running) {
+            if (running || t instanceof RawWriteException) {
                 failed = true;
                 error = t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage());
                 listener.onError(error);
