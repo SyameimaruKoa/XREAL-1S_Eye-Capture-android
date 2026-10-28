@@ -54,3 +54,5 @@ UVC 受信側には、長い bulk 読み込み待ちと前回読み込み後の�
 組み立て前の新しい USB payload にも、前の AU と512 bytes以上の前方一致があるかを記録する診断を追加した。UVC ヘッダと HEVC 開始コードまでの不要データを除いた範囲を比較し、読み込まなかったバッファ末尾は比較しない。分割 payload でも警告が出る可能性があり、警告だけでは破損や発生源を確定できない。ローカルでオフセット・範囲外・一致・不一致をテストし、実機では未検証。
 
 参考として、[AOSP Android 15 の UsbDeviceConnection JNI](https://android.googlesource.com/platform/frameworks/base/+/android-15.0.0_r1/core/jni/android_hardware_UsbDeviceConnection.cpp) では、bulk 要求時に Java 配列をネイティブの USB 転送へ渡している。これは公開ソース上の構造であり、SC-52B の Samsung ビルドの同一性や、今回のデータ異常の原因を示す証拠ではない。
+
+保存済み `logs/goal_20261027_uvc_logcat.txt` 全体を再集計すると、`payload n=...` 行は13,180件で、記録された長さの最大は54,072 bytes、記録上のヘッダ長はすべて2、EOF はすべて true、既存フレーム長はすべて0だった。現行コードは EOF または65,536 bytes超の場合のみ payload 行を出すため、この集計は全 USB 読み込みの網羅的な検査ではない。また対象ログは19:36の異常録画時のログではない。従って異常時の入力や断片化、受信層の原因は判定できない。
