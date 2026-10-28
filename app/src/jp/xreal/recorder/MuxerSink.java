@@ -183,13 +183,20 @@ public final class MuxerSink {
             try {
                 if (started) {
                     muxer.stop();
+                } else if (!failed) {
+                    failLocked(new IllegalStateException("MP4 muxer never started"));
                 }
-            } catch (Throwable ignored) {
-                // Keep the raw sidecars even if the MP4 finalization fails.
+            } catch (Throwable t) {
+                if (!failed) {
+                    failLocked(t);
+                }
             }
             try {
                 muxer.release();
-            } catch (Throwable ignored) {
+            } catch (Throwable t) {
+                if (!failed) {
+                    failLocked(t);
+                }
             }
             pendingVideo.clear();
             pendingAudio.clear();

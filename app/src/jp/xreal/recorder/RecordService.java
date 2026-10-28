@@ -241,6 +241,9 @@ public final class RecordService extends Service {
             } else {
                 status = "保存完了: " + result;
             }
+            if (muxer.isFailed() && (uvc.isFailed() || audio.isFailed())) {
+                status += "\nMuxerエラー: " + muxer.getError();
+            }
             if (audioSilenceEverDetected) {
                 status += "\n注意: USB音声が10秒以上すべてゼロでした";
             }
