@@ -160,6 +160,7 @@ public final class UvcSource {
         long lastReadEndNs = 0;
         int shortReads = 0;
         int invalidHeaders = 0;
+        int missingStartCodes = 0;
         long readSequence = 0;
 
         try {
@@ -235,6 +236,12 @@ public final class UvcSource {
                 if (!haveFrame) {
                     int off = findStartCode(buf, hlen, n - hlen);
                     if (off < 0) {
+                        missingStartCodes++;
+                        if (missingStartCodes <= 3 || missingStartCodes % 100 == 0) {
+                            Log.i(TAG, "payload skipped without HEVC start code: readSeq="
+                                    + sequence + " bytes=" + (n - hlen) + " count="
+                                    + missingStartCodes);
+                        }
                         lastFid = fid;
                         continue;
                     }
