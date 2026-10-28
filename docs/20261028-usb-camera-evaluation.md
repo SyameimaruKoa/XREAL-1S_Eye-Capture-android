@@ -203,3 +203,5 @@ Windows の別候補として [WASAPI RAW オプション](https://learn.microso
 同じ RAW 設定を受理した Windows 音声クライアントに `IsFormatSupported` を直接問い合わせた。48 kHz、PCM、排他モード、2ch・32-bitコンテナ・有効32-bit・チャンネルマスク3は `S_OK`。同じマスクでの2ch・16-bit／24-bitと、4ch・16／24／32-bit（マスク0x33）はいずれも `0x88890008`（非対応形式）だった。前記 PortAudio の形式照会は int16／int24 も受け入れており、API 層による形式選択・変換などの違いを含み得る。試したフォーマット以外や別経路での取得可否は未検証。
 
 [XREAL SDK 3.0/3.1 の公式リリースノート](https://developer.xreal.com/download/)は Eye 対応と Android での ControlGlasses 利用を記載している。SDK 2.4 の RGB カメラ項目には YUV_420_888 への変更も記載されるが、これは SDK が提供する画像形式の説明であり、今回の TCP HEVC の解像度・fps の変更方法や無変換録画機能を示すものではない。3.1 のダウンロードページには利用規約への同意項目があり、今回その同意や SDK ダウンロードは行っていない。手元の ControlGlasses 3.1 バイナリの文字列と既存プロトコル資料では、解像度指定値の意味を特定できなかった。
+
+本体録画 `VID_0049_reference.mp4` の20秒付近と TCP 試験 `windows_tcp_fov2.hevc` の各120スライスの HEVC ヘッダーを調べた。両者の `init_qp_minus26` は0で、`slice_qp_delta` は本体が -9: 1件、-6: 119件、TCP が -13: 1件、-11: 58件、-10: 43件、-9: 9件、-8: 3件、-7: 1件、-6: 3件、-5: 1件、-3: 1件だった。撮影条件、解像度、fps が異なり、QP の値だけでは画質の優劣やノイズの原因を判定できない。ログは `logs/onboard_fov_headers.log` と `logs/tcp_fov_headers.log`（Git 管理外）。
