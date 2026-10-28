@@ -329,6 +329,10 @@ public final class UvcSource {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+            if (t.isAlive() && !failed) {
+                error = "UVC receiver did not stop within 2 seconds";
+                failed = true;
+            }
         }
         if (connection != null) {
             try {

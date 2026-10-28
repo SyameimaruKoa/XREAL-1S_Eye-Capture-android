@@ -375,6 +375,10 @@ public final class AudioSource {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+            if (t.isAlive() && !failed) {
+                error = "Audio receiver did not stop within 3 seconds";
+                failed = true;
+            }
         }
     }
 
