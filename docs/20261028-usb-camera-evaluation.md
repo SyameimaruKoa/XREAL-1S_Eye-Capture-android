@@ -182,4 +182,8 @@ Windows の現在の DirectShow 入力形式一覧は2ch・16-bit・48 kHzを含
 
 Windows の別候補として [WASAPI RAW オプション](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/ne-audioclient-audclnt_streamoptions)と[排他モードの形式確認](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclient-isformatsupported)を調査した。RAW は OS の一部処理を回避するが、Microsoft の説明でもドライバー・ハードウェア等の常時処理は残り得るため、物理マイク個別の未加工信号を保証しない。現在の FFmpeg ビルドには WASAPI 入力がなく、XREAL の RAW 対応と排他形式は未検証。読み取り専用の PnP プロパティ一覧では RAW 対応プロパティを確認できなかったが、これだけで非対応とは判断しない。既知の危険な usbfs UAC 直接取得とは別の OS 音声 API として検討する。
 
+追加で隔離した Python 仮想環境の PortAudio/sounddevice を使い、Windows WASAPI の XREAL 入力を照会した。入力の最大チャンネル数は2で、48 kHz・2ch の int16、int24、int32、float32 が排他設定の形式照会で受け入れられ、4chはいずれもチャンネル数エラーだった。これは当該 API・設定での結果であり、他経路を含む4ch不可の証明ではない。
+
+実際に WASAPI 排他モードで48 kHz・2ch・int32 を開き、8秒・384,000フレームを WAV に保存できた。入力オーバーフロー報告なし、左右は全フレームがビット単位で一致（左右のピーク5,119,853、RMS 約286,714）。今回の条件では独立ステレオでない。WASAPI RAW フラグは使用しておらず、排他モードや32-bit形式だけで物理マイクの未加工信号を保証しない。ファイルは `logs/windows_wasapi_exclusive_32.wav`（Git 管理外）。
+
 [XREAL SDK 3.0/3.1 の公式リリースノート](https://developer.xreal.com/download/)は Eye 対応と Android での ControlGlasses 利用を記載している。SDK 2.4 の RGB カメラ項目には YUV_420_888 への変更も記載されるが、これは SDK が提供する画像形式の説明であり、今回の TCP HEVC の解像度・fps の変更方法や無変換録画機能を示すものではない。3.1 のダウンロードページには利用規約への同意項目があり、今回その同意や SDK ダウンロードは行っていない。手元の ControlGlasses 3.1 バイナリの文字列と既存プロトコル資料では、解像度指定値の意味を特定できなかった。
