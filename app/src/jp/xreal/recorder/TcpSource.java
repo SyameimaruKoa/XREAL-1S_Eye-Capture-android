@@ -232,29 +232,8 @@ final class TcpSource implements VideoSource {
     }
 
     private byte[] readExact(InputStream input, int length, boolean requireVideoProgress) throws IOException {
-        byte[] data = new byte[length];
-        int offset = 0;
-        long lastProgressMs = SystemClock.elapsedRealtime();
-        while (offset < length && running) {
-            try {
-                int n = input.read(data, offset, length - offset);
-                if (n < 0) {
-                    throw new EOFException("TCP stream closed");
-                }
-                offset += n;
-                if (n > 0) {
-                    lastProgressMs = SystemClock.elapsedRealtime();
-                }
-            } catch (SocketTimeoutException ignored) {
-                if (requireVideoProgress && SystemClock.elapsedRealtime() - lastProgressMs >= 5000) {
-                    throw new IOException("TCP video has received no data for 5 seconds");
-                }
-            }
-        }
-        if (offset != length) {
-            throw new EOFException("TCP recording stopped");
-        }
-        return data;
+        return TcpReadProgress.read(input, length, requireVideoProgress ? 5000 : 0,
+                () -> running);
     }
 
     private void fail(String message) {
