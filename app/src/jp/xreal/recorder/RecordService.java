@@ -151,6 +151,7 @@ public final class RecordService extends Service {
 
             final MuxerSink finalMuxer = muxer;
             final FileOutputStream finalHevc = hevcOut;
+            final UvcSource finalUvc = uvc;
             final long t0Ns = SystemClock.elapsedRealtimeNanos();
 
             final boolean[] csdSent = {false};
@@ -170,13 +171,23 @@ public final class RecordService extends Service {
 
                 @Override
                 public void onAccessUnit(byte[] annexB, long arrivalNs) {
+                    long writeStartNs = SystemClock.elapsedRealtimeNanos();
                     try {
                         finalHevc.write(annexB);
                     } catch (Exception e) {
                         throw new UvcSource.RawWriteException(e);
                     }
+                    long rawEndNs = SystemClock.elapsedRealtimeNanos();
                     long ptsUs = Math.max(0L, (arrivalNs - t0Ns) / 1000L);
                     finalMuxer.writeVideo(annexB, ptsUs, UvcSource.isKeyFrame(annexB));
+                    long muxEndNs = SystemClock.elapsedRealtimeNanos();
+                    long rawMs = (rawEndNs - writeStartNs) / 1_000_000L;
+                    long muxMs = (muxEndNs - rawEndNs) / 1_000_000L;
+                    if (rawMs >= 50 || muxMs >= 50) {
+                        Log.w(TAG, "video sink timing auIndex=" + finalUvc.getAccessUnits()
+                                + " rawMs=" + rawMs + " muxMs=" + muxMs
+                                + " bytes=" + annexB.length);
+                    }
                 }
 
                 @Override
