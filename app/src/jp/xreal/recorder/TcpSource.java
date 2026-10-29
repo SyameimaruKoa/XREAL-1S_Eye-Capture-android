@@ -134,10 +134,10 @@ final class TcpSource implements VideoSource {
         try {
             InputStream input = control.getInputStream();
             while (running) {
-                byte[] header = readExact(input, 6);
+                byte[] header = readExact(input, 6, false);
                 int command = ((header[0] & 0xff) << 8) | (header[1] & 0xff);
                 int length = readLength(header);
-                byte[] payload = readExact(input, length);
+                byte[] payload = readExact(input, length, false);
                 if (command == 0x2781 || command == 0x2782) {
                     if (!replies.offer(new Reply(command, payload))) {
                         throw new IOException("TCP control response queue full");
@@ -180,9 +180,9 @@ final class TcpSource implements VideoSource {
         try {
             InputStream input = video.getInputStream();
             while (running) {
-                byte[] header = readExact(input, 6);
+                byte[] header = readExact(input, 6, true);
                 int command = ((header[0] & 0xff) << 8) | (header[1] & 0xff);
-                byte[] body = readExact(input, readLength(header));
+                byte[] body = readExact(input, readLength(header), true);
                 if (command != 0x2785) {
                     throw new IOException("Unexpected TCP video message: " + command);
                 }
@@ -231,9 +231,10 @@ final class TcpSource implements VideoSource {
         return (int) length;
     }
 
-    private byte[] readExact(InputStream input, int length) throws IOException {
+    private byte[] readExact(InputStream input, int length, boolean requireVideoProgress) throws IOException {
         byte[] data = new byte[length];
         int offset = 0;
+        long lastProgressMs = SystemClock.elapsedRealtime();
         while (offset < length && running) {
             try {
                 int n = input.read(data, offset, length - offset);
@@ -241,7 +242,13 @@ final class TcpSource implements VideoSource {
                     throw new EOFException("TCP stream closed");
                 }
                 offset += n;
+                if (n > 0) {
+                    lastProgressMs = SystemClock.elapsedRealtime();
+                }
             } catch (SocketTimeoutException ignored) {
+                if (requireVideoProgress && SystemClock.elapsedRealtime() - lastProgressMs >= 5000) {
+                    throw new IOException("TCP video has received no data for 5 seconds");
+                }
             }
         }
         if (offset != length) {
