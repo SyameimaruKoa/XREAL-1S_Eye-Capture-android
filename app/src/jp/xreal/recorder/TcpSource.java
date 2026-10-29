@@ -41,6 +41,12 @@ final class TcpSource implements VideoSource {
     private volatile int accessUnits;
     private boolean startSent;
     private UvcSource.Listener listener;
+    private long candidateFirstNs;
+    private long candidateLastNs;
+    private long arrivalFirstNs;
+    private long arrivalLastNs;
+    private long candidateNonIncreasing;
+    private long candidateMaxArrivalDeviationNs;
 
     private static final class Reply {
         final int command;
@@ -212,7 +218,22 @@ final class TcpSource implements VideoSource {
                     Log.w(TAG, "Skipping video until HEVC configuration arrives");
                     continue;
                 }
-                listener.onAccessUnit(au, SystemClock.elapsedRealtimeNanos());
+                long arrivalNs = SystemClock.elapsedRealtimeNanos();
+                long candidateNs = metadata.getLong(24);
+                if (accessUnits == 0) {
+                    candidateFirstNs = candidateNs;
+                    arrivalFirstNs = arrivalNs;
+                } else {
+                    if (candidateNs <= candidateLastNs) {
+                        candidateNonIncreasing++;
+                    }
+                    long deviation = Math.abs((arrivalNs - arrivalFirstNs)
+                            - (candidateNs - candidateFirstNs));
+                    candidateMaxArrivalDeviationNs = Math.max(candidateMaxArrivalDeviationNs, deviation);
+                }
+                candidateLastNs = candidateNs;
+                arrivalLastNs = arrivalNs;
+                listener.onAccessUnit(au, arrivalNs);
                 accessUnits++;
             }
         } catch (Exception e) {
@@ -260,6 +281,13 @@ final class TcpSource implements VideoSource {
         closeSockets();
         join(videoThread);
         join(controlThread);
+        if (accessUnits > 1) {
+            Log.i(TAG, "unverified clock candidate frames=" + accessUnits
+                    + " candidateSpanNs=" + (candidateLastNs - candidateFirstNs)
+                    + " arrivalSpanNs=" + (arrivalLastNs - arrivalFirstNs)
+                    + " nonIncreasing=" + candidateNonIncreasing
+                    + " maxArrivalDeviationNs=" + candidateMaxArrivalDeviationNs);
+        }
     }
 
     private void closeSockets() {
