@@ -42,7 +42,7 @@ public final class AudioSource {
 
     private final Context context;
     private final long t0Ns;
-    private final MuxerSink muxer;
+    private final RecordingMuxer muxer;
     private final File wavFile;
     private final Listener listener;
 
@@ -60,7 +60,7 @@ public final class AudioSource {
     private volatile long firstEncodedPtsUs = -1;
     private volatile long lastEncodedPtsUs = -1;
 
-    public AudioSource(Context context, long t0Ns, MuxerSink muxer,
+    public AudioSource(Context context, long t0Ns, RecordingMuxer muxer,
                        File wavFile, Listener listener) {
         this.context = context;
         this.t0Ns = t0Ns;

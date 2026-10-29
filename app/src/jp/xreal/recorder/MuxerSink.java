@@ -15,7 +15,7 @@ import java.util.ArrayList;
  * MediaMuxer requires all tracks before start(). Audio starts about 2 s after
  * video, so video samples are buffered until the audio track is known.
  */
-public final class MuxerSink {
+public final class MuxerSink implements RecordingMuxer {
     private static final int MAX_PENDING_VIDEO = 1200;
 
     private static final class Sample {

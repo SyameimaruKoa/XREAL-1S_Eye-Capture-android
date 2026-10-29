@@ -203,7 +203,7 @@ public final class RecordService extends Service {
     private void runRecording() {
         VideoSource videoSource = null;
         AudioSource audio = null;
-        MuxerSink muxer = null;
+        RecordingMuxer muxer = null;
         FileOutputStream hevcOut = null;
         VideoWriter writer = null;
         RecordingOutput output = null;
@@ -253,7 +253,7 @@ public final class RecordService extends Service {
                 hevcOut = new FileOutputStream(hevcFile);
             }
 
-            final MuxerSink finalMuxer = muxer;
+            final RecordingMuxer finalMuxer = muxer;
             final FileOutputStream finalHevc = hevcOut;
             final RecordingOutput finalOutput = output;
             final VideoSource finalVideo = videoSource;
