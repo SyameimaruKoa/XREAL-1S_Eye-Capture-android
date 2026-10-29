@@ -227,3 +227,5 @@ XREAL の現行 API リファレンスでは、[`XREALRGBCameraTexture`](https:/
 [XREAL SDK の機種一覧](https://docs.xreal.com/XREALDevices/XREAL%20Glasses)は XREAL 1S を「Dual Speakers, 4 Microphones」と記載している。機器が公開する UAC 入力は2チャンネルで、取得試験では左右が一致しており、物理マイク4個とホストに公開される独立した音声チャンネル数は別の情報である。同一覧は個々のマイクの RAW データ取得方法や同期を記載しておらず、4チャンネル取得の可否は引き続き未確認。
 
 [メーカーの Eye 撮影・ファイル管理ガイド](https://tutorials.xreal.com/docs/accessories/eye/how-to-use/capture-and-file-management/)は One シリーズ向けに、本体録画をグラスに保存し、メニューの転送モードを有効にして Android のファイル管理アプリから `XREAL/DCIM/` を開く手順を示している。ガイド記載の空き容量は2 GBで、今回の 1S・現在の空き容量とは別途確認が必要。本体録画 `VID_0032.mp4` の映像約34 Mbpsと仮定すると2 GBは映像だけで約7.8分に相当するが、音声・ファイル管理・実容量やビットレート変動により実際の録画可能時間ではない。これは高ビットレートの本体録画を既存ファイル管理アプリで回収する候補であり、連続転送・自動分割・独立した物理マイクの RAW を示すものではない。今回スマートフォンの `/storage` には XREAL のマウントは見えず、転送モードでの実機動作は試していない。
+
+スマートフォンのインストール済みパッケージ一覧には Samsung `com.sec.android.app.myfiles` と Android `com.google.android.documentsui` があった。パッケージの存在のみを確認したもので、転送モードで XREAL が表示できることや録画しながらファイルを読めることは未確認。USB 接続やファイルには変更を加えていない。
