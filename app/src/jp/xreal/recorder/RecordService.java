@@ -61,7 +61,7 @@ public final class RecordService extends Service {
     private volatile boolean audioExactZero;
     private static volatile boolean phoneExactZero;
     private static volatile boolean phoneQuiet;
-    private static volatile int phonePeak;
+    private static final AtomicInteger phonePeak = new AtomicInteger();
     private final AtomicInteger audioPeak = new AtomicInteger();
     private volatile boolean audioSilenceEverDetected;
     private UsbDevice device;
@@ -109,7 +109,7 @@ public final class RecordService extends Service {
 
     static boolean isAudioExactZero() { return phoneExactZero; }
     static boolean isAudioQuiet() { return phoneQuiet; }
-    static int getAudioPeak() { return phonePeak; }
+    static int getAudioPeak() { return phonePeak.getAndSet(0); }
     static long getElapsedSeconds() {
         return recording ? Math.max(0, (SystemClock.elapsedRealtime() - recordingStartedMs) / 1000) : 0;
     }
@@ -192,7 +192,7 @@ public final class RecordService extends Service {
             audioExactZero = false;
             phoneExactZero = false;
             phoneQuiet = false;
-            phonePeak = 0;
+            phonePeak.set(0);
             audioPeak.set(0);
             audioSilenceEverDetected = false;
             status = "開始準備中...";
@@ -397,7 +397,7 @@ public final class RecordService extends Service {
                         public void onAudioLevel(int peak, boolean exactZero) {
                             audioPeak.accumulateAndGet(peak, Math::max);
                             audioExactZero = exactZero;
-                            phonePeak = peak;
+                            phonePeak.accumulateAndGet(peak, Math::max);
                             phoneExactZero = exactZero;
                         }
 
