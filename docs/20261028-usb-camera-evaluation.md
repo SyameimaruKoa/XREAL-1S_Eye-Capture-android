@@ -231,3 +231,5 @@ XREAL の現行 API リファレンスでは、[`XREALRGBCameraTexture`](https:/
 スマートフォンのインストール済みパッケージ一覧には Samsung `com.sec.android.app.myfiles` と Android `com.google.android.documentsui` があった。パッケージの存在のみを確認したもので、転送モードで XREAL が表示できることや録画しながらファイルを読めることは未確認。USB 接続やファイルには変更を加えていない。
 
 2026-10-30、ユーザーが転送モードを有効にした後、Android `sm list-volumes` と `dumpsys mount` で XREAL の exFAT 領域が mounted、ディスクサイズ2,147,483,648 bytesと報告された。Samsung の既存「マイファイル」で「ユーザーメモリ(本体) 1」→ `DCIM/100XREAL` を開き、`VID_0047.mp4`、`VID_0048.mp4`、`VID_0049.mp4` を閲覧できた。短い `VID_0048.mp4` をアプリのコピー機能でスマートフォン内部ストレージ `/sdcard/VID_0048.mp4` へコピーし、さらに PC の `logs/VID_0048_android_export.mp4` に保存。サイズ2,240,866 bytes、約0.673秒、HEVC 1600×1200 と FLAC 2ch。以前 Windows から取得した `logs/VID_0048_reference.mp4` と SHA-256 が一致した。元の XREAL ファイルは削除・移動していない。これは停止済みファイルの既存アプリによるコピーの実測であり、録画中の同時読取、無限録画、リアルタイム音声、マイク個別 RAW の取得を示さない。My Files はファイルの日付を2027年1月25日と表示したが、実際の撮影日時として検証していない。コピーと UI 記録は Git 管理外。
+
+同じマイファイルで、約60.74秒・267,765,717 bytes の `VID_0049.mp4` も XREAL からスマートフォンの `/sdcard/VID_0049.mp4` にコピーした。コピー完了後、スマートフォン内ファイルの SHA-256 は、以前 Windows で取得した `logs/VID_0049_reference.mp4` と一致した。大きいファイルでもこの1回は内容一致を確認できたが、録画中の並行コピーや長時間連続録画は試していない。元ファイルは移動・削除していない。
