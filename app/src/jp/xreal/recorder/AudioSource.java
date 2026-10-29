@@ -172,7 +172,7 @@ public final class AudioSource {
                 RATE * BYTES_PER_FRAME / 2);
         ByteBuffer pcm = ByteBuffer.allocateDirect(readSize).order(ByteOrder.LITTLE_ENDIAN);
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-        AudioSilenceDetector silence = new AudioSilenceDetector(10L * RATE * BYTES_PER_FRAME);
+        AudioSilenceDetector silence = new AudioSilenceDetector(10L * RATE * 2);
         boolean silenceWarning = false;
         long nextDiagnosticsNs = 0;
         String previousDiagnostics = null;
@@ -217,14 +217,6 @@ public final class AudioSource {
                     nextDiagnosticsNs = nowNs + 5_000_000_000L;
                 }
 
-                boolean currentWarning = silence.update(raw);
-                if (currentWarning != silenceWarning) {
-                    silenceWarning = currentWarning;
-                    writeDiagnostics("exact-zero warning=" + currentWarning + " "
-                            + recordingDiagnostics());
-                    listener.onSilenceChanged(currentWarning);
-                }
-
                 // Split the 0.5 s read into chunks small enough for the AAC input buffer.
                 for (int off = 0; off < n; off += ENCODER_CHUNK_BYTES) {
                     int chunk = Math.min(ENCODER_CHUNK_BYTES, n - off);
@@ -238,9 +230,17 @@ public final class AudioSource {
                         mono.putShort((short) (left >> 16));
                     }
 
+                    byte[] encodedInput = mono.array();
+                    boolean currentWarning = silence.update(encodedInput);
+                    if (currentWarning != silenceWarning) {
+                        silenceWarning = currentWarning;
+                        writeDiagnostics("encoded-input exact-zero warning=" + currentWarning + " "
+                                + recordingDiagnostics());
+                        listener.onSilenceChanged(currentWarning);
+                    }
                     long ptsUs = (audioStartNs - t0Ns) / 1000
                             + framesWritten * 1_000_000L / RATE;
-                    queueEncoder(mono.array(), ptsUs);
+                    queueEncoder(encodedInput, ptsUs);
                     framesWritten += frames;
                     drainEncoder(info, false);
                 }

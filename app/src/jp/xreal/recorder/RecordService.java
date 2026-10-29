@@ -361,8 +361,11 @@ public final class RecordService extends Service {
                 }
             });
 
-            // Required start order: UVC first, then AudioRecord after 2 s.
-            Thread.sleep(2000);
+            // Preserve the previously validated UVC start order. TCP does not
+            // need the UVC negotiation delay before starting the microphone.
+            if (videoRoute == ROUTE_UVC_HEVC) {
+                Thread.sleep(2000);
+            }
 
             final AudioSource finalAudio = new AudioSource(this, t0Ns, muxer, wavFile,
                     new AudioSource.Listener() {
