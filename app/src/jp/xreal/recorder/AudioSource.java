@@ -172,7 +172,7 @@ public final class AudioSource {
                 RATE * BYTES_PER_FRAME / 2);
         ByteBuffer pcm = ByteBuffer.allocateDirect(readSize).order(ByteOrder.LITTLE_ENDIAN);
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-        AudioSilenceDetector silence = new AudioSilenceDetector(10L * RATE * 2);
+        AudioSilenceDetector silence = new AudioSilenceDetector(3L * RATE * 2);
         boolean silenceWarning = false;
         long nextDiagnosticsNs = 0;
         String previousDiagnostics = null;

@@ -381,7 +381,7 @@ public final class RecordService extends Service {
                             if (silent) {
                                 audioSilenceEverDetected = true;
                             }
-                            status = silent ? "録画中: USB音声が10秒以上すべてゼロです"
+                            status = silent ? "録画中: USB音声が3秒以上すべてゼロです"
                                     : "録画中: USB音声の入力を検出";
                             Log.w(TAG, "USB audio exact-zero warning=" + silent);
                             NotificationManager nm = (NotificationManager)
@@ -426,7 +426,7 @@ public final class RecordService extends Service {
                 status += "\nMuxerエラー: " + muxer.getError();
             }
             if (audioSilenceEverDetected) {
-                status += "\n注意: USB音声が10秒以上すべてゼロでした";
+                status += "\n注意: USB音声が3秒以上すべてゼロでした";
             }
         } catch (Throwable t) {
             status = "録画エラー: " + t.getClass().getSimpleName() + ": " + t.getMessage();
@@ -505,7 +505,7 @@ public final class RecordService extends Service {
         }
         return b.setContentTitle("XREAL Recorder")
                 .setContentText(audioSilenceDetected
-                        ? "USB音声が10秒以上すべてゼロです"
+                        ? "USB音声が3秒以上すべてゼロです"
                         : "録画中（UVC HEVC + USB mic）")
                 .setSmallIcon(android.R.drawable.ic_menu_camera)
                 .setContentIntent(pi)

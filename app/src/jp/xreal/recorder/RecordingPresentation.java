@@ -97,7 +97,7 @@ final class RecordingPresentation extends Presentation {
             audio.setText("スマートフォンで詳細を確認");
             audio.setTextColor(Color.rgb(255, 185, 80));
         } else if (silence) {
-            audio.setText("音声が10秒以上ゼロです");
+            audio.setText("音声が3秒以上ゼロです");
             audio.setTextColor(Color.rgb(255, 185, 80));
         } else if (ready) {
             audio.setText("USBマイク · モノラル");
