@@ -124,7 +124,7 @@ public class MainActivity extends Activity {
                 + "1. XREAL 1SをUSB-Cで接続\n"
                 + "2. USB権限を許可\n"
                 + "3. 録画開始 → 停止\n\n"
-                + "UVCが見えない場合は「UVCを有効化」を押し、表示後にUSB-Cを抜き差ししてアプリを再起動してください。\n\n"
+                + "UVCが見えない場合は「UVCを有効化」を押し、再接続とUSB権限の確認を待ってください。\n\n"
                 + "画面消灯中もForeground Serviceで継続します。");
         help.setTextSize(12);
         help.setPadding(0, 24, 0, 24);
@@ -281,7 +281,7 @@ public class MainActivity extends Activity {
                     @Override
                     public void run() {
                         if (ok) {
-                            setStatus("UVC有効化を送信しました。USB-Cを抜き差しし、アプリを再起動してください。\n" + message);
+                            setStatus("UVC有効化を要求しました。再接続とUSB権限の確認を待ってください。\n" + message);
                         } else {
                             setStatus("UVC有効化に失敗: " + message);
                         }

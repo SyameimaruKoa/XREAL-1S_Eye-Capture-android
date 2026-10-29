@@ -16,8 +16,8 @@ import java.util.zip.CRC32;
  * Optional UVC enable over the 1S HID control interface (IF0).
  *
  * 0xD2 reads the USB config; only uvc0 (bits 12-13) and enable (bits 16-17)
- * are set to 1, then 0xD3 is sent. The glasses re-enumerate, so the user must
- * reconnect USB-C and restart the app.
+ * are set to 1, then 0xD3 is sent. The glasses may re-enumerate; wait for
+ * device detection and USB permission instead of unplugging them immediately.
  */
 public final class HidUvc {
     public interface Callback {
