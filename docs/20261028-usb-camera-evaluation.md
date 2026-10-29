@@ -223,3 +223,5 @@ XREAL の現行 API リファレンスでは、[`XREALRGBCameraTexture`](https:/
 [公式 XREALAudioCapture リファレンス](https://developer.xreal.com/reference/nrsdk/class/class_unity_1_1_x_r_1_1_x_r_e_a_l_1_1_x_r_e_a_l_audio_capture/)には音声モードとファイルへの録音開始・停止が記載され、音量引数はマイク／アプリ音のそれぞれを指定する。公開された一覧からは XREAL の物理マイクを個別に選択する方法、チャンネル数、RAW サンプル形式は確認できなかった。説明には画像についての記述も混在するため、これだけで実装や実機の音声経路を推定しない。独立ステレオ以上の実機取得は引き続き未検証。
 
 2026-10-29 に接続中の端末で `dumpsys usb dump-descriptors -dump-list` を読み取り専用で取得した。Android の表示では UAC の microphone input terminal ID 2 は2チャンネル・配置値0x3、USB streaming output terminal ID 4 は source ID 6。IF7 の音声入力ストリームは terminal link 4、PCM・2ch・32-bit・48 kHz、等時 IN endpoint 0x87 と報告された。これは機器が公開する論理形式と接続関係であり、物理マイクの個数、左右の独立性や未加工性を示さない。今回の試験は記述子の読み取りのみで、USB 音声インターフェースの直接 claim や音声制御要求を送っていない。生の表示は `logs/usb_descriptor_list_20261029.txt`（Git 管理外）。
+
+[XREAL SDK の機種一覧](https://docs.xreal.com/XREALDevices/XREAL%20Glasses)は XREAL 1S を「Dual Speakers, 4 Microphones」と記載している。機器が公開する UAC 入力は2チャンネルで、取得試験では左右が一致しており、物理マイク4個とホストに公開される独立した音声チャンネル数は別の情報である。同一覧は個々のマイクの RAW データ取得方法や同期を記載しておらず、4チャンネル取得の可否は引き続き未確認。
