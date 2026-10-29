@@ -125,6 +125,7 @@ public final class RecordService extends Service {
         AudioSource audio = null;
         MuxerSink muxer = null;
         FileOutputStream hevcOut = null;
+        VideoWriter writer = null;
         File mp4File = null;
         File hevcFile = null;
         File wavFile = null;
@@ -153,6 +154,34 @@ public final class RecordService extends Service {
             final FileOutputStream finalHevc = hevcOut;
             final UvcSource finalUvc = uvc;
             final long t0Ns = SystemClock.elapsedRealtimeNanos();
+            final VideoWriter finalWriter = new VideoWriter(new VideoWriter.Output() {
+                @Override
+                public void write(byte[] annexB, long ptsUs, boolean keyFrame, int auIndex)
+                        throws Exception {
+                    long writeStartNs = SystemClock.elapsedRealtimeNanos();
+                    finalHevc.write(annexB);
+                    long rawEndNs = SystemClock.elapsedRealtimeNanos();
+                    finalMuxer.writeVideo(annexB, ptsUs, keyFrame);
+                    long muxEndNs = SystemClock.elapsedRealtimeNanos();
+                    long rawMs = (rawEndNs - writeStartNs) / 1_000_000L;
+                    long muxMs = (muxEndNs - rawEndNs) / 1_000_000L;
+                    if (rawMs >= 50 || muxMs >= 50) {
+                        Log.w(TAG, "video sink timing auIndex=" + auIndex
+                                + " rawMs=" + rawMs + " muxMs=" + muxMs
+                                + " bytes=" + annexB.length);
+                    }
+                }
+
+                @Override
+                public void finish() throws Exception {
+                    try {
+                        finalMuxer.finish();
+                    } finally {
+                        finalHevc.close();
+                    }
+                }
+            });
+            writer = finalWriter;
 
             final boolean[] csdSent = {false};
             uvc.start(new UvcSource.Listener() {
@@ -171,22 +200,12 @@ public final class RecordService extends Service {
 
                 @Override
                 public void onAccessUnit(byte[] annexB, long arrivalNs) {
-                    long writeStartNs = SystemClock.elapsedRealtimeNanos();
                     try {
-                        finalHevc.write(annexB);
+                        long ptsUs = Math.max(0L, (arrivalNs - t0Ns) / 1000L);
+                        finalWriter.enqueue(annexB, ptsUs, UvcSource.isKeyFrame(annexB),
+                                finalUvc.getAccessUnits());
                     } catch (Exception e) {
                         throw new UvcSource.RawWriteException(e);
-                    }
-                    long rawEndNs = SystemClock.elapsedRealtimeNanos();
-                    long ptsUs = Math.max(0L, (arrivalNs - t0Ns) / 1000L);
-                    finalMuxer.writeVideo(annexB, ptsUs, UvcSource.isKeyFrame(annexB));
-                    long muxEndNs = SystemClock.elapsedRealtimeNanos();
-                    long rawMs = (rawEndNs - writeStartNs) / 1_000_000L;
-                    long muxMs = (muxEndNs - rawEndNs) / 1_000_000L;
-                    if (rawMs >= 50 || muxMs >= 50) {
-                        Log.w(TAG, "video sink timing auIndex=" + finalUvc.getAccessUnits()
-                                + " rawMs=" + rawMs + " muxMs=" + muxMs
-                                + " bytes=" + annexB.length);
                     }
                 }
 
@@ -226,7 +245,8 @@ public final class RecordService extends Service {
             audio.start();
             status = "録画中: " + mp4File.getName();
 
-            while (!stopRequested && !uvc.isFailed() && !audio.isFailed() && !muxer.isFailed()) {
+            while (!stopRequested && !uvc.isFailed() && !audio.isFailed()
+                    && !muxer.isFailed() && !finalWriter.isFailed()) {
                 Thread.sleep(200);
             }
 
@@ -235,9 +255,7 @@ public final class RecordService extends Service {
             if (audio.isFailed()) {
                 muxer.startVideoOnly();
             }
-            muxer.finish();
-            hevcOut.close();
-            hevcOut = null;
+            finalWriter.finish();
 
             String result = String.format(Locale.US,
                     "%s\nAU=%d audioFrames=%d\nWAV=%s\nHEVC=%s",
@@ -248,6 +266,8 @@ public final class RecordService extends Service {
                 status = "UVC停止: " + uvc.getError() + "\n" + result;
             } else if (audio.isFailed()) {
                 status = "音声停止: " + audio.getError() + "\n" + result;
+            } else if (finalWriter.isFailed()) {
+                status = "映像出力エラー: " + finalWriter.getError() + "\n" + result;
             } else if (muxer.isFailed()) {
                 status = "Muxerエラー: " + muxer.getError() + "\n" + result;
             } else {
@@ -278,7 +298,15 @@ public final class RecordService extends Service {
                 } catch (Throwable ignored) {
                 }
             }
-            if (muxer != null) {
+            if (writer != null) {
+                try {
+                    if (muxer != null && audio != null && audio.isFailed()) {
+                        muxer.startVideoOnly();
+                    }
+                    writer.finish();
+                } catch (Throwable ignored) {
+                }
+            } else if (muxer != null) {
                 try {
                     if (audio != null && audio.isFailed()) {
                         muxer.startVideoOnly();
@@ -287,7 +315,7 @@ public final class RecordService extends Service {
                 } catch (Throwable ignored) {
                 }
             }
-            if (hevcOut != null) {
+            if (hevcOut != null && writer == null) {
                 try {
                     hevcOut.close();
                 } catch (Throwable ignored) {
