@@ -168,7 +168,6 @@ public final class AudioSource {
                 RATE * BYTES_PER_FRAME / 2);
         ByteBuffer pcm = ByteBuffer.allocateDirect(readSize).order(ByteOrder.LITTLE_ENDIAN);
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-        long lastPtsUs = 0;
         AudioSilenceDetector silence = new AudioSilenceDetector(10L * RATE * BYTES_PER_FRAME);
         boolean silenceWarning = false;
         long nextDiagnosticsNs = 0;
@@ -181,7 +180,10 @@ public final class AudioSource {
             while (running) {
                 pcm.clear();
                 int n = record.read(pcm, readSize, AudioRecord.READ_BLOCKING);
-                if (n <= 0) {
+                if (n < 0) {
+                    throw new IllegalStateException("AudioRecord.read failed: " + n);
+                }
+                if (n == 0) {
                     zeroReads++;
                     if (zeroReads > 1000) {
                         throw new IllegalStateException("AudioRecord.read returned 0 repeatedly");
@@ -230,10 +232,8 @@ public final class AudioSource {
 
                     long ptsUs = (audioStartNs - t0Ns) / 1000
                             + framesWritten * 1_000_000L / RATE;
-                    framesWritten += frames;
-                    lastPtsUs = ptsUs;
-
                     queueEncoder(mono.array(), ptsUs);
+                    framesWritten += frames;
                     drainEncoder(info, false);
                 }
             }
@@ -249,14 +249,28 @@ public final class AudioSource {
                 if (record != null) {
                     record.stop();
                 }
-            } catch (Throwable ignored) {
+            } catch (Throwable t) {
+                if (!failed) {
+                    error = "AudioRecord stop failed: " + t.getClass().getSimpleName()
+                            + ": " + String.valueOf(t.getMessage());
+                    failed = true;
+                    listener.onError(error);
+                }
             }
             try {
                 if (encoder != null) {
-                    queueEos(lastPtsUs);
+                    long eosPtsUs = (audioStartNs - t0Ns) / 1000
+                            + framesWritten * 1_000_000L / RATE;
+                    queueEos(eosPtsUs, info);
                     drainEncoder(info, true);
                 }
-            } catch (Throwable ignored) {
+            } catch (Throwable t) {
+                if (!failed) {
+                    error = "AAC finalization failed: " + t.getClass().getSimpleName()
+                            + ": " + String.valueOf(t.getMessage());
+                    failed = true;
+                    listener.onError(error);
+                }
             }
             try {
                 if (encoder != null) {
@@ -324,44 +338,63 @@ public final class AudioSource {
     }
 
     private void queueEncoder(byte[] data, long ptsUs) throws Exception {
-        int index = encoder.dequeueInputBuffer(10000);
+        int index = -1;
+        for (int attempt = 0; attempt < 100; attempt++) {
+            index = encoder.dequeueInputBuffer(10000);
+            if (index >= 0) {
+                break;
+            }
+            if (index != MediaCodec.INFO_TRY_AGAIN_LATER) {
+                throw new IllegalStateException("AAC input dequeue failed: " + index);
+            }
+            drainEncoder(new MediaCodec.BufferInfo(), false);
+        }
         if (index < 0) {
-            return;
+            throw new IllegalStateException("AAC input unavailable after retries");
         }
         ByteBuffer input = encoder.getInputBuffer(index);
         if (input == null) {
-            return;
+            throw new IllegalStateException("AAC input buffer is null");
         }
         input.clear();
-        int copy = Math.min(data.length, input.capacity());
-        input.put(data, 0, copy);
-        encoder.queueInputBuffer(index, 0, copy, ptsUs, 0);
+        if (data.length > input.remaining()) {
+            throw new IllegalStateException("AAC input buffer too small: "
+                    + input.remaining() + " < " + data.length);
+        }
+        input.put(data);
+        encoder.queueInputBuffer(index, 0, data.length, ptsUs, 0);
     }
 
-    private void queueEos(long ptsUs) {
-        try {
-            int index = encoder.dequeueInputBuffer(100000);
+    private void queueEos(long ptsUs, MediaCodec.BufferInfo info) {
+        for (int attempt = 0; attempt < 100; attempt++) {
+            int index = encoder.dequeueInputBuffer(10000);
             if (index >= 0) {
                 encoder.queueInputBuffer(index, 0, 0, ptsUs,
                         MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                return;
             }
-        } catch (Throwable ignored) {
+            if (index != MediaCodec.INFO_TRY_AGAIN_LATER) {
+                throw new IllegalStateException("AAC EOS input dequeue failed: " + index);
+            }
+            drainEncoder(info, false);
         }
+        throw new IllegalStateException("AAC EOS input unavailable after retries");
     }
 
     private void drainEncoder(MediaCodec.BufferInfo info, boolean untilEos) {
+        int emptyPolls = 0;
         while (true) {
-            int index;
-            try {
-                index = encoder.dequeueOutputBuffer(info, untilEos ? 10000 : 0);
-            } catch (Throwable t) {
-                return;
-            }
+            int index = encoder.dequeueOutputBuffer(info, untilEos ? 10000 : 0);
             if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                emptyPolls = 0;
                 muxer.addAudioTrack(encoder.getOutputFormat());
             } else if (index >= 0) {
+                emptyPolls = 0;
                 try {
                     ByteBuffer output = encoder.getOutputBuffer(index);
+                    if (output == null && info.size > 0) {
+                        throw new IllegalStateException("AAC output buffer is null");
+                    }
                     // MediaCodec may emit csd-0 as a 2-byte codec-config buffer.
                     // Writing that as an AAC sample corrupts the first MP4 packet.
                     if (output != null && info.size > 2
@@ -377,8 +410,15 @@ public final class AudioSource {
                 if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                     return;
                 }
-            } else {
-                return;
+            } else if (index == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                if (!untilEos) {
+                    return;
+                }
+                if (++emptyPolls >= 100) {
+                    throw new IllegalStateException("AAC output EOS unavailable after retries");
+                }
+            } else if (index != MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
+                throw new IllegalStateException("AAC output dequeue failed: " + index);
             }
         }
     }
