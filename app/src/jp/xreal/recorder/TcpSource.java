@@ -47,6 +47,14 @@ final class TcpSource implements VideoSource {
     private long arrivalLastNs;
     private long candidateNonIncreasing;
     private long candidateMaxArrivalDeviationNs;
+    private long candidateMinStepNs = Long.MAX_VALUE;
+    private long candidateMaxStepNs;
+    private long arrivalMinStepNs = Long.MAX_VALUE;
+    private long arrivalMaxStepNs;
+    private long arrivalShortSteps;
+    private long arrivalLongSteps;
+    private long shortAfterLong;
+    private long previousArrivalStepNs;
 
     private static final class Reply {
         final int command;
@@ -224,6 +232,22 @@ final class TcpSource implements VideoSource {
                     candidateFirstNs = candidateNs;
                     arrivalFirstNs = arrivalNs;
                 } else {
+                    long candidateStep = candidateNs - candidateLastNs;
+                    long arrivalStep = arrivalNs - arrivalLastNs;
+                    candidateMinStepNs = Math.min(candidateMinStepNs, candidateStep);
+                    candidateMaxStepNs = Math.max(candidateMaxStepNs, candidateStep);
+                    arrivalMinStepNs = Math.min(arrivalMinStepNs, arrivalStep);
+                    arrivalMaxStepNs = Math.max(arrivalMaxStepNs, arrivalStep);
+                    if (arrivalStep < 20_000_000L) {
+                        arrivalShortSteps++;
+                        if (previousArrivalStepNs > 45_000_000L) {
+                            shortAfterLong++;
+                        }
+                    }
+                    if (arrivalStep > 45_000_000L) {
+                        arrivalLongSteps++;
+                    }
+                    previousArrivalStepNs = arrivalStep;
                     if (candidateNs <= candidateLastNs) {
                         candidateNonIncreasing++;
                     }
@@ -286,7 +310,12 @@ final class TcpSource implements VideoSource {
                     + " candidateSpanNs=" + (candidateLastNs - candidateFirstNs)
                     + " arrivalSpanNs=" + (arrivalLastNs - arrivalFirstNs)
                     + " nonIncreasing=" + candidateNonIncreasing
-                    + " maxArrivalDeviationNs=" + candidateMaxArrivalDeviationNs);
+                    + " maxArrivalDeviationNs=" + candidateMaxArrivalDeviationNs
+                    + " candidateStepRangeNs=" + candidateMinStepNs + ":" + candidateMaxStepNs
+                    + " arrivalStepRangeNs=" + arrivalMinStepNs + ":" + arrivalMaxStepNs
+                    + " arrivalUnder20ms=" + arrivalShortSteps
+                    + " arrivalOver45ms=" + arrivalLongSteps
+                    + " shortAfterLong=" + shortAfterLong);
         }
     }
 

@@ -70,7 +70,37 @@ public final class AudioSource {
         this.listener = listener;
     }
 
-    public void start() throws Exception {
+    public void start() {
+        try {
+            startInternal();
+        } catch (Exception e) {
+            failed = true;
+            error = "Audio initialization failed: " + e.getClass().getSimpleName() + ": " + e.getMessage();
+            try {
+                if (record != null) {
+                    record.stop();
+                }
+            } catch (RuntimeException ignored) {
+            }
+            try {
+                if (record != null) {
+                    record.release();
+                }
+            } catch (RuntimeException ignored) {
+            }
+            try {
+                if (encoder != null) {
+                    encoder.release();
+                }
+            } catch (RuntimeException ignored) {
+            }
+            record = null;
+            encoder = null;
+            listener.onError(error);
+        }
+    }
+
+    private void startInternal() throws Exception {
         AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         AudioDeviceInfo usb = findUsbInput(am);
         if (usb == null) {

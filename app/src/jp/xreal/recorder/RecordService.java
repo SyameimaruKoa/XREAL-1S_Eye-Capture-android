@@ -325,6 +325,11 @@ public final class RecordService extends Service {
                                 }
                                 AudioSource capturedAudio = finalAudioRef.get();
                                 if (capturedAudio != null) {
+                                    cameraInfo.put("audio_capture_status",
+                                            capturedAudio.isFailed() ? "failed" : "completed");
+                                    if (capturedAudio.isFailed()) {
+                                        cameraInfo.put("audio_error", capturedAudio.getError());
+                                    }
                                     cameraInfo.put("audio_input_sample_rate_hz", 48000);
                                     cameraInfo.put("audio_output_channels", 1);
                                     cameraInfo.put("aac_encoded_bytes", capturedAudio.getEncodedBytes());
