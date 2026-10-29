@@ -73,16 +73,17 @@ public final class HidUvc {
                         return;
                     }
 
-                    int raw = 0x0000AA55; // fallback: known 1S default
                     byte[] resp = new byte[1024];
                     int n = transfer(conn, out, in, buildFrame(0xD2, null, 0), resp);
-                    if (n >= 27 && resp[0] == (byte) 0xFD) {
-                        // Byte 22 is the command status; the 4-byte payload starts at 23.
-                        raw = (resp[23] & 0xff)
-                                | ((resp[24] & 0xff) << 8)
-                                | ((resp[25] & 0xff) << 16)
-                                | ((resp[26] & 0xff) << 24);
+                    if (n < 27 || resp[0] != (byte) 0xFD || resp[22] != 0) {
+                        callback.onResult(false, "USB configuration read failed or response invalid");
+                        return;
                     }
+                    // Byte 22 is the command status; the 4-byte payload starts at 23.
+                    int raw = (resp[23] & 0xff)
+                            | ((resp[24] & 0xff) << 8)
+                            | ((resp[25] & 0xff) << 16)
+                            | ((resp[26] & 0xff) << 24);
 
                     int next = (raw & ~(0x3 << 12) & ~(0x3 << 16))
                             | (1 << 12) | (1 << 16);
@@ -93,9 +94,10 @@ public final class HidUvc {
                             (byte) ((next >> 24) & 0xff)
                     };
                     byte[] frame = buildFrame(0xD3, payload, payload.length);
+                    java.util.Arrays.fill(resp, (byte) 0);
                     n = transfer(conn, out, in, frame, resp);
-                    if (n < 0) {
-                        callback.onResult(false, "0xD3 transfer failed");
+                    if (n < 23 || resp[0] != (byte) 0xFD || resp[22] != 0) {
+                        callback.onResult(false, "0xD3 transfer failed or response invalid");
                         return;
                     }
                     callback.onResult(true, String.format(java.util.Locale.US,
@@ -121,7 +123,7 @@ public final class HidUvc {
         if (sent < 0) {
             sent = request(conn, out, frame, frame.length);
         }
-        if (sent < 0) {
+        if (sent != frame.length) {
             return -1;
         }
         int received = conn.bulkTransfer(in, resp, resp.length, 2000);
@@ -146,7 +148,7 @@ public final class HidUvc {
             if (done != request) {
                 return -1;
             }
-            return length;
+            return buffer.position();
         } catch (Throwable t) {
             return -1;
         } finally {
