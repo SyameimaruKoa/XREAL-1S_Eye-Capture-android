@@ -83,7 +83,8 @@ final class RecordingPresentation extends Presentation {
         int position = (int) ((elapsedSeconds / 60) % 4);
         content.setTranslationX((position == 0 || position == 3) ? -offset : offset);
         content.setTranslationY(position < 2 ? -offset : offset);
-        boolean error = state != null && (state.contains("エラー") || state.contains("失敗")
+        boolean audioFailed = state != null && state.startsWith("録画中: 音声停止");
+        boolean error = !audioFailed && state != null && (state.contains("エラー") || state.contains("失敗")
                 || state.contains("停止:"));
         boolean ready = state != null && state.startsWith("録画中");
         if (error) {
@@ -105,7 +106,10 @@ final class RecordingPresentation extends Presentation {
         elapsed.setText(String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds));
         rate.setText(ready ? rateSummary : "");
         waveform.addPeak(audioPeak);
-        if (error) {
+        if (audioFailed) {
+            audio.setText("音声停止・映像のみ録画中");
+            audio.setTextColor(Color.rgb(255, 185, 80));
+        } else if (error) {
             audio.setText("スマートフォンで詳細を確認");
             audio.setTextColor(Color.rgb(255, 185, 80));
         } else if (exactZero) {

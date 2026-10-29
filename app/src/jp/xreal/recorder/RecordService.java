@@ -430,8 +430,19 @@ public final class RecordService extends Service {
             audio.start();
             status = "録画中: " + mp4Name;
 
-            while (!stopRequested && !videoSource.isFailed() && !audio.isFailed()
+            boolean audioFailureHandled = false;
+            while (!stopRequested && !videoSource.isFailed()
                     && !muxer.isFailed() && !finalWriter.isFailed()) {
+                if (audio.isFailed()) {
+                    muxer.startVideoOnly();
+                    if (!audioFailureHandled) {
+                        audioFailureHandled = true;
+                        status = "録画中: 音声停止、映像のみ継続: " + audio.getError();
+                        NotificationManager nm = (NotificationManager)
+                                getSystemService(Context.NOTIFICATION_SERVICE);
+                        nm.notify(NOTIFICATION_ID, buildNotification());
+                    }
+                }
                 Thread.sleep(200);
             }
 
@@ -540,7 +551,8 @@ public final class RecordService extends Service {
             b = new Notification.Builder(this);
         }
         return b.setContentTitle("XREAL Recorder")
-                .setContentText(audioSilenceDetected
+                .setContentText(status.startsWith("録画中: 音声停止")
+                        ? "音声停止・映像のみ録画中" : audioSilenceDetected
                         ? "音声が3秒以上非常に小さいか無音です"
                         : "録画中（UVC HEVC + USB mic）")
                 .setSmallIcon(android.R.drawable.ic_menu_camera)

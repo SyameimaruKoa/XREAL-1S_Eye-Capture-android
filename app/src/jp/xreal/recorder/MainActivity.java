@@ -518,7 +518,8 @@ public class MainActivity extends Activity {
         if (recording) {
             phoneWaveform.addPeak(RecordService.getAudioPeak());
         }
-        audioIndicator.setText(!recording ? "" : RecordService.isAudioExactZero()
+        audioIndicator.setText(!recording ? "" : s != null && s.startsWith("録画中: 音声停止")
+                ? "音声停止・映像のみ録画中" : RecordService.isAudioExactZero()
                 ? "音声データが完全にゼロです" : RecordService.isAudioQuiet()
                 ? "音声入力が非常に小さい状態です" : "USBマイク · モノラル");
         // The service's idle text must not overwrite this Activity's USB/UVC status.
