@@ -45,6 +45,10 @@ public class MainActivity extends Activity {
     private UsbManager usbManager;
     private UsbDevice device;
     private TextView statusView;
+    private TextView recordingIndicator;
+    private TextView audioIndicator;
+    private RecordingPresentation.WaveformView phoneWaveform;
+    private CheckBox sideDisplayCheck;
     private Button startButton;
     private Button stopButton;
     private Button enableButton;
@@ -109,6 +113,19 @@ public class MainActivity extends Activity {
         note.setPadding(0, 16, 0, 24);
         root.addView(note);
 
+        recordingIndicator = new TextView(this);
+        recordingIndicator.setTextSize(32);
+        recordingIndicator.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        recordingIndicator.setTextColor(Color.rgb(255, 95, 95));
+        root.addView(recordingIndicator);
+        phoneWaveform = new RecordingPresentation.WaveformView(this);
+        root.addView(phoneWaveform, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 70));
+        audioIndicator = new TextView(this);
+        audioIndicator.setTextColor(Color.LTGRAY);
+        audioIndicator.setTextSize(16);
+        root.addView(audioIndicator);
+
         statusView = new TextView(this);
         statusView.setTextSize(14);
         statusView.setTextColor(Color.WHITE);
@@ -150,6 +167,18 @@ public class MainActivity extends Activity {
         });
         root.addView(enableButton);
 
+        sideDisplayCheck = new CheckBox(this);
+        sideDisplayCheck.setText("XREAL サイド表示用の配置（オフ: 固定表示用）");
+        sideDisplayCheck.setTextColor(Color.WHITE);
+        sideDisplayCheck.setChecked(preferences.getBoolean("display_side", false));
+        sideDisplayCheck.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton button, boolean checked) {
+                preferences.edit().putBoolean("display_side", checked).apply();
+            }
+        });
+        root.addView(sideDisplayCheck);
+
         TextView routeLabel = new TextView(this);
         routeLabel.setText("画質・映像の取得経路（ビットレートは録画時の実測例）");
         routeLabel.setTextColor(Color.WHITE);
@@ -158,8 +187,8 @@ public class MainActivity extends Activity {
         root.addView(routeLabel);
         videoRouteView = new Spinner(this);
         String[] routes = new String[]{
-                "TCP HEVC（1280×720 / 30fps / 約17.0 Mbps）",
-                "UVC HEVC（2048×1512 / 60fps / 約2.03 Mbps）"
+                "TCP 720p 30fps 約17.0 Mbps",
+                "UVC 1512p 60fps 約2.03 Mbps"
         };
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
                 android.R.layout.simple_spinner_item, routes) {
@@ -480,6 +509,16 @@ public class MainActivity extends Activity {
     private void pollStatus() {
         String s = RecordService.getStatus();
         boolean recording = RecordService.isRecording();
+        long seconds = RecordService.getElapsedSeconds();
+        recordingIndicator.setText(recording ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
+                seconds / 3600, (seconds / 60) % 60, seconds % 60) : "待機中");
+        phoneWaveform.setVisibility(recording ? View.VISIBLE : View.GONE);
+        if (recording) {
+            phoneWaveform.addPeak(RecordService.getAudioPeak());
+        }
+        audioIndicator.setText(!recording ? "" : RecordService.isAudioExactZero()
+                ? "音声データが完全にゼロです" : RecordService.isAudioQuiet()
+                ? "音声入力が非常に小さい状態です" : "USBマイク · モノラル");
         // The service's idle text must not overwrite this Activity's USB/UVC status.
         if (recording && s != null && s.startsWith("録画中")) {
             statusView.setText(s + "\n" + RecordService.getVideoRateSummary());
@@ -494,6 +533,7 @@ public class MainActivity extends Activity {
         resetFolderButton.setEnabled(!recording);
         diagnosticsCheck.setEnabled(!recording);
         videoRouteView.setEnabled(!recording);
+        sideDisplayCheck.setEnabled(!recording);
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {

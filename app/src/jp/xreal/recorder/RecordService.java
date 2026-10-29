@@ -29,6 +29,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.json.JSONObject;
 
 public final class RecordService extends Service {
@@ -57,13 +58,18 @@ public final class RecordService extends Service {
     private Thread worker;
     private volatile boolean stopRequested;
     private volatile boolean audioSilenceDetected;
+    private volatile boolean audioExactZero;
+    private static volatile boolean phoneExactZero;
+    private static volatile boolean phoneQuiet;
+    private static volatile int phonePeak;
+    private final AtomicInteger audioPeak = new AtomicInteger();
     private volatile boolean audioSilenceEverDetected;
     private UsbDevice device;
     private Uri outputTree;
     private String outputLabel;
     private boolean diagnostics;
     private int videoRoute;
-    private long recordingStartedMs;
+    private static volatile long recordingStartedMs;
     private DisplayManager displayManager;
     private RecordingPresentation recordingPresentation;
     private final Handler displayHandler = new Handler(Looper.getMainLooper());
@@ -99,6 +105,13 @@ public final class RecordService extends Service {
 
     public static boolean isRecording() {
         return recording;
+    }
+
+    static boolean isAudioExactZero() { return phoneExactZero; }
+    static boolean isAudioQuiet() { return phoneQuiet; }
+    static int getAudioPeak() { return phonePeak; }
+    static long getElapsedSeconds() {
+        return recording ? Math.max(0, (SystemClock.elapsedRealtime() - recordingStartedMs) / 1000) : 0;
     }
 
     public static String getVideoRateSummary() {
@@ -176,6 +189,11 @@ public final class RecordService extends Service {
             recordingStartedMs = SystemClock.elapsedRealtime();
             stopRequested = false;
             audioSilenceDetected = false;
+            audioExactZero = false;
+            phoneExactZero = false;
+            phoneQuiet = false;
+            phonePeak = 0;
+            audioPeak.set(0);
             audioSilenceEverDetected = false;
             status = "開始準備中...";
             worker = new Thread(new Runnable() {
@@ -376,14 +394,23 @@ public final class RecordService extends Service {
                         }
 
                         @Override
+                        public void onAudioLevel(int peak, boolean exactZero) {
+                            audioPeak.accumulateAndGet(peak, Math::max);
+                            audioExactZero = exactZero;
+                            phonePeak = peak;
+                            phoneExactZero = exactZero;
+                        }
+
+                        @Override
                         public void onSilenceChanged(boolean silent) {
                             audioSilenceDetected = silent;
+                            phoneQuiet = silent;
                             if (silent) {
                                 audioSilenceEverDetected = true;
                             }
-                            status = silent ? "録画中: USB音声が3秒以上すべてゼロです"
+                            status = silent ? "録画中: 音声が3秒以上非常に小さいか無音です"
                                     : "録画中: USB音声の入力を検出";
-                            Log.w(TAG, "USB audio exact-zero warning=" + silent);
+                            Log.w(TAG, "USB audio low-level warning=" + silent);
                             NotificationManager nm = (NotificationManager)
                                     getSystemService(Context.NOTIFICATION_SERVICE);
                             nm.notify(NOTIFICATION_ID, buildNotification());
@@ -426,7 +453,7 @@ public final class RecordService extends Service {
                 status += "\nMuxerエラー: " + muxer.getError();
             }
             if (audioSilenceEverDetected) {
-                status += "\n注意: USB音声が3秒以上すべてゼロでした";
+                status += "\n注意: 音声が3秒以上非常に小さいか無音でした";
             }
         } catch (Throwable t) {
             status = "録画エラー: " + t.getClass().getSimpleName() + ": " + t.getMessage();
@@ -505,7 +532,7 @@ public final class RecordService extends Service {
         }
         return b.setContentTitle("XREAL Recorder")
                 .setContentText(audioSilenceDetected
-                        ? "USB音声が3秒以上すべてゼロです"
+                        ? "音声が3秒以上非常に小さいか無音です"
                         : "録画中（UVC HEVC + USB mic）")
                 .setSmallIcon(android.R.drawable.ic_menu_camera)
                 .setContentIntent(pi)
@@ -536,7 +563,9 @@ public final class RecordService extends Service {
         }
         if (recordingPresentation == null) {
             try {
-                recordingPresentation = new RecordingPresentation(this, target);
+                boolean sideMode = getSharedPreferences("recording_options", MODE_PRIVATE)
+                        .getBoolean("display_side", false);
+                recordingPresentation = new RecordingPresentation(this, target, sideMode);
                 recordingPresentation.show();
             } catch (RuntimeException e) {
                 Log.w(TAG, "external recording display unavailable", e);
@@ -545,7 +574,8 @@ public final class RecordService extends Service {
             }
         }
         long elapsed = Math.max(0, (SystemClock.elapsedRealtime() - recordingStartedMs) / 1000);
-        recordingPresentation.updateStatus(status, stopRequested, audioSilenceDetected, elapsed,
+        recordingPresentation.updateStatus(status, stopRequested, audioSilenceDetected,
+                audioExactZero, audioPeak.getAndSet(0), elapsed,
                 getVideoRateSummary());
     }
 

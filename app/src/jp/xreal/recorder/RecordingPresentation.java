@@ -4,10 +4,13 @@ import android.app.Presentation;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.os.Bundle;
 import android.view.Display;
 import android.view.Gravity;
 import android.view.Window;
+import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -20,9 +23,12 @@ final class RecordingPresentation extends Presentation {
     private TextView audio;
     private TextView rate;
     private LinearLayout content;
+    private WaveformView waveform;
+    private final boolean sideMode;
 
-    RecordingPresentation(Context context, Display display) {
+    RecordingPresentation(Context context, Display display, boolean sideMode) {
         super(context, display);
+        this.sideMode = sideMode;
     }
 
     @Override
@@ -35,19 +41,23 @@ final class RecordingPresentation extends Presentation {
         LinearLayout root = new LinearLayout(getContext());
         content = root;
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER);
+        root.setGravity(sideMode ? Gravity.RIGHT | Gravity.CENTER_VERTICAL
+                : Gravity.RIGHT | Gravity.TOP);
         root.setBackgroundColor(Color.BLACK);
         int padding = (int) (24 * getContext().getResources().getDisplayMetrics().density);
         root.setPadding(padding, padding, padding, padding);
 
-        headline = label(72, Color.WHITE, true);
-        elapsed = label(58, Color.WHITE, true);
-        audio = label(32, Color.LTGRAY, false);
-        rate = label(32, Color.LTGRAY, false);
-        root.addView(headline);
-        root.addView(elapsed);
-        root.addView(rate);
-        root.addView(audio);
+        headline = label(sideMode ? 48 : 56, Color.WHITE, true);
+        elapsed = label(34, Color.WHITE, true);
+        audio = label(20, Color.LTGRAY, false);
+        rate = label(20, Color.LTGRAY, false);
+        int contentWidth = sideMode ? 340 : 420;
+        root.addView(headline, new LinearLayout.LayoutParams(contentWidth, -2));
+        root.addView(elapsed, new LinearLayout.LayoutParams(contentWidth, -2));
+        root.addView(rate, new LinearLayout.LayoutParams(contentWidth, -2));
+        waveform = new WaveformView(getContext());
+        root.addView(waveform, new LinearLayout.LayoutParams(sideMode ? 340 : 420, 64));
+        root.addView(audio, new LinearLayout.LayoutParams(contentWidth, -2));
         setContentView(root);
     }
 
@@ -62,7 +72,8 @@ final class RecordingPresentation extends Presentation {
         return view;
     }
 
-    void updateStatus(String state, boolean stopping, boolean silence, long elapsedSeconds,
+    void updateStatus(String state, boolean stopping, boolean silence, boolean exactZero,
+                      int audioPeak, long elapsedSeconds,
                       String rateSummary) {
         if (headline == null) {
             return;
@@ -82,7 +93,7 @@ final class RecordingPresentation extends Presentation {
             headline.setText("保存中");
             headline.setTextColor(Color.WHITE);
         } else if (ready) {
-            headline.setText("● 録画中");
+            headline.setText("● REC");
             headline.setTextColor(Color.rgb(255, 95, 95));
         } else {
             headline.setText("準備中");
@@ -93,17 +104,52 @@ final class RecordingPresentation extends Presentation {
         long seconds = elapsedSeconds % 60;
         elapsed.setText(String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds));
         rate.setText(ready ? rateSummary : "");
+        waveform.addPeak(audioPeak);
         if (error) {
             audio.setText("スマートフォンで詳細を確認");
             audio.setTextColor(Color.rgb(255, 185, 80));
+        } else if (exactZero) {
+            audio.setText("音声データが完全にゼロです");
+            audio.setTextColor(Color.rgb(255, 185, 80));
         } else if (silence) {
-            audio.setText("音声が3秒以上ゼロです");
+            audio.setText("音声入力が非常に小さい状態です");
             audio.setTextColor(Color.rgb(255, 185, 80));
         } else if (ready) {
             audio.setText("USBマイク · モノラル");
             audio.setTextColor(Color.LTGRAY);
         } else {
             audio.setText("");
+        }
+    }
+
+    static final class WaveformView extends View {
+        private final int[] peaks = new int[48];
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private int next;
+
+        WaveformView(Context context) {
+            super(context);
+            paint.setColor(Color.LTGRAY);
+            paint.setStrokeWidth(4);
+        }
+
+        void addPeak(int peak) {
+            peaks[next] = peak;
+            next = (next + 1) % peaks.length;
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float center = getHeight() / 2.0f;
+            for (int i = 0; i < peaks.length; i++) {
+                int peak = peaks[(next + i) % peaks.length];
+                float amplitude = (float) Math.sqrt(Math.min(32768, peak) / 32768.0)
+                        * (center - 3);
+                float x = (i + 0.5f) * getWidth() / peaks.length;
+                canvas.drawLine(x, center - amplitude, x, center + amplitude, paint);
+            }
         }
     }
 }

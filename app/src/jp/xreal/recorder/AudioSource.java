@@ -38,6 +38,7 @@ public final class AudioSource {
     public interface Listener {
         void onError(String message);
         void onSilenceChanged(boolean silent);
+        void onAudioLevel(int peak, boolean exactZero);
     }
 
     private final Context context;
@@ -231,10 +232,16 @@ public final class AudioSource {
                     }
 
                     byte[] encodedInput = mono.array();
+                    int peak = 0;
+                    for (int i = 0; i < encodedInput.length; i += 2) {
+                        int sample = (short) ((encodedInput[i] & 0xff) | (encodedInput[i + 1] << 8));
+                        peak = Math.max(peak, Math.abs(sample));
+                    }
                     boolean currentWarning = silence.update(encodedInput);
+                    listener.onAudioLevel(peak, silence.isExactZero());
                     if (currentWarning != silenceWarning) {
                         silenceWarning = currentWarning;
-                        writeDiagnostics("encoded-input exact-zero warning=" + currentWarning + " "
+                        writeDiagnostics("encoded-input low-level warning=" + currentWarning + " "
                                 + recordingDiagnostics());
                         listener.onSilenceChanged(currentWarning);
                     }
