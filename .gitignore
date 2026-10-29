@@ -11,5 +11,7 @@
 !docs/20261027-handoff-audit.md
 !docs/20261027-hevc-investigation.md
 !docs/20261028-usb-camera-evaluation.md
+!docs/20261030-android-tcp-trial.md
+!docs/HANDOFF_CURRENT.md
 !tests/
 !tests/*.java
