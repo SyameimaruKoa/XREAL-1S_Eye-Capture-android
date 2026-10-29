@@ -10,19 +10,26 @@ import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
+import android.hardware.display.DisplayManager;
 import android.media.MediaFormat;
 import android.os.Build;
 import android.os.Environment;
 import android.os.IBinder;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
+import android.net.Uri;
 import android.util.Log;
+import android.view.Display;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicReference;
+import org.json.JSONObject;
 
 public final class RecordService extends Service {
     private static final String TAG = "XrealRec";
@@ -32,9 +39,19 @@ public final class RecordService extends Service {
     public static final String ACTION_START = "jp.xreal.recorder.START";
     public static final String ACTION_STOP = "jp.xreal.recorder.STOP";
     public static final String EXTRA_DEVICE = "device";
+    public static final String EXTRA_OUTPUT_TREE = "output_tree";
+    public static final String EXTRA_OUTPUT_LABEL = "output_label";
+    public static final String EXTRA_DIAGNOSTICS = "diagnostics";
+    public static final String EXTRA_VIDEO_ROUTE = "video_route";
+    public static final int ROUTE_TCP_HEVC = 0;
+    public static final int ROUTE_UVC_HEVC = 1;
 
     private static volatile String status = "待機中";
     private static volatile boolean recording;
+    private static volatile long videoFrames;
+    private static volatile long videoBytes;
+    private static volatile long firstVideoNs;
+    private static volatile long lastVideoNs;
 
     private PowerManager.WakeLock wakeLock;
     private Thread worker;
@@ -42,6 +59,39 @@ public final class RecordService extends Service {
     private volatile boolean audioSilenceDetected;
     private volatile boolean audioSilenceEverDetected;
     private UsbDevice device;
+    private Uri outputTree;
+    private String outputLabel;
+    private boolean diagnostics;
+    private int videoRoute;
+    private long recordingStartedMs;
+    private DisplayManager displayManager;
+    private RecordingPresentation recordingPresentation;
+    private final Handler displayHandler = new Handler(Looper.getMainLooper());
+    private final Runnable displayUpdate = new Runnable() {
+        @Override
+        public void run() {
+            updateRecordingDisplay();
+            if (recording) {
+                displayHandler.postDelayed(this, 1000);
+            }
+        }
+    };
+    private final DisplayManager.DisplayListener displayListener = new DisplayManager.DisplayListener() {
+        @Override
+        public void onDisplayAdded(int displayId) {
+            updateRecordingDisplay();
+        }
+
+        @Override
+        public void onDisplayRemoved(int displayId) {
+            updateRecordingDisplay();
+        }
+
+        @Override
+        public void onDisplayChanged(int displayId) {
+            updateRecordingDisplay();
+        }
+    };
 
     public static String getStatus() {
         return status;
@@ -49,6 +99,16 @@ public final class RecordService extends Service {
 
     public static boolean isRecording() {
         return recording;
+    }
+
+    public static String getVideoRateSummary() {
+        long spanNs = lastVideoNs - firstVideoNs;
+        if (videoFrames < 2 || spanNs < 1_000_000_000L) {
+            return "受信レートを計測中";
+        }
+        double seconds = spanNs / 1_000_000_000.0;
+        return String.format(Locale.US, "受信平均 %.2f fps / %.2f Mbps",
+                (videoFrames - 1) / seconds, videoBytes * 8.0 / seconds / 1_000_000.0);
     }
 
     @Override
@@ -60,6 +120,10 @@ public final class RecordService extends Service {
                     "XREAL recording", NotificationManager.IMPORTANCE_LOW);
             ch.setDescription("UVC + USB microphone recording");
             nm.createNotificationChannel(ch);
+        }
+        displayManager = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
+        if (displayManager != null) {
+            displayManager.registerDisplayListener(displayListener, displayHandler);
         }
     }
 
@@ -76,6 +140,14 @@ public final class RecordService extends Service {
                 stopSelf();
                 return START_NOT_STICKY;
             }
+            String selectedTree = intent.getStringExtra(EXTRA_OUTPUT_TREE);
+            outputTree = selectedTree == null ? null : Uri.parse(selectedTree);
+            outputLabel = intent.getStringExtra(EXTRA_OUTPUT_LABEL);
+            if (outputLabel == null || outputLabel.isEmpty()) {
+                outputLabel = "DCIM / 100XREAL";
+            }
+            diagnostics = intent.getBooleanExtra(EXTRA_DIAGNOSTICS, false);
+            videoRoute = intent.getIntExtra(EXTRA_VIDEO_ROUTE, ROUTE_TCP_HEVC);
             try {
                 if (Build.VERSION.SDK_INT >= 29) {
                     startForeground(NOTIFICATION_ID, buildNotification(),
@@ -93,9 +165,15 @@ public final class RecordService extends Service {
 
             PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "XrealRec:record");
-            wakeLock.acquire(2 * 60 * 60 * 1000L);
+            // Held only while recording and released on every service shutdown path.
+            wakeLock.acquire();
 
             recording = true;
+            videoFrames = 0;
+            videoBytes = 0;
+            firstVideoNs = 0;
+            lastVideoNs = 0;
+            recordingStartedMs = SystemClock.elapsedRealtime();
             stopRequested = false;
             audioSilenceDetected = false;
             audioSilenceEverDetected = false;
@@ -107,6 +185,8 @@ public final class RecordService extends Service {
                 }
             }, "xreal-record");
             worker.start();
+            displayHandler.removeCallbacks(displayUpdate);
+            displayHandler.post(displayUpdate);
             return START_NOT_STICKY;
         }
 
@@ -121,12 +201,13 @@ public final class RecordService extends Service {
     }
 
     private void runRecording() {
-        UvcSource uvc = null;
+        VideoSource videoSource = null;
         AudioSource audio = null;
         MuxerSink muxer = null;
         FileOutputStream hevcOut = null;
         VideoWriter writer = null;
-        File mp4File = null;
+        RecordingOutput output = null;
+        String mp4Name = null;
         File hevcFile = null;
         File wavFile = null;
 
@@ -139,27 +220,53 @@ public final class RecordService extends Service {
                 throw new IllegalStateException("cannot create output directory");
             }
             String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-            mp4File = new File(dir, "xreal_" + ts + ".mp4");
-            hevcFile = new File(dir, "xreal_" + ts + ".hevc");
-            wavFile = new File(dir, "xreal_" + ts + ".wav");
+            if (diagnostics) {
+                hevcFile = new File(dir, "xreal_" + ts + ".hevc");
+                wavFile = new File(dir, "xreal_" + ts + ".wav");
+            }
 
             UsbManager um = (UsbManager) getSystemService(Context.USB_SERVICE);
-            uvc = new UvcSource(um, device);
-            uvc.open();
+            videoSource = videoRoute == ROUTE_TCP_HEVC
+                    ? new TcpSource(this) : new UvcSource(um, device);
+            videoSource.open();
 
-            muxer = new MuxerSink(mp4File.getAbsolutePath());
-            hevcOut = new FileOutputStream(hevcFile);
+            long captureTimeMs = System.currentTimeMillis();
+            output = RecordingOutput.create(this, outputTree, captureTimeMs);
+            mp4Name = output.getFilename();
+            muxer = output.openMuxer();
+            final JSONObject cameraInfo = new JSONObject();
+            cameraInfo.put("schema_version", 1);
+            cameraInfo.put("file", mp4Name);
+            cameraInfo.put("recording_start_time", new SimpleDateFormat(
+                    "yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(new Date(captureTimeMs)));
+            cameraInfo.put("usb_product", device.getProductName());
+            cameraInfo.put("usb_manufacturer", device.getManufacturerName());
+            cameraInfo.put("usb_vendor_id", device.getVendorId());
+            cameraInfo.put("usb_product_id", device.getProductId());
+            cameraInfo.put("video_source", videoRoute == ROUTE_TCP_HEVC
+                    ? "USB Ethernet HEVC passthrough" : "USB UVC HEVC passthrough");
+            cameraInfo.put("requested_width", videoSource.getWidth());
+            cameraInfo.put("requested_height", videoSource.getHeight());
+            cameraInfo.put("requested_frames_per_second", videoSource.getFrameRate());
+            cameraInfo.put("audio", "USB microphone, mono AAC, 48000 Hz");
+            if (hevcFile != null) {
+                hevcOut = new FileOutputStream(hevcFile);
+            }
 
             final MuxerSink finalMuxer = muxer;
             final FileOutputStream finalHevc = hevcOut;
-            final UvcSource finalUvc = uvc;
+            final RecordingOutput finalOutput = output;
+            final VideoSource finalVideo = videoSource;
+            final AtomicReference<AudioSource> finalAudioRef = new AtomicReference<>();
             final long t0Ns = SystemClock.elapsedRealtimeNanos();
             final VideoWriter finalWriter = new VideoWriter(new VideoWriter.Output() {
                 @Override
                 public void write(byte[] annexB, long ptsUs, boolean keyFrame, int auIndex)
                         throws Exception {
                     long writeStartNs = SystemClock.elapsedRealtimeNanos();
-                    finalHevc.write(annexB);
+                    if (finalHevc != null) {
+                        finalHevc.write(annexB);
+                    }
                     long rawEndNs = SystemClock.elapsedRealtimeNanos();
                     finalMuxer.writeVideo(annexB, ptsUs, keyFrame);
                     long muxEndNs = SystemClock.elapsedRealtimeNanos();
@@ -177,14 +284,46 @@ public final class RecordService extends Service {
                     try {
                         finalMuxer.finish();
                     } finally {
-                        finalHevc.close();
+                        try {
+                            if (finalHevc != null) {
+                                finalHevc.close();
+                            }
+                        } finally {
+                            try {
+                                long spanNs = lastVideoNs - firstVideoNs;
+                                cameraInfo.put("received_video_frames", videoFrames);
+                                cameraInfo.put("received_video_bytes", videoBytes);
+                                cameraInfo.put("video_rate_basis", "host receive timestamps");
+                                if (videoFrames > 1 && spanNs > 0) {
+                                    double seconds = spanNs / 1_000_000_000.0;
+                                    cameraInfo.put("received_average_fps", (videoFrames - 1) / seconds);
+                                    cameraInfo.put("received_average_bitrate_bps", videoBytes * 8.0 / seconds);
+                                }
+                                AudioSource capturedAudio = finalAudioRef.get();
+                                if (capturedAudio != null) {
+                                    cameraInfo.put("audio_input_sample_rate_hz", 48000);
+                                    cameraInfo.put("audio_output_channels", 1);
+                                    cameraInfo.put("aac_encoded_bytes", capturedAudio.getEncodedBytes());
+                                    cameraInfo.put("aac_encoded_samples", capturedAudio.getEncodedSamples());
+                                    long audioSpanUs = capturedAudio.getLastEncodedPtsUs()
+                                            - capturedAudio.getFirstEncodedPtsUs();
+                                    if (capturedAudio.getEncodedSamples() > 1 && audioSpanUs > 0) {
+                                        cameraInfo.put("aac_average_bitrate_bps",
+                                                capturedAudio.getEncodedBytes() * 8_000_000.0 / audioSpanUs);
+                                    }
+                                }
+                                finalOutput.writeMetadata(cameraInfo.toString(2));
+                            } finally {
+                                finalOutput.complete();
+                            }
+                        }
                     }
                 }
             });
             writer = finalWriter;
 
             final boolean[] csdSent = {false};
-            uvc.start(new UvcSource.Listener() {
+            videoSource.start(new UvcSource.Listener() {
                 @Override
                 public void onCsd(byte[] csd) {
                     if (csdSent[0]) {
@@ -192,9 +331,9 @@ public final class RecordService extends Service {
                     }
                     csdSent[0] = true;
                     MediaFormat fmt = MediaFormat.createVideoFormat(
-                            MediaFormat.MIMETYPE_VIDEO_HEVC, 2048, 1512);
+                            MediaFormat.MIMETYPE_VIDEO_HEVC, finalVideo.getWidth(), finalVideo.getHeight());
                     fmt.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(csd));
-                    fmt.setInteger(MediaFormat.KEY_FRAME_RATE, 60);
+                    fmt.setInteger(MediaFormat.KEY_FRAME_RATE, finalVideo.getFrameRate());
                     finalMuxer.addVideoTrack(fmt);
                 }
 
@@ -203,7 +342,13 @@ public final class RecordService extends Service {
                     try {
                         long ptsUs = Math.max(0L, (arrivalNs - t0Ns) / 1000L);
                         finalWriter.enqueue(annexB, ptsUs, UvcSource.isKeyFrame(annexB),
-                                finalUvc.getAccessUnits());
+                                finalVideo.getAccessUnits());
+                        if (videoFrames == 0) {
+                            firstVideoNs = arrivalNs;
+                        }
+                        lastVideoNs = arrivalNs;
+                        videoFrames++;
+                        videoBytes += annexB.length;
                     } catch (Exception e) {
                         throw new UvcSource.RawWriteException(e);
                     }
@@ -211,8 +356,8 @@ public final class RecordService extends Service {
 
                 @Override
                 public void onError(String message) {
-                    status = "UVCエラー: " + message;
-                    Log.e(TAG, "UVC error: " + message);
+                    status = "映像エラー: " + message;
+                    Log.e(TAG, "video error: " + message);
                 }
             });
 
@@ -242,28 +387,29 @@ public final class RecordService extends Service {
                         }
                     });
             audio = finalAudio;
+            finalAudioRef.set(finalAudio);
             audio.start();
-            status = "録画中: " + mp4File.getName();
+            status = "録画中: " + mp4Name;
 
-            while (!stopRequested && !uvc.isFailed() && !audio.isFailed()
+            while (!stopRequested && !videoSource.isFailed() && !audio.isFailed()
                     && !muxer.isFailed() && !finalWriter.isFailed()) {
                 Thread.sleep(200);
             }
 
             audio.stop();
-            uvc.stop();
+            videoSource.stop();
             if (audio.isFailed()) {
                 muxer.startVideoOnly();
             }
             finalWriter.finish();
 
             String result = String.format(Locale.US,
-                    "%s\nAU=%d audioFrames=%d\nWAV=%s\nHEVC=%s",
-                    mp4File.getAbsolutePath(), uvc.getAccessUnits(),
-                    audio.getFramesWritten(), wavFile.getAbsolutePath(),
-                    hevcFile.getAbsolutePath());
-            if (uvc.isFailed()) {
-                status = "UVC停止: " + uvc.getError() + "\n" + result;
+                    "%s / %s\nAU=%d audioFrames=%d%s",
+                    outputLabel, mp4Name, videoSource.getAccessUnits(), audio.getFramesWritten(),
+                    "\n" + getVideoRateSummary()
+                            + (diagnostics ? "\n診断ファイル: " + dir.getAbsolutePath() : ""));
+            if (videoSource.isFailed()) {
+                status = "映像停止: " + videoSource.getError() + "\n" + result;
             } else if (audio.isFailed()) {
                 status = "音声停止: " + audio.getError() + "\n" + result;
             } else if (finalWriter.isFailed()) {
@@ -273,7 +419,7 @@ public final class RecordService extends Service {
             } else {
                 status = "保存完了: " + result;
             }
-            if (muxer.isFailed() && (uvc.isFailed() || audio.isFailed())) {
+            if (muxer.isFailed() && (videoSource.isFailed() || audio.isFailed())) {
                 status += "\nMuxerエラー: " + muxer.getError();
             }
             if (audioSilenceEverDetected) {
@@ -282,8 +428,8 @@ public final class RecordService extends Service {
         } catch (Throwable t) {
             status = "録画エラー: " + t.getClass().getSimpleName() + ": " + t.getMessage();
             Log.e(TAG, "recording failed", t);
-            if (mp4File != null) {
-                status += "\n" + mp4File.getAbsolutePath();
+            if (mp4Name != null) {
+                status += "\n" + outputLabel + " / " + mp4Name;
             }
         } finally {
             if (audio != null) {
@@ -292,9 +438,9 @@ public final class RecordService extends Service {
                 } catch (Throwable ignored) {
                 }
             }
-            if (uvc != null) {
+            if (videoSource != null) {
                 try {
-                    uvc.stop();
+                    videoSource.stop();
                 } catch (Throwable ignored) {
                 }
             }
@@ -321,7 +467,20 @@ public final class RecordService extends Service {
                 } catch (Throwable ignored) {
                 }
             }
+            if (output != null && writer == null) {
+                try {
+                    output.complete();
+                } catch (Throwable t) {
+                    status += "\n保存先への公開失敗: " + t.getMessage();
+                }
+            }
             recording = false;
+            displayHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    dismissRecordingDisplay();
+                }
+            });
             releaseWakeLock();
             try {
                 stopForeground(true);
@@ -351,6 +510,53 @@ public final class RecordService extends Service {
                 .build();
     }
 
+    private void updateRecordingDisplay() {
+        if (!recording || displayManager == null) {
+            dismissRecordingDisplay();
+            return;
+        }
+        Display[] displays = displayManager.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION);
+        Display target = null;
+        for (Display display : displays) {
+            if (display.getDisplayId() != Display.DEFAULT_DISPLAY && display.isValid()) {
+                target = display;
+                break;
+            }
+        }
+        if (target == null) {
+            dismissRecordingDisplay();
+            return;
+        }
+        if (recordingPresentation != null
+                && recordingPresentation.getDisplay().getDisplayId() != target.getDisplayId()) {
+            dismissRecordingDisplay();
+        }
+        if (recordingPresentation == null) {
+            try {
+                recordingPresentation = new RecordingPresentation(this, target);
+                recordingPresentation.show();
+            } catch (RuntimeException e) {
+                Log.w(TAG, "external recording display unavailable", e);
+                dismissRecordingDisplay();
+                return;
+            }
+        }
+        long elapsed = Math.max(0, (SystemClock.elapsedRealtime() - recordingStartedMs) / 1000);
+        recordingPresentation.updateStatus(status, stopRequested, audioSilenceDetected, elapsed,
+                getVideoRateSummary());
+    }
+
+    private void dismissRecordingDisplay() {
+        if (recordingPresentation != null) {
+            try {
+                recordingPresentation.dismiss();
+            } catch (RuntimeException e) {
+                Log.w(TAG, "could not dismiss recording display", e);
+            }
+            recordingPresentation = null;
+        }
+    }
+
     private void releaseWakeLock() {
         if (wakeLock != null) {
             try {
@@ -365,6 +571,11 @@ public final class RecordService extends Service {
 
     @Override
     public void onDestroy() {
+        displayHandler.removeCallbacksAndMessages(null);
+        if (displayManager != null) {
+            displayManager.unregisterDisplayListener(displayListener);
+        }
+        dismissRecordingDisplay();
         stopRequested = true;
         releaseWakeLock();
         Thread t = worker;

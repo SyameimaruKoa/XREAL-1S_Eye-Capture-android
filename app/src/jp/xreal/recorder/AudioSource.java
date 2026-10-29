@@ -55,6 +55,10 @@ public final class AudioSource {
     private long audioStartNs;
     private long framesWritten;
     private long zeroReads;
+    private volatile long encodedBytes;
+    private volatile long encodedSamples;
+    private volatile long firstEncodedPtsUs = -1;
+    private volatile long lastEncodedPtsUs = -1;
 
     public AudioSource(Context context, long t0Ns, MuxerSink muxer,
                        File wavFile, Listener listener) {
@@ -174,8 +178,10 @@ public final class AudioSource {
         String previousDiagnostics = null;
 
         try {
-            wav = new RandomAccessFile(wavFile, "rw");
-            writeWavHeader(wav);
+            if (wavFile != null) {
+                wav = new RandomAccessFile(wavFile, "rw");
+                writeWavHeader(wav);
+            }
 
             while (running) {
                 pcm.clear();
@@ -196,7 +202,9 @@ public final class AudioSource {
 
                 byte[] raw = new byte[n];
                 pcm.get(raw);
-                wav.write(raw);
+                if (wav != null) {
+                    wav.write(raw);
+                }
 
                 long nowNs = SystemClock.elapsedRealtimeNanos();
                 if (nowNs >= nextDiagnosticsNs) {
@@ -329,6 +337,9 @@ public final class AudioSource {
     }
 
     private void writeDiagnostics(String message) {
+        if (wavFile == null) {
+            return;
+        }
         File logFile = new File(wavFile.getAbsolutePath() + ".audio.log");
         try (FileWriter out = new FileWriter(logFile, true)) {
             out.write("elapsedRealtimeMs=" + SystemClock.elapsedRealtime() + " " + message + "\n");
@@ -403,6 +414,12 @@ public final class AudioSource {
                         output.position(info.offset);
                         output.get(data);
                         muxer.writeAudio(data, info.presentationTimeUs);
+                        if (firstEncodedPtsUs < 0) {
+                            firstEncodedPtsUs = info.presentationTimeUs;
+                        }
+                        lastEncodedPtsUs = info.presentationTimeUs;
+                        encodedBytes += data.length;
+                        encodedSamples++;
                     }
                 } finally {
                     encoder.releaseOutputBuffer(index, false);
@@ -449,6 +466,22 @@ public final class AudioSource {
 
     public long getFramesWritten() {
         return framesWritten;
+    }
+
+    public long getEncodedBytes() {
+        return encodedBytes;
+    }
+
+    public long getEncodedSamples() {
+        return encodedSamples;
+    }
+
+    public long getFirstEncodedPtsUs() {
+        return firstEncodedPtsUs;
+    }
+
+    public long getLastEncodedPtsUs() {
+        return lastEncodedPtsUs;
     }
 
     private static void writeWavHeader(RandomAccessFile f) throws Exception {

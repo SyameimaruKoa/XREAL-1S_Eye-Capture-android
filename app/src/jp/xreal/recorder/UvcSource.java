@@ -16,7 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** UVC bulk HEVC receiver for the XREAL 1S (IF10 alt 0, EP 0x89, 2048x1512). */
-public final class UvcSource {
+public final class UvcSource implements VideoSource {
     private static final String TAG = "XrealUvc";
     // The UVC probe advertises dwMaxPayloadTransferSize=262144. A single UVC
     // payload can therefore be larger than 64 KiB. bulkTransfer() must be given
@@ -382,6 +382,18 @@ public final class UvcSource {
         return accessUnits;
     }
 
+    public int getWidth() {
+        return 2048;
+    }
+
+    public int getHeight() {
+        return 1512;
+    }
+
+    public int getFrameRate() {
+        return 60;
+    }
+
     private static byte[] buildProbe(int formatIndex, int frameIndex, int fps,
                                      int maxFrame, int maxPayload, int size) {
         ByteBuffer b = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN);
@@ -406,7 +418,7 @@ public final class UvcSource {
         return b.array();
     }
 
-    private static byte[] extractCsd(byte[] au) {
+    static byte[] extractCsd(byte[] au) {
         List<Nal> nals = splitNals(au);
         byte[] vps = null;
         byte[] sps = null;

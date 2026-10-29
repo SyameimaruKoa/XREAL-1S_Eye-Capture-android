@@ -5,6 +5,7 @@ import android.media.MediaFormat;
 import android.media.MediaMuxer;
 
 import java.io.IOException;
+import java.io.FileDescriptor;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 
@@ -45,6 +46,10 @@ public final class MuxerSink {
 
     public MuxerSink(String path) throws IOException {
         muxer = new MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+    }
+
+    public MuxerSink(FileDescriptor fd) throws IOException {
+        muxer = new MediaMuxer(fd, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
     }
 
     public void addVideoTrack(MediaFormat format) {
@@ -91,7 +96,7 @@ public final class MuxerSink {
                 } else {
                     failLocked(new IllegalStateException(
                             "Video buffer limit reached while waiting for MP4 tracks; "
-                                    + "MP4 may be incomplete, check the raw HEVC file"));
+                                    + "recording stopped and MP4 may be incomplete"));
                 }
                 return;
             }
