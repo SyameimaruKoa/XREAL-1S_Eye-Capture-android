@@ -46,6 +46,8 @@ public final class RecordService extends Service {
     public static final String EXTRA_VIDEO_ROUTE = "video_route";
     public static final int ROUTE_TCP_HEVC = 0;
     public static final int ROUTE_UVC_HEVC = 1;
+    public static final int ROUTE_UVC_MJPEG_30 = 2;
+    public static final int ROUTE_UVC_MJPEG_60 = 3;
 
     private static volatile String status = "待機中";
     private static volatile boolean recording;
@@ -230,6 +232,8 @@ public final class RecordService extends Service {
         File wavFile = null;
 
         try {
+            final boolean mjpeg = videoRoute == ROUTE_UVC_MJPEG_30
+                    || videoRoute == ROUTE_UVC_MJPEG_60;
             File dir = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
             if (dir == null) {
                 dir = getFilesDir();
@@ -239,19 +243,20 @@ public final class RecordService extends Service {
             }
             String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
             if (diagnostics) {
-                hevcFile = new File(dir, "xreal_" + ts + ".hevc");
+                hevcFile = new File(dir, "xreal_" + ts + (mjpeg ? ".mjpeg" : ".hevc"));
                 wavFile = new File(dir, "xreal_" + ts + ".wav");
             }
 
             UsbManager um = (UsbManager) getSystemService(Context.USB_SERVICE);
-            videoSource = videoRoute == ROUTE_TCP_HEVC
-                    ? new TcpSource(this) : new UvcSource(um, device);
+            videoSource = videoRoute == ROUTE_TCP_HEVC ? new TcpSource(this)
+                    : mjpeg ? new MjpegSource(um, device, videoRoute == ROUTE_UVC_MJPEG_60 ? 60 : 30)
+                    : new UvcSource(um, device);
             videoSource.open();
 
             long captureTimeMs = System.currentTimeMillis();
-            output = RecordingOutput.create(this, outputTree, captureTimeMs);
+            output = RecordingOutput.create(this, outputTree, captureTimeMs, mjpeg);
             mp4Name = output.getFilename();
-            muxer = output.openMuxer();
+            muxer = mjpeg ? output.openMatroskaMuxer() : output.openMuxer();
             final JSONObject cameraInfo = new JSONObject();
             cameraInfo.put("schema_version", 1);
             cameraInfo.put("file", mp4Name);
@@ -262,7 +267,8 @@ public final class RecordService extends Service {
             cameraInfo.put("usb_vendor_id", device.getVendorId());
             cameraInfo.put("usb_product_id", device.getProductId());
             cameraInfo.put("video_source", videoRoute == ROUTE_TCP_HEVC
-                    ? "USB Ethernet HEVC passthrough" : "USB UVC HEVC passthrough");
+                    ? "USB Ethernet HEVC passthrough" : mjpeg
+                    ? "USB UVC MJPEG passthrough" : "USB UVC HEVC passthrough");
             cameraInfo.put("requested_width", videoSource.getWidth());
             cameraInfo.put("requested_height", videoSource.getHeight());
             cameraInfo.put("requested_frames_per_second", videoSource.getFrameRate());
@@ -349,8 +355,11 @@ public final class RecordService extends Service {
                     }
                     csdSent[0] = true;
                     MediaFormat fmt = MediaFormat.createVideoFormat(
-                            MediaFormat.MIMETYPE_VIDEO_HEVC, finalVideo.getWidth(), finalVideo.getHeight());
-                    fmt.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(csd));
+                            mjpeg ? "video/mjpeg" : MediaFormat.MIMETYPE_VIDEO_HEVC,
+                            finalVideo.getWidth(), finalVideo.getHeight());
+                    if (!mjpeg) {
+                        fmt.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(csd));
+                    }
                     fmt.setInteger(MediaFormat.KEY_FRAME_RATE, finalVideo.getFrameRate());
                     finalMuxer.addVideoTrack(fmt);
                 }
@@ -359,7 +368,7 @@ public final class RecordService extends Service {
                 public void onAccessUnit(byte[] annexB, long arrivalNs) {
                     try {
                         long ptsUs = Math.max(0L, (arrivalNs - t0Ns) / 1000L);
-                        finalWriter.enqueue(annexB, ptsUs, UvcSource.isKeyFrame(annexB),
+                        finalWriter.enqueue(annexB, ptsUs, mjpeg || UvcSource.isKeyFrame(annexB),
                                 finalVideo.getAccessUnits());
                         if (videoFrames == 0) {
                             firstVideoNs = arrivalNs;
@@ -381,7 +390,7 @@ public final class RecordService extends Service {
 
             // Preserve the previously validated UVC start order. TCP does not
             // need the UVC negotiation delay before starting the microphone.
-            if (videoRoute == ROUTE_UVC_HEVC) {
+            if (videoRoute != ROUTE_TCP_HEVC) {
                 Thread.sleep(2000);
             }
 

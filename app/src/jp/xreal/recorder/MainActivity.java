@@ -188,7 +188,9 @@ public class MainActivity extends Activity {
         videoRouteView = new Spinner(this);
         String[] routes = new String[]{
                 "TCP 720p 30fps 約17.0 Mbps",
-                "UVC 1512p 60fps 約2.03 Mbps"
+                "UVC HEVC 1512p 60fps 約2.03 Mbps",
+                "UVC MJPEG 1080p 30fps 約21.16 Mbps（試験中）",
+                "UVC MJPEG 1080p 60fps 約39.16 Mbps（試験中）"
         };
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
                 android.R.layout.simple_spinner_item, routes) {
@@ -452,7 +454,7 @@ public class MainActivity extends Activity {
             return;
         }
         int route = videoRouteView.getSelectedItemPosition();
-        if (route == RecordService.ROUTE_UVC_HEVC && !hasUvc(device)) {
+        if (route != RecordService.ROUTE_TCP_HEVC && !hasUvc(device)) {
             setStatus("UVCがありません。先にUVCを有効化してください");
             return;
         }

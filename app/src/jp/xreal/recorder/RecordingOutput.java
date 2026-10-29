@@ -36,19 +36,21 @@ final class RecordingOutput {
         this.tree = tree;
     }
 
-    static RecordingOutput create(Context context, Uri tree, long captureTimeMs) throws IOException {
+    static RecordingOutput create(Context context, Uri tree, long captureTimeMs, boolean mjpeg) throws IOException {
         ContentResolver resolver = context.getContentResolver();
         Uri uri;
         boolean pending = tree == null;
-        String filename = nextFilename(resolver, tree);
+        String extension = mjpeg ? "mkv" : "mp4";
+        String mimeType = mjpeg ? "video/x-matroska" : "video/mp4";
+        String filename = nextFilename(resolver, tree, extension);
         if (tree != null) {
             Uri directory = DocumentsContract.buildDocumentUriUsingTree(tree,
                     DocumentsContract.getTreeDocumentId(tree));
-            uri = DocumentsContract.createDocument(resolver, directory, "video/mp4", filename);
+            uri = DocumentsContract.createDocument(resolver, directory, mimeType, filename);
         } else {
             ContentValues values = new ContentValues();
             values.put(MediaStore.Video.Media.DISPLAY_NAME, filename);
-            values.put(MediaStore.Video.Media.MIME_TYPE, "video/mp4");
+            values.put(MediaStore.Video.Media.MIME_TYPE, mimeType);
             values.put(MediaStore.Video.Media.RELATIVE_PATH,
                     Environment.DIRECTORY_DCIM + "/100XREAL");
             values.put(MediaStore.Video.Media.DATE_TAKEN, captureTimeMs);
@@ -68,7 +70,7 @@ final class RecordingOutput {
         return new RecordingOutput(resolver, uri, pending, actualName, tree);
     }
 
-    private static String nextFilename(ContentResolver resolver, Uri tree) throws IOException {
+    private static String nextFilename(ContentResolver resolver, Uri tree, String extension) throws IOException {
         Uri children;
         String selection = null;
         String[] selectionArgs = null;
@@ -80,7 +82,7 @@ final class RecordingOutput {
             selection = MediaStore.Video.Media.RELATIVE_PATH + "=?";
             selectionArgs = new String[]{Environment.DIRECTORY_DCIM + "/100XREAL/"};
         }
-        Pattern pattern = Pattern.compile("VID_([0-9]+)\\.mp4", Pattern.CASE_INSENSITIVE);
+        Pattern pattern = Pattern.compile("VID_([0-9]+)\\.(mp4|mkv)", Pattern.CASE_INSENSITIVE);
         long max = 0;
         try (Cursor cursor = resolver.query(children,
                 new String[]{MediaStore.MediaColumns.DISPLAY_NAME}, selection, selectionArgs, null)) {
@@ -102,7 +104,7 @@ final class RecordingOutput {
         if (max == Long.MAX_VALUE) {
             throw new IOException("Recording number limit reached");
         }
-        return String.format(Locale.US, "VID_%04d.mp4", max + 1);
+        return String.format(Locale.US, "VID_%04d.%s", max + 1, extension);
     }
 
     MuxerSink openMuxer() throws IOException {
@@ -115,6 +117,14 @@ final class RecordingOutput {
         } finally {
             fd.close();
         }
+    }
+
+    RecordingMuxer openMatroskaMuxer() throws IOException {
+        OutputStream stream = resolver.openOutputStream(uri, "w");
+        if (stream == null) {
+            throw new IOException("Could not open Matroska output");
+        }
+        return new MatroskaMuxer(stream);
     }
 
     synchronized void complete() throws IOException {
@@ -140,7 +150,7 @@ final class RecordingOutput {
     }
 
     void writeMetadata(String json) throws IOException {
-        String name = filename.replaceFirst("(?i)\\.mp4$", "") + ".json";
+        String name = filename.replaceFirst("(?i)\\.(mp4|mkv)$", "") + ".json";
         Uri metadataUri;
         if (tree != null) {
             Uri directory = DocumentsContract.buildDocumentUriUsingTree(tree,
