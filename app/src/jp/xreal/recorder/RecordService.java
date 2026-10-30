@@ -370,15 +370,15 @@ public final class RecordService extends Service {
                 }
 
                 @Override
-                public void onAccessUnit(byte[] annexB, long arrivalNs) {
+                public void onAccessUnit(byte[] annexB, long timestampNs) {
                     try {
-                        long ptsUs = Math.max(0L, (arrivalNs - t0Ns) / 1000L);
+                        long ptsUs = Math.max(0L, (timestampNs - t0Ns) / 1000L);
                         finalWriter.enqueue(annexB, ptsUs, mjpeg || UvcSource.isKeyFrame(annexB),
                                 finalVideo.getAccessUnits());
                         if (videoFrames == 0) {
-                            firstVideoNs = arrivalNs;
+                            firstVideoNs = timestampNs;
                         }
-                        lastVideoNs = arrivalNs;
+                        lastVideoNs = timestampNs;
                         videoFrames++;
                         videoBytes += annexB.length;
                     } catch (Exception e) {

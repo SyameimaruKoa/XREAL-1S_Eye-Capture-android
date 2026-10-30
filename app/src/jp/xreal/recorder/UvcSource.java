@@ -29,7 +29,7 @@ public final class UvcSource implements VideoSource {
     public interface Listener {
         void onCsd(byte[] csd);
 
-        void onAccessUnit(byte[] annexB, long arrivalNs);
+        void onAccessUnit(byte[] annexB, long timestampNs);
 
         void onError(String message);
     }

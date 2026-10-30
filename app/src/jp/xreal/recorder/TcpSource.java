@@ -29,6 +29,10 @@ final class TcpSource implements VideoSource {
     private static final String HOST = "169.254.2.1";
     private static final int MAX_MESSAGE = 8 * 1024 * 1024;
     private static final int FRAME_HEADER = 97;
+    /** Maximum distance between the camera clock and the receive clock before re-anchoring. */
+    private static final long MAX_CLOCK_DRIFT_NS = 100_000_000L;
+    /** Smallest allowed step so that a stale timestamp cannot repeat a presentation time. */
+    private static final long MIN_PTS_STEP_NS = 1_000_000L;
     private final Context context;
     private final ArrayBlockingQueue<Reply> replies = new ArrayBlockingQueue<>(8);
     private Socket video;
@@ -55,6 +59,11 @@ final class TcpSource implements VideoSource {
     private long arrivalLongSteps;
     private long shortAfterLong;
     private long previousArrivalStepNs;
+    private long cameraPtsAnchorNs;
+    private long lastPtsNs;
+    private long clockReanchors;
+    private long clockRejected;
+    private long clockForcedSteps;
 
     private static final class Reply {
         final int command;
@@ -228,9 +237,12 @@ final class TcpSource implements VideoSource {
                 }
                 long arrivalNs = SystemClock.elapsedRealtimeNanos();
                 long candidateNs = metadata.getLong(24);
+                long ptsNs;
                 if (accessUnits == 0) {
                     candidateFirstNs = candidateNs;
                     arrivalFirstNs = arrivalNs;
+                    cameraPtsAnchorNs = arrivalNs;
+                    ptsNs = arrivalNs;
                 } else {
                     long candidateStep = candidateNs - candidateLastNs;
                     long arrivalStep = arrivalNs - arrivalLastNs;
@@ -254,10 +266,11 @@ final class TcpSource implements VideoSource {
                     long deviation = Math.abs((arrivalNs - arrivalFirstNs)
                             - (candidateNs - candidateFirstNs));
                     candidateMaxArrivalDeviationNs = Math.max(candidateMaxArrivalDeviationNs, deviation);
+                    ptsNs = presentationNs(candidateNs, arrivalNs);
                 }
                 candidateLastNs = candidateNs;
                 arrivalLastNs = arrivalNs;
-                listener.onAccessUnit(au, arrivalNs);
+                listener.onAccessUnit(au, ptsNs);
                 accessUnits++;
             }
         } catch (Exception e) {
@@ -265,6 +278,37 @@ final class TcpSource implements VideoSource {
                 fail("TCP video read failed: " + e.getMessage());
             }
         }
+    }
+
+    /**
+     * Converts the camera timestamp at frame header offset 24 into a presentation time on the
+     * same clock as the audio track. In every measured run the camera timestamp advanced by
+     * 33.42 to 33.58 ms per frame while the receive time jittered from 2.9 to 63.5 ms, so the
+     * camera clock is used for frame timing and anchored to the first frame's receive time. If
+     * the two clocks ever separate by more than {@link #MAX_CLOCK_DRIFT_NS} the anchor moves so
+     * that audio stays in sync instead of accumulating drift.
+     */
+    private long presentationNs(long candidateNs, long arrivalNs) {
+        if (candidateNs <= candidateLastNs) {
+            clockRejected++;
+            return monotonic(arrivalNs);
+        }
+        long drift = cameraPtsAnchorNs + (candidateNs - candidateFirstNs) - arrivalNs;
+        if (drift > MAX_CLOCK_DRIFT_NS || drift < -MAX_CLOCK_DRIFT_NS) {
+            cameraPtsAnchorNs -= drift;
+            clockReanchors++;
+        }
+        return monotonic(cameraPtsAnchorNs + (candidateNs - candidateFirstNs));
+    }
+
+    private long monotonic(long ptsNs) {
+        long result = ptsNs;
+        if (result <= lastPtsNs) {
+            result = lastPtsNs + MIN_PTS_STEP_NS;
+            clockForcedSteps++;
+        }
+        lastPtsNs = result;
+        return result;
     }
 
     private int readLength(byte[] header) throws IOException {
@@ -306,7 +350,7 @@ final class TcpSource implements VideoSource {
         join(videoThread);
         join(controlThread);
         if (accessUnits > 1) {
-            Log.i(TAG, "unverified clock candidate frames=" + accessUnits
+            Log.i(TAG, "camera clock frames=" + accessUnits
                     + " candidateSpanNs=" + (candidateLastNs - candidateFirstNs)
                     + " arrivalSpanNs=" + (arrivalLastNs - arrivalFirstNs)
                     + " nonIncreasing=" + candidateNonIncreasing
@@ -315,7 +359,10 @@ final class TcpSource implements VideoSource {
                     + " arrivalStepRangeNs=" + arrivalMinStepNs + ":" + arrivalMaxStepNs
                     + " arrivalUnder20ms=" + arrivalShortSteps
                     + " arrivalOver45ms=" + arrivalLongSteps
-                    + " shortAfterLong=" + shortAfterLong);
+                    + " shortAfterLong=" + shortAfterLong
+                    + " clockReanchors=" + clockReanchors
+                    + " clockRejected=" + clockRejected
+                    + " clockForcedSteps=" + clockForcedSteps);
         }
     }
 
