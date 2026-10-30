@@ -41,22 +41,26 @@ final class RecordingPresentation extends Presentation {
         LinearLayout root = new LinearLayout(getContext());
         content = root;
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(sideMode ? Gravity.RIGHT | Gravity.CENTER_VERTICAL
-                : Gravity.RIGHT | Gravity.TOP);
+        // Side View shrinks the whole external display into a small floating window,
+        // so the same text sizes become hard to read. Center the status in that window
+        // and scale it up instead of shrinking it.
+        root.setGravity(sideMode ? Gravity.CENTER : Gravity.RIGHT | Gravity.TOP);
         root.setBackgroundColor(Color.BLACK);
-        int padding = (int) (24 * getContext().getResources().getDisplayMetrics().density);
+        int padding = (int) ((sideMode ? 32 : 24)
+                * getContext().getResources().getDisplayMetrics().density);
         root.setPadding(padding, padding, padding, padding);
 
-        headline = label(sideMode ? 48 : 56, Color.WHITE, true);
-        elapsed = label(34, Color.WHITE, true);
-        audio = label(20, Color.LTGRAY, false);
-        rate = label(20, Color.LTGRAY, false);
-        int contentWidth = sideMode ? 340 : 420;
+        headline = label(sideMode ? 156 : 56, Color.WHITE, true);
+        elapsed = label(sideMode ? 100 : 34, Color.WHITE, true);
+        audio = label(sideMode ? 56 : 20, Color.LTGRAY, false);
+        rate = label(sideMode ? 56 : 20, Color.LTGRAY, false);
+        int contentWidth = sideMode ? 1320 : 420;
+        int waveformHeight = sideMode ? 220 : 64;
         root.addView(headline, new LinearLayout.LayoutParams(contentWidth, -2));
         root.addView(elapsed, new LinearLayout.LayoutParams(contentWidth, -2));
         root.addView(rate, new LinearLayout.LayoutParams(contentWidth, -2));
         waveform = new WaveformView(getContext());
-        root.addView(waveform, new LinearLayout.LayoutParams(sideMode ? 340 : 420, 64));
+        root.addView(waveform, new LinearLayout.LayoutParams(contentWidth, waveformHeight));
         root.addView(audio, new LinearLayout.LayoutParams(contentWidth, -2));
         setContentView(root);
     }
@@ -79,7 +83,7 @@ final class RecordingPresentation extends Presentation {
             return;
         }
         // Shift the illuminated pixels slightly each minute on OLED displays.
-        float offset = 6 * getContext().getResources().getDisplayMetrics().density;
+        float offset = (sideMode ? 12 : 6) * getContext().getResources().getDisplayMetrics().density;
         int position = (int) ((elapsedSeconds / 60) % 4);
         content.setTranslationX((position == 0 || position == 3) ? -offset : offset);
         content.setTranslationY(position < 2 ? -offset : offset);
@@ -141,6 +145,13 @@ final class RecordingPresentation extends Presentation {
             peaks[next] = peak;
             next = (next + 1) % peaks.length;
             invalidate();
+        }
+
+        @Override
+        protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
+            super.onSizeChanged(width, height, oldWidth, oldHeight);
+            // Keep the bars visible when the view is scaled up for Side View.
+            paint.setStrokeWidth(Math.max(4.0f, width / (float) peaks.length * 0.5f));
         }
 
         @Override

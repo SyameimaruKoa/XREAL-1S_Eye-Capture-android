@@ -168,7 +168,7 @@ public class MainActivity extends Activity {
         root.addView(enableButton);
 
         sideDisplayCheck = new CheckBox(this);
-        sideDisplayCheck.setText("XREAL サイド表示用の配置（オフ: 固定表示用）");
+        sideDisplayCheck.setText("XREAL サイド表示用（中央に拡大。オフ: 固定表示用・右上）");
         sideDisplayCheck.setTextColor(Color.WHITE);
         sideDisplayCheck.setChecked(preferences.getBoolean("display_side", false));
         sideDisplayCheck.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
