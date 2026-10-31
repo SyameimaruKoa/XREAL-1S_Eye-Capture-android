@@ -372,13 +372,14 @@ public final class RecordService extends Service {
                 @Override
                 public void onAccessUnit(byte[] annexB, long timestampNs) {
                     try {
+                        long receivedNs = SystemClock.elapsedRealtimeNanos();
                         long ptsUs = Math.max(0L, (timestampNs - t0Ns) / 1000L);
                         finalWriter.enqueue(annexB, ptsUs, mjpeg || UvcSource.isKeyFrame(annexB),
                                 finalVideo.getAccessUnits());
                         if (videoFrames == 0) {
-                            firstVideoNs = timestampNs;
+                            firstVideoNs = receivedNs;
                         }
-                        lastVideoNs = timestampNs;
+                        lastVideoNs = receivedNs;
                         videoFrames++;
                         videoBytes += annexB.length;
                     } catch (Exception e) {
