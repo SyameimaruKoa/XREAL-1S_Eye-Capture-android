@@ -23,7 +23,7 @@
 - `VID_0022` と `VID_0037` の H.265 キーフレーム間隔はいずれも60フレームだが、コンテナ時刻の中央値はそれぞれ約1.011秒と2.010秒。`VID_0022` は同じ GOP フレーム数が約半分の時間で受信・記録されていることと整合する。これは高 fps の切り替え条件や各フレームの独立露光の証拠にはならない。
 - 上記2ファイルを `ffprobe -show_data` で比較すると、HEVC のコンテナ内 extradata はともに128バイトで全バイト一致（SHA-256 `6743acebb053a6f59e254dc0de1812c7661c313a24bc339d7f6f842d951220a0`）。設定ヘッダーの値や比較だけでは約59 fps と約30 fps を識別できない。元受信ストリーム全体の一致や異なる端末条件の同一性を意味しない。
 - オフライン解析の手掛かり: メーカー配布アーカイブ由来の One 系旧ファームウェア `libnr_driver.so`（SHA-256 `6ca627c5cbab2685eb4ff73edd00f1a95852b3b66954803ac4ca8918d60521c1`）では、`RgbCamera Start handle` の関数 `0x5c1c68` が設定構造体 null で `0x5c19c8` を呼び、同関数は幅・高さ・fps の既定値をオブジェクトの `+0xd0/+0xd4/+0xdc` から読み込む。別途 `video_host_width` / `video_host_height` / `video_host_codec_fps` の設定名も同ライブラリで確認済み。これは当該旧ファームの静的解析であり、現在の1Sに同じ内部動作や書換方法が存在すると断定できない。実機への新しい設定送信はしていない。
-- 同じ旧ファームの `0x5d8688` は `/tmp/sdk_global.json` をファイルとして開く処理を含む。パスと RGB 設定パーサーを同じバイナリ内で確認したが、このファイルの値が RGB 設定まで伝播すること、現行1Sにファイルがあること、スマートフォン側からアクセスできることは未確認。実機上でファイルの作成・変更はしていない。
+- 同じ旧ファームの `0x5d8688` は `/tmp/sdk_global.json` を開き、逆アセンブル上で `xr_codec`、`log_level`、`is_cache_muxer_input_buffer`、`is_muxer_save_to_file`、`muxer_save_mode`、`audio_save_mode` を参照する。**この関数が `video_host_codec_fps` を読み込む根拠は見つかっていない。** パスと RGB 設定パーサーを同じバイナリ内で確認したが、このファイルの値が RGB 設定まで伝播すること、現行1Sにファイルがあること、スマートフォン側からアクセスできることは未確認。実機上でファイルの作成・変更はしていない。
 
 最終確認: 2026-10-30 JST。作業場所は `C:\Users\kouki\3D Objects\XREAL`。この文書は秘密情報を含めず Git 管理する。`HANDOFF.md` は古く、秘密情報を含むため Git に追加しない。詳細の根拠は `docs/20261030-android-tcp-trial.md`、`docs/20261027-hevc-investigation.md`、`docs/20261028-usb-camera-evaluation.md` を参照。会話ログ `xreal-1s-eye.json` と録画 `logs/` は Git 管理外。
 
