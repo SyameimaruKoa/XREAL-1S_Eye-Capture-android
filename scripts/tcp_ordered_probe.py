@@ -47,6 +47,9 @@ def receive_video(sock, output_path, seconds):
     candidate_first = None
     candidate_last = None
     candidate_invalid = 0
+    candidate_max_step = 0
+    candidate_long_steps = 0
+    arrival_max_step = 0.0
     with open(output_path, "xb") as output:
         while time.monotonic() < deadline:
             sock.settimeout(max(0.1, deadline - time.monotonic()))
@@ -65,10 +68,18 @@ def receive_video(sock, output_path, seconds):
             if (unit[4] >> 1) & 0x3f < 32:
                 now = time.monotonic()
                 first = now if first is None else first
+                if last is not None:
+                    arrival_max_step = max(arrival_max_step, now - last)
                 last = now
                 candidate = struct.unpack_from("<q", body, 24)[0]
-                if candidate_last is not None and candidate <= candidate_last:
-                    candidate_invalid += 1
+                if candidate_last is not None:
+                    step = candidate - candidate_last
+                    if step <= 0:
+                        candidate_invalid += 1
+                    else:
+                        candidate_max_step = max(candidate_max_step, step)
+                        if step > 50000000:
+                            candidate_long_steps += 1
                 candidate_first = candidate if candidate_first is None else candidate_first
                 candidate_last = candidate
                 frames += 1
@@ -81,6 +92,8 @@ def receive_video(sock, output_path, seconds):
           (candidate_span, candidate_invalid,
            (frames - 1) * 1000000000 / candidate_span if candidate_span > 0 and not candidate_invalid else 0),
           flush=True)
+    print("candidate_max_step_ns=%d candidate_steps_over_50ms=%d arrival_max_step_ms=%.3f" %
+          (candidate_max_step, candidate_long_steps, arrival_max_step * 1000), flush=True)
 
 
 def main():

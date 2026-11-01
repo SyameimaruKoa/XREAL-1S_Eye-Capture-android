@@ -55,6 +55,7 @@ class OrderedProbeTest(unittest.TestCase):
                     writer.sendall(struct.pack(">HI", 0x2785, len(body)) + body)
                 module.receive_video(reader, output, 0.1)
             self.assertIn("non_increasing=0 candidate_fps=30.000", captured.getvalue())
+            self.assertIn("candidate_max_step_ns=33333333 candidate_steps_over_50ms=0", captured.getvalue())
             self.assertEqual(output.read_bytes(), unit * 3)
 
     def test_cleanup_after_error(self):
