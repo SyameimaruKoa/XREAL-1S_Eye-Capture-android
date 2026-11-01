@@ -73,6 +73,7 @@
 - 同 `pilot` の `0x49d948` の getter 呼出し後を追跡すると、成功かつ長さ非ゼロの場合、`0x49db40`〜`0x49db58` は返されたポインターとポインター＋長さを関数ポインターへ渡す。直前に `collectComments` という JSON 読込み設定らしい文字列を扱うが、この処理からドライバーへの設定提供、または外部からの設定投入経路は確認できていない。読み取り専用解析であり、端末変更なし。
 - 新版 `pilot` の `UtilInterface::SetDeviceConfig, size={}` ログを含む関数 `0x5b8bd0` は、渡されたデータと長さを `0x43cdb8` に渡す。同関数は共有オブジェクトの `+0x98` に保存する一方、前述の sdk_global 読込みは `+0x138`、その getter は `+0x138/+0x140` を使う。したがって名前だけを根拠にこの SetDeviceConfig が sdk_global や映像ビットレートの設定入口だと扱えない。他の間接的な関連や外部公開の有無は未調査。実機に設定要求は送っていない。
 - 新版 `libnr_driver.so` には RGB カメラとは別に `StreamingPlugin::ParseGlobalConfig` のログと `streaming_bit_rate`、`streaming_width`、`streaming_height`、`streaming_codec_fps` 等の文字列がある。同領域には `dp_frame_handle` を伴うフレーム取得ログもあり、これがユーザーの TCP カメラ映像と同じ経路である証拠はない。名前だけで録画設定や画角を推測せず、接続関係と実映像を別途検証する。今回実機操作なし。
+- 同ライブラリには `StreamingServer` / `StreamingReverseServer` と `RgbCameraServer` / `RgbCameraReverseServer` という別のサーバーログ、および `streaming_host_encode_frame`・`streaming_device_decode_packet` のトレース名がある。これは Streaming が RGB カメラと別の機能として実装され、ホスト側エンコードからデバイス側デコードへの経路を含む可能性を補強するが、方向・画面内容・他の経路は文字列だけでは確定しない。`streaming_bit_rate` を TCP カメラのビットレート設定として案内しない。実機への要求なし。
 
 最終確認: 2026-11-01 JST。作業場所は `C:\Users\kouki\3D Objects\XREAL`。この文書は秘密情報を含めず Git 管理する。`HANDOFF.md` は古く、秘密情報を含むため Git に追加しない。詳細の根拠は `docs/20261030-android-tcp-trial.md`、`docs/20261027-hevc-investigation.md`、`docs/20261028-usb-camera-evaluation.md` を参照。会話ログ `xreal-1s-eye.json` と録画 `logs/` は Git 管理外。
 
