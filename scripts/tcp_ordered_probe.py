@@ -2,6 +2,7 @@
 """Send XREAL control requests sequentially through an existing TCP proxy."""
 
 import argparse
+import contextlib
 import socket
 import struct
 import time
@@ -37,6 +38,38 @@ def transact(sock, command, sequence, body, timeout):
         print("event command=%04x payload=%s" % (response_command, response.hex()), flush=True)
 
 
+def receive_video(sock, output_path, seconds):
+    deadline = time.monotonic() + seconds
+    frames = 0
+    video_bytes = 0
+    first = None
+    last = None
+    with open(output_path, "xb") as output:
+        while time.monotonic() < deadline:
+            sock.settimeout(max(0.1, deadline - time.monotonic()))
+            try:
+                command, length = struct.unpack(">HI", read_exact(sock, 6))
+                if length > 8 * 1024 * 1024:
+                    raise ValueError("video message exceeds 8 MiB")
+                body = read_exact(sock, length)
+            except socket.timeout:
+                break
+            if command != 0x2785 or len(body) < 102 or body[97:101] != b"\x00\x00\x00\x01":
+                raise ValueError("unexpected video message")
+            unit = body[97:]
+            output.write(unit)
+            video_bytes += len(unit)
+            if (unit[4] >> 1) & 0x3f < 32:
+                now = time.monotonic()
+                first = now if first is None else first
+                last = now
+                frames += 1
+    span = 0 if first is None or last is None else last - first
+    print("video frames=%d bytes=%d arrival_span=%.6f fps=%.3f Mbps=%.3f" %
+          (frames, video_bytes, span, (frames - 1) / span if span else 0,
+           video_bytes * 8 / span / 1000000 if span else 0), flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Send control requests one at a time, waiting for each matching reply. "
@@ -49,6 +82,9 @@ def main():
     parser.add_argument("--cleanup", action="append", default=[], metavar="COMMAND:BODY",
                         help="request to attempt even after an error; repeat in desired order")
     parser.add_argument("--timeout", type=float, default=10.0, help="response timeout in seconds")
+    parser.add_argument("--video-port", type=int, help="existing proxy port for video; connects before control")
+    parser.add_argument("--video-output", help="new path for unmodified HEVC access units")
+    parser.add_argument("--video-seconds", type=float, default=10.0, help="duration to receive video after requests")
     parser.add_argument("--send", action="store_true", help="transmit requests; otherwise show a dry run")
     args = parser.parse_args()
     def parse_steps(values):
@@ -72,6 +108,10 @@ def main():
         parser.error("too many requests")
     if args.timeout <= 0:
         parser.error("timeout must be positive")
+    if (args.video_port is None) != (args.video_output is None):
+        parser.error("--video-port and --video-output must be specified together")
+    if args.video_seconds <= 0:
+        parser.error("video duration must be positive")
     for index, (command, body) in enumerate(steps, 1):
         print("step=%d command=%04x body=%s" % (index, command, body.hex()), flush=True)
     for index, (command, body) in enumerate(cleanup, len(steps) + 1):
@@ -79,13 +119,19 @@ def main():
     if not args.send:
         print("dry run: no connection made")
         return
-    with socket.create_connection((args.host, args.port), timeout=args.timeout) as sock:
+    video = None
+    if args.video_port is not None:
+        video = socket.create_connection((args.host, args.video_port), timeout=args.timeout)
+    with video if video is not None else contextlib.nullcontext(), \
+            socket.create_connection((args.host, args.port), timeout=args.timeout) as sock:
         try:
             for index, (command, body) in enumerate(steps, 1):
                 response = transact(sock, command, index, body, args.timeout)
                 print("reply step=%d command=%04x body=%s" % (index, command, response.hex()), flush=True)
                 if response != b"\x22\x00":
                     raise RuntimeError("non-success reply; remaining requests were not sent")
+            if video is not None:
+                receive_video(video, args.video_output, args.video_seconds)
         finally:
             cleanup_failed = False
             for index, (command, body) in enumerate(cleanup, len(steps) + 1):

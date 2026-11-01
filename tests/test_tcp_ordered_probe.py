@@ -1,7 +1,9 @@
 import socket
+import importlib.util
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import unittest
 from pathlib import Path
@@ -21,6 +23,20 @@ def read_exact(sock, size):
 
 
 class OrderedProbeTest(unittest.TestCase):
+    def test_video_access_unit_capture(self):
+        spec = importlib.util.spec_from_file_location("ordered_probe", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        unit = b"\x00\x00\x00\x01\x02\x01\x7f"
+        body = bytes(97) + unit
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "capture.hevc"
+            reader, writer = socket.socketpair()
+            with reader, writer:
+                writer.sendall(struct.pack(">HI", 0x2785, len(body)) + body)
+                module.receive_video(reader, output, 0.1)
+            self.assertEqual(output.read_bytes(), unit)
+
     def test_cleanup_after_error(self):
         received = []
         with socket.socket() as server:
