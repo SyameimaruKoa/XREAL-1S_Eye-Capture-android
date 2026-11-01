@@ -44,6 +44,9 @@ def receive_video(sock, output_path, seconds):
     video_bytes = 0
     first = None
     last = None
+    candidate_first = None
+    candidate_last = None
+    candidate_invalid = 0
     with open(output_path, "xb") as output:
         while time.monotonic() < deadline:
             sock.settimeout(max(0.1, deadline - time.monotonic()))
@@ -63,11 +66,21 @@ def receive_video(sock, output_path, seconds):
                 now = time.monotonic()
                 first = now if first is None else first
                 last = now
+                candidate = struct.unpack_from("<q", body, 24)[0]
+                if candidate_last is not None and candidate <= candidate_last:
+                    candidate_invalid += 1
+                candidate_first = candidate if candidate_first is None else candidate_first
+                candidate_last = candidate
                 frames += 1
     span = 0 if first is None or last is None else last - first
     print("video frames=%d bytes=%d arrival_span=%.6f fps=%.3f Mbps=%.3f" %
           (frames, video_bytes, span, (frames - 1) / span if span else 0,
            video_bytes * 8 / span / 1000000 if span else 0), flush=True)
+    candidate_span = 0 if candidate_first is None else candidate_last - candidate_first
+    print("camera_timestamp_candidate_span_ns=%d non_increasing=%d candidate_fps=%.3f" %
+          (candidate_span, candidate_invalid,
+           (frames - 1) * 1000000000 / candidate_span if candidate_span > 0 and not candidate_invalid else 0),
+          flush=True)
 
 
 def main():

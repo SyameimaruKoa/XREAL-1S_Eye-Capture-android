@@ -1,5 +1,7 @@
 import socket
 import importlib.util
+import contextlib
+import io
 import struct
 import subprocess
 import sys
@@ -36,6 +38,24 @@ class OrderedProbeTest(unittest.TestCase):
                 writer.sendall(struct.pack(">HI", 0x2785, len(body)) + body)
                 module.receive_video(reader, output, 0.1)
             self.assertEqual(output.read_bytes(), unit)
+
+    def test_video_reports_camera_timestamp_candidates(self):
+        spec = importlib.util.spec_from_file_location("ordered_probe", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        unit = b"\x00\x00\x00\x01\x02\x01\x7f"
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "capture.hevc"
+            reader, writer = socket.socketpair()
+            with reader, writer, contextlib.redirect_stdout(io.StringIO()) as captured:
+                for timestamp in (1000000000, 1033333333, 1066666666):
+                    header = bytearray(97)
+                    struct.pack_into("<q", header, 24, timestamp)
+                    body = header + unit
+                    writer.sendall(struct.pack(">HI", 0x2785, len(body)) + body)
+                module.receive_video(reader, output, 0.1)
+            self.assertIn("non_increasing=0 candidate_fps=30.000", captured.getvalue())
+            self.assertEqual(output.read_bytes(), unit * 3)
 
     def test_cleanup_after_error(self):
         received = []
