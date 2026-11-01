@@ -46,32 +46,59 @@ def main():
     parser.add_argument("--port", required=True, type=int, help="proxy TCP port")
     parser.add_argument("--step", action="append", required=True, metavar="COMMAND:BODY",
                         help="hex command and hex body; repeat in desired order")
+    parser.add_argument("--cleanup", action="append", default=[], metavar="COMMAND:BODY",
+                        help="request to attempt even after an error; repeat in desired order")
     parser.add_argument("--timeout", type=float, default=10.0, help="response timeout in seconds")
     parser.add_argument("--send", action="store_true", help="transmit requests; otherwise show a dry run")
     args = parser.parse_args()
-    steps = []
-    for value in args.step:
-        command, separator, body = value.partition(":")
-        if not separator:
-            parser.error("each --step must have COMMAND:BODY format")
-        try:
-            parsed = (int(command, 16), bytes.fromhex(body))
-        except ValueError:
-            parser.error("commands and bodies must be hexadecimal")
-        if not 0 <= parsed[0] <= 65535:
-            parser.error("command must fit in 16 bits")
-        steps.append(parsed)
+    def parse_steps(values):
+        result = []
+        for value in values:
+            command, separator, body = value.partition(":")
+            if not separator:
+                parser.error("each request must have COMMAND:BODY format")
+            try:
+                parsed = (int(command, 16), bytes.fromhex(body))
+            except ValueError:
+                parser.error("commands and bodies must be hexadecimal")
+            if not 0 <= parsed[0] <= 65535:
+                parser.error("command must fit in 16 bits")
+            result.append(parsed)
+        return result
+
+    steps = parse_steps(args.step)
+    cleanup = parse_steps(args.cleanup)
+    if len(steps) + len(cleanup) > 65535:
+        parser.error("too many requests")
+    if args.timeout <= 0:
+        parser.error("timeout must be positive")
     for index, (command, body) in enumerate(steps, 1):
         print("step=%d command=%04x body=%s" % (index, command, body.hex()), flush=True)
+    for index, (command, body) in enumerate(cleanup, len(steps) + 1):
+        print("cleanup=%d command=%04x body=%s" % (index, command, body.hex()), flush=True)
     if not args.send:
         print("dry run: no connection made")
         return
     with socket.create_connection((args.host, args.port), timeout=args.timeout) as sock:
-        for index, (command, body) in enumerate(steps, 1):
-            response = transact(sock, command, index, body, args.timeout)
-            print("reply step=%d command=%04x body=%s" % (index, command, response.hex()), flush=True)
-            if response != b"\x22\x00":
-                raise RuntimeError("non-success reply; remaining requests were not sent")
+        try:
+            for index, (command, body) in enumerate(steps, 1):
+                response = transact(sock, command, index, body, args.timeout)
+                print("reply step=%d command=%04x body=%s" % (index, command, response.hex()), flush=True)
+                if response != b"\x22\x00":
+                    raise RuntimeError("non-success reply; remaining requests were not sent")
+        finally:
+            cleanup_failed = False
+            for index, (command, body) in enumerate(cleanup, len(steps) + 1):
+                try:
+                    response = transact(sock, command, index, body, args.timeout)
+                    print("cleanup reply=%d command=%04x body=%s" % (index, command, response.hex()), flush=True)
+                    if response != b"\x22\x00":
+                        cleanup_failed = True
+                except (OSError, ValueError) as exc:
+                    print("cleanup failed command=%04x error=%s" % (command, exc), flush=True)
+                    cleanup_failed = True
+            if cleanup_failed:
+                raise RuntimeError("one or more cleanup requests failed")
 
 
 if __name__ == "__main__":
