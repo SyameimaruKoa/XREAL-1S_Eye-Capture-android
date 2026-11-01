@@ -8,6 +8,9 @@ import android.net.Network;
 import android.os.SystemClock;
 import android.util.Log;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -369,6 +372,26 @@ final class TcpSource implements VideoSource {
     private void closeSockets() {
         try { if (video != null) video.close(); } catch (IOException ignored) { }
         try { if (control != null) control.close(); } catch (IOException ignored) { }
+    }
+
+    void appendTimingMetadata(JSONObject info) throws JSONException {
+        if (accessUnits < 2) {
+            return;
+        }
+        JSONObject timing = new JSONObject();
+        timing.put("frame_count", accessUnits);
+        timing.put("camera_timestamp_candidate_span_ns", candidateLastNs - candidateFirstNs);
+        timing.put("camera_timestamp_candidate_step_min_ns", candidateMinStepNs);
+        timing.put("camera_timestamp_candidate_step_max_ns", candidateMaxStepNs);
+        timing.put("camera_timestamp_candidate_non_increasing", candidateNonIncreasing);
+        timing.put("arrival_span_ns", arrivalLastNs - arrivalFirstNs);
+        timing.put("arrival_step_min_ns", arrivalMinStepNs);
+        timing.put("arrival_step_max_ns", arrivalMaxStepNs);
+        timing.put("max_candidate_arrival_deviation_ns", candidateMaxArrivalDeviationNs);
+        timing.put("presentation_clock_reanchors", clockReanchors);
+        timing.put("presentation_clock_rejected", clockRejected);
+        timing.put("presentation_clock_forced_steps", clockForcedSteps);
+        info.put("tcp_timing_diagnostics", timing);
     }
 
     private void join(Thread thread) {
