@@ -70,6 +70,8 @@ final class TcpSource implements VideoSource {
     private long clockReanchors;
     private long clockRejected;
     private long clockForcedSteps;
+    private long clockEstimatedDuplicates;
+    private final TcpTimestampRecovery timestampRecovery = new TcpTimestampRecovery();
 
     private static final class Reply {
         final int command;
@@ -256,6 +258,7 @@ final class TcpSource implements VideoSource {
                     arrivalFirstNs = arrivalNs;
                     cameraPtsAnchorNs = arrivalNs;
                     ptsNs = arrivalNs;
+                    lastPtsNs = ptsNs;
                 } else {
                     long candidateStep = candidateNs - candidateLastNs;
                     long arrivalStep = arrivalNs - arrivalLastNs;
@@ -295,17 +298,22 @@ final class TcpSource implements VideoSource {
 
     /**
      * Converts the camera timestamp at frame header offset 24 into a presentation time on the
-     * same clock as the audio track. In every measured run the camera timestamp advanced by
-     * 33.42 to 33.58 ms per frame while the receive time jittered from 2.9 to 63.5 ms, so the
-     * camera clock is used for frame timing and anchored to the first frame's receive time. If
+     * same clock as the audio track. The camera clock is used for frame timing and anchored to
+     * the first frame's receive time. A repeated timestamp can be estimated from recent cadence;
+     * this is an estimate, not a recovered sensor timestamp. If
      * the two clocks ever separate by more than {@link #MAX_CLOCK_DRIFT_NS} the anchor moves so
      * that audio stays in sync instead of accumulating drift.
      */
     private long presentationNs(long candidateNs, long arrivalNs) {
         if (candidateNs <= candidateLastNs) {
             clockRejected++;
+            if (candidateNs == candidateLastNs && timestampRecovery.canEstimate()) {
+                clockEstimatedDuplicates++;
+                return monotonic(timestampRecovery.estimateDuplicate(lastPtsNs));
+            }
             return monotonic(arrivalNs);
         }
+        timestampRecovery.observeStep(candidateNs - candidateLastNs);
         long drift = cameraPtsAnchorNs + (candidateNs - candidateFirstNs) - arrivalNs;
         if (drift > MAX_CLOCK_DRIFT_NS || drift < -MAX_CLOCK_DRIFT_NS) {
             cameraPtsAnchorNs -= drift;
@@ -375,6 +383,7 @@ final class TcpSource implements VideoSource {
                     + " shortAfterLong=" + shortAfterLong
                     + " clockReanchors=" + clockReanchors
                     + " clockRejected=" + clockRejected
+                    + " clockEstimatedDuplicates=" + clockEstimatedDuplicates
                     + " clockForcedSteps=" + clockForcedSteps);
         }
     }
@@ -400,6 +409,7 @@ final class TcpSource implements VideoSource {
         timing.put("max_candidate_arrival_deviation_ns", candidateMaxArrivalDeviationNs);
         timing.put("presentation_clock_reanchors", clockReanchors);
         timing.put("presentation_clock_rejected", clockRejected);
+        timing.put("presentation_clock_estimated_duplicates", clockEstimatedDuplicates);
         timing.put("presentation_clock_forced_steps", clockForcedSteps);
         info.put("tcp_timing_diagnostics", timing);
     }
