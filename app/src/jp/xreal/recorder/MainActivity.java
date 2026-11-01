@@ -52,6 +52,7 @@ public class MainActivity extends Activity {
     private Button startButton;
     private Button stopButton;
     private Button enableButton;
+    private Button glassesStatusButton;
     private Button folderButton;
     private Button resetFolderButton;
     private CheckBox diagnosticsCheck;
@@ -63,6 +64,7 @@ public class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private String lastStatus = "";
     private boolean receiverRegistered = false;
+    private boolean glassesStatusPending;
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override
@@ -166,6 +168,17 @@ public class MainActivity extends Activity {
             }
         });
         root.addView(enableButton);
+
+        glassesStatusButton = new Button(this);
+        glassesStatusButton.setText("本体の状態を確認（試験中）");
+        styleButton(glassesStatusButton, Color.rgb(45, 45, 45));
+        glassesStatusButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                checkGlassesStatus();
+            }
+        });
+        root.addView(glassesStatusButton);
 
         sideDisplayCheck = new CheckBox(this);
         sideDisplayCheck.setText("XREAL サイド表示用（中央に拡大。オフ: 固定表示用・右上）");
@@ -440,6 +453,10 @@ public class MainActivity extends Activity {
     }
 
     private void startRecording() {
+        if (glassesStatusPending) {
+            setStatus("本体の状態を確認中です");
+            return;
+        }
         if (RecordService.isRecording()) {
             setStatus("すでに録画中です");
             return;
@@ -508,6 +525,39 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void checkGlassesStatus() {
+        if (RecordService.isRecording() || glassesStatusPending) {
+            setStatus("録画または本体の状態確認が進行中です");
+            return;
+        }
+        findDevice();
+        if (device == null || usbManager == null || !usbManager.hasPermission(device)) {
+            setStatus("XREAL 1S の接続と USB 権限を確認してください");
+            return;
+        }
+        glassesStatusPending = true;
+        setStatus("本体の状態を確認しています...");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String result;
+                try {
+                    result = new GlassesStatusClient(getApplicationContext()).readStatus();
+                } catch (Exception e) {
+                    result = "本体の状態を確認できません: " + e.getMessage();
+                }
+                final String message = result;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        glassesStatusPending = false;
+                        setStatus(message);
+                    }
+                });
+            }
+        }, "xreal-status-check").start();
+    }
+
     private void pollStatus() {
         String s = RecordService.getStatus();
         boolean recording = RecordService.isRecording();
@@ -530,12 +580,13 @@ public class MainActivity extends Activity {
             lastStatus = s;
             statusView.setText(s);
         }
-        startButton.setEnabled(!recording);
+        startButton.setEnabled(!recording && !glassesStatusPending);
         stopButton.setEnabled(recording);
         folderButton.setEnabled(!recording);
         resetFolderButton.setEnabled(!recording);
         diagnosticsCheck.setEnabled(!recording);
         videoRouteView.setEnabled(!recording);
+        glassesStatusButton.setEnabled(!recording && !glassesStatusPending);
         sideDisplayCheck.setEnabled(!recording);
         handler.postDelayed(new Runnable() {
             @Override
