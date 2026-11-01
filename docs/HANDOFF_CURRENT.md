@@ -31,6 +31,7 @@
 - 旧ファームの実行ファイル `pilot` に `conf/sdk_global.json` と `/tmp/` + `sdk_global.json` を開く処理および global config 読込みのログ文字列を確認した。設定入力経路の調査としてグラスの USB ネットワーク `169.254.2.1:22` にインターフェースを固定して接続のみ試行し、`Connection refused`。非 root のインターフェース固定は拒否されたため、root の `socat` を使用した。認証・書込みは行っていない。この試験は他のポートや他の設定経路の不存在を示さない。スマホの録画サービス停止中。
 - 公式 ControlGlasses 付属の `libnr_service.so` の `NRRgbCameraInitSetCompression` に関するログ文字列は引数を `enable` と表記する。既存の RPC 仕様は varint 1個を示すが、これをビットレート数値の指定とみなせる根拠はないため、未確認値は送っていない。
 - グラスの USB ネットワーク側の TCP ポート5555を、eth0 を固定した `socat` で接続のみ確認し `Connection refused`。認証、ADB コマンド、ファイル変更は行っていない。他の設定経路の不存在は示さない。事前状態は録画サービス停止、USB 480 Mbps。
+- 2026-11-01: TCP の別映像経路の調査として通常録画中に USB ネットワークの 52990〜52994 に接続し、データを送らず短時間受信を試したが、いずれも 0 バイトだった。各ポートは短時間の無送信試験のみで、必要なハンドシェイクや別経路の不存在は証明できない。同時に保存した `VID_0059.mp4` の JSON は 629 フレーム、受信平均 29.853 fps、映像約 16.55 Mbps。正常停止後に録画サービス停止を確認、ファイルは保持。その後ローカルの ADB デーモンが再起動したため再接続し、録画サービス停止を再確認した。
 
 最終確認: 2026-10-30 JST。作業場所は `C:\Users\kouki\3D Objects\XREAL`。この文書は秘密情報を含めず Git 管理する。`HANDOFF.md` は古く、秘密情報を含むため Git に追加しない。詳細の根拠は `docs/20261030-android-tcp-trial.md`、`docs/20261027-hevc-investigation.md`、`docs/20261028-usb-camera-evaluation.md` を参照。会話ログ `xreal-1s-eye.json` と録画 `logs/` は Git 管理外。
 
