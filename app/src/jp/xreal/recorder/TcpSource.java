@@ -46,6 +46,9 @@ final class TcpSource implements VideoSource {
     private volatile boolean failed;
     private volatile String error = "";
     private volatile int accessUnits;
+    private volatile int width = 1280;
+    private volatile int height = 720;
+    private boolean dimensionsReceived;
     private boolean startSent;
     private UvcSource.Listener listener;
     private long candidateFirstNs;
@@ -218,7 +221,14 @@ final class TcpSource implements VideoSource {
                     throw new IOException("Invalid TCP HEVC frame header");
                 }
                 ByteBuffer metadata = ByteBuffer.wrap(body).order(ByteOrder.LITTLE_ENDIAN);
-                if (metadata.getInt(12) != getWidth() || metadata.getInt(16) != getHeight()) {
+                int frameWidth = metadata.getInt(12);
+                int frameHeight = metadata.getInt(16);
+                if (!dimensionsReceived && ((frameWidth == 1280 && frameHeight == 720)
+                        || (frameWidth == 1600 && frameHeight == 1200))) {
+                    width = frameWidth;
+                    height = frameHeight;
+                    dimensionsReceived = true;
+                } else if (!dimensionsReceived || frameWidth != width || frameHeight != height) {
                     throw new IOException("Unexpected TCP video dimensions");
                 }
                 byte[] au = Arrays.copyOfRange(body, FRAME_HEADER, body.length);
@@ -412,7 +422,7 @@ final class TcpSource implements VideoSource {
     @Override public boolean isFailed() { return failed; }
     @Override public String getError() { return error; }
     @Override public int getAccessUnits() { return accessUnits; }
-    @Override public int getWidth() { return 1280; }
-    @Override public int getHeight() { return 720; }
+    @Override public int getWidth() { return width; }
+    @Override public int getHeight() { return height; }
     @Override public int getFrameRate() { return 30; }
 }

@@ -317,6 +317,10 @@ public final class RecordService extends Service {
                                 long spanNs = lastVideoNs - firstVideoNs;
                                 cameraInfo.put("received_video_frames", videoFrames);
                                 cameraInfo.put("received_video_bytes", videoBytes);
+                                if (videoFrames > 0) {
+                                    cameraInfo.put("received_video_width", finalVideo.getWidth());
+                                    cameraInfo.put("received_video_height", finalVideo.getHeight());
+                                }
                                 cameraInfo.put("video_rate_basis", "host receive timestamps");
                                 if (finalVideo instanceof TcpSource) {
                                     ((TcpSource) finalVideo).appendTimingMetadata(cameraInfo);
