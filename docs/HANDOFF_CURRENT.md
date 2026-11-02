@@ -2,6 +2,7 @@
 
 ## 現在の状態（2026-11-03、以下の開始予定・実行中の記録より優先）
 
+- 公開 driver の通常カメラ開始 `0x71ade0` を追加確認。同関数はオブジェクト `+0xf8` のフラグを原子的に1にし、既に1なら `0x71af98` を経て戻り値1で終了する。開始失敗側は同フラグを0に戻す。配下の `0x71a890` には利用数 `+0xd8` が1より大きければ Create を省略する分岐があるが、通常開始を重ねれば必ずそこに到達できるわけではなく、実行中に単純に Start を再送して設定を反映できる根拠にはならない。フラグの全解除経路、現行実機版・RPC応答との対応は未確認。公開ファームの静的読取りのみ、実機要求なし。
 - 2026-11-03 公開 `librgb_camera.so` の二重 Create 失敗を PC 上で解析。`NRRgbCameraCreate` (`0x3490`) は冒頭で `initClientContext(1)` を呼ぶ。同関数 (`0x32d8`) はグローバルのコンテキストが既にある場合も `0x3304` 以降に進み、通信関連の `+0x258/+0x260` をゼロにし、設定領域 `+0x268/+0x26c` をゼロ、`+0x270` を2、`+0x274` をゼロにする。その後 Create は新しい IPC を生成する。別途確認した `InitSetImageResolution` は `+0x26c` に値を保存するため、再度 Create を行う処理では保存済み解像度コードが保持されない静的根拠になる。これは以前の `Create → 設定 → 通常 Start` で画質が変わらずエラーになった理由を絞る手掛かりだが、実機のエラー5の直接原因や RPC と関数の同一性、別経路がないことは証明しない。PC の公開ファーム読取りのみ、実機要求なし。
 - 2026-11-03 現行 build/classes で Java テスト9種（AudioSilenceDetector、GlassesCommandProtocol、GlassesRecoveryPlan、GlassesStartupPlan、MatroskaWriter、TcpReadProgress、TcpTimestampRecovery、UsbMicrophoneSelector、VideoWriter）と Python TCP 順序テスト3件を実行し合格。Matroska テストは FFmpeg で生成した JPEG/AAC を入力し、生成 MKV を ffprobe と全体復号で確認。最初は Matroska テストに必須入力を渡さず実行してエラーとなったが、入力を用意した再実行は成功。旧特権機能クラスの単体テストは PC 上で行っただけで、端末やグラスの特権サービスを実行していない。これらは DP 切替や実機の全機能・長時間安定性を証明しない。
 - USB マイク複数候補を実機で用意できないため、選択判断を Android 非依存の小クラスに分離し、XREAL優先、名前不明1件、名前不明複数、XREAL複数を検証するテストを追加中。従来 XREAL 名が複数なら最初を選んでいたが、どちらが対象か確定できないため曖昧として音声を開始しない。通常 XREAL 1台・録画動作は再度実機検証する。superuser 不使用。
