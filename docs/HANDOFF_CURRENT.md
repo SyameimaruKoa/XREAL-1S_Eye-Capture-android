@@ -16,6 +16,15 @@
 - 60 fps 準備ボタンを押した。アプリ内部の完了・本体再起動は未確認。30秒以上待って確認する。
 - 60 fps 準備後、USB 再列挙で eth0 は復帰したが Android の外部 display が消え、ユーザー報告を表示検出レベルで再現。kernel ログでは max77705 が VDM Attention を受け、`ID_DP_HPD attach=0`、DP ドライバーが HPD low と DP-1 disconnected を通知。その後の時点で HPD high は確認できていない。`dp_error_info` は過去の接続値を保持するため接続中の証拠ではない。スマホ側は data host / power sink のまま。USB アクセス許可ダイアログは承認済み、録画サービス停止。60 fps 設定のアプリ内状態と原因は引き続き確認中。グラスの物理抜き差しはまだ行っていない。
 - アプリの状態確認は `本体は TCP 1600×1200 / 60 fps の試験設定です` と表示。起動スクリプトは自己復元済みの前提で、一時設定の詳細はアプリ内のハッシュ照合結果に基づく。現在 DP は未復帰、録画は開始していない。次の候補は HPD low の送信元と DisplayPort 再ネゴシエーション手段の特定であり、sysfs の未知の書込みや USB 役割の変更はしていない。
+- 調査継続時、eth0 とスマホ ADB は接続、外部ディスプレイは引き続き消失、録画停止。これから既知の command_service プロトコルを使い、グラス側のディスプレイ関連プロセスと sysfs を読み取り調査する。スマホに eth0 固定の一時プロキシと ADB 転送を作成し、終了時に停止する。
+- 読み取り調査プロキシはスマホ PID 18913、ADB 転送 tcp:21080。調査後に停止・解除する。
+- グラス内部に `/sys/devices/platform/soc/a0a0000.dp/dprx_config_attrs/hpd`（root 書込み可）があり、再現中の読み値は `0`。`/sys/class/extcon/extcon0/state` も `DP=0`、Type-C の port0 altmode `active=yes`。カーネルシンボルに `coconut_dprx_send_hpd_status` と `hpd_store` が存在する。これは HPD 制御候補を示すが、sysfs 値の正確な実装と対向機器への反映は未確認。
+- **これから実機変更:** 上記 DP RX の hpd 属性に `1` を一度だけ指定し、読み戻し、グラス extcon、スマホ DP 認識と kernel ログを確認する。録画停止中、60 fps 一時設定のまま。失敗時は未知の操作を連続実行せず、必要なら物理再接続で復旧する。プロキシ PID 18913、転送 21080。
+- hpd に `1` を一回書いたが読み戻しは `0`、extcon `DP=0`、スマホに外部ディスプレイなし。書込みシェル自体は成功したが、復帰には至らなかった。グラス kernel 起動ログには `dp altmode not register`、約29秒後に `get partner device id:0x891d000`、`unknown source device id:0x0`、`get lane info failed` がある。これらは起動後の観測で、DP 不通の直接原因とまでは未確定。続けて該当ドライバーの制御条件を読み取り解析する。
+- **次の試験:** グラスの Type-C `soft_reset` 属性と kernel シンボル `soft_reset_store` / `tcpm_pd_send_soft_reset` を確認。USB PD の再交渉で回復するか同属性に `1` を一回書き、グラスログとスマホ DP・USB 接続を確認する。ベンダー実装の詳細や成功は未確認で、USB が一時切断される可能性がある。ハードリセットは行わない。調査用プロキシ PID 18913、転送 21080。録画停止中。
+- soft_reset への書込みは成功し、スマホ eth0 はインターフェース番号68→70に変わって再列挙したが、グラス `DP=0`・`hpd=0`、Android 外部画面なしのまま。5秒後のグラス kernel ログにも新たな DP 成功イベントはなかった。soft_reset 単独では今回復帰しない。ハードリセットは未実施。
+- グラス内 `/sys/kernel/debug/usb/tcpm-2-0022/log` の起動記録では、給電能力待ちタイムアウト後に PD ハードリセットが自動送信される処理を2回経て、能力を受け取れないまま `SNK_READY` へ進んでいる。現在の partner は `supports_usb_power_delivery=no`、power operation は `1.5A`、グラス側 data device / power sink。これは当該 Type-C ポートでの観測であり、外部ハブとスマホ間の全経路が PD 非対応という結論ではない。soft_reset 書込み後のこのログに新しい記録はなく、実際に PD soft reset が送信されたかは不明。正常接続時との比較が必要。
+- 比較のためユーザーに XREAL 側 USB-C の再接続を依頼中。調査プロキシ PID 18913 を停止し転送 21080 を解除、socat プロセスなし。再接続前は 60 fps 一時設定・DP 非表示・録画停止。物理再接続で本体電源が落ちた場合、一時設定が消えるため実際の状態を改めて確認する。
 
 ## 2026-11-01 引継ぎ直後の状態
 
