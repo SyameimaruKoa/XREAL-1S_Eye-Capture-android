@@ -578,7 +578,9 @@ public final class RecordService extends Service {
                 .setContentText(status.startsWith("録画中: 音声停止")
                         ? "音声停止・映像のみ録画中" : audioSilenceDetected
                         ? "音声が3秒以上非常に小さいか無音です"
-                        : "録画中（UVC HEVC + USB mic）")
+                        : videoRoute == ROUTE_TCP_HEVC ? "録画中（TCP HEVC + USBマイク）"
+                        : videoRoute == ROUTE_UVC_HEVC ? "録画中（UVC HEVC + USBマイク）"
+                        : "録画中（UVC MJPEG + USBマイク）")
                 .setSmallIcon(android.R.drawable.ic_menu_camera)
                 .setContentIntent(pi)
                 .setOngoing(true)

@@ -23,6 +23,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
 import android.net.Uri;
 import android.provider.DocumentsContract;
 import android.view.View;
@@ -60,6 +63,8 @@ public class MainActivity extends Activity {
     private CheckBox keepScreenCheck;
     private FrameLayout screenSaver;
     private TextView screenSaverStatus;
+    private LinearLayout screenSaverContent;
+    private RecordingPresentation.WaveformView screenSaverWaveform;
     private long lastTouchMs = SystemClock.elapsedRealtime();
     private Button startButton;
     private Button stopButton;
@@ -406,11 +411,19 @@ public class MainActivity extends Activity {
         screenSaver = new FrameLayout(this);
         screenSaver.setBackgroundColor(Color.BLACK);
         screenSaver.setVisibility(View.GONE);
+        screenSaverContent = new LinearLayout(this);
+        screenSaverContent.setOrientation(LinearLayout.VERTICAL);
+        screenSaverContent.setGravity(Gravity.CENTER);
         screenSaverStatus = new TextView(this);
         screenSaverStatus.setTextColor(Color.rgb(150, 150, 150));
         screenSaverStatus.setTextSize(20);
         screenSaverStatus.setGravity(Gravity.CENTER);
-        screenSaver.addView(screenSaverStatus, new FrameLayout.LayoutParams(
+        screenSaverContent.addView(screenSaverStatus);
+        screenSaverWaveform = new RecordingPresentation.WaveformView(this);
+        float density = getResources().getDisplayMetrics().density;
+        screenSaverContent.addView(screenSaverWaveform, new LinearLayout.LayoutParams(
+                (int) (220 * density), (int) (40 * density)));
+        screenSaver.addView(screenSaverContent, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER));
         screenSaver.setOnClickListener(new View.OnClickListener() {
@@ -920,6 +933,7 @@ public class MainActivity extends Activity {
     private void pollStatus() {
         String s = RecordService.getStatus();
         boolean recording = RecordService.isRecording();
+        int audioPeak = recording ? RecordService.getAudioPeak() : 0;
         boolean keepScreen = recording && keepScreenCheck.isChecked();
         if (keepScreen) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -931,12 +945,18 @@ public class MainActivity extends Activity {
                     : !RecordService.hasAudioData() ? "音声データを待機中"
                     : RecordService.isAudioExactZero() ? "録音用の音声が3秒間ゼロ"
                     : RecordService.isAudioQuiet() ? "音声が小さいか無音" : "音声入力あり";
-            screenSaverStatus.setText(String.format(Locale.US, "● REC  %02d:%02d:%02d\n%s\n\nタップで戻る",
-                    saverSeconds / 3600, (saverSeconds / 60) % 60, saverSeconds % 60, audioState));
+            SpannableString saverText = new SpannableString(String.format(Locale.US,
+                    "● REC  %02d:%02d:%02d\n%s\n%s\nタップで戻る",
+                    saverSeconds / 3600, (saverSeconds / 60) % 60, saverSeconds % 60,
+                    RecordService.getVideoRateSummary(), audioState));
+            saverText.setSpan(new ForegroundColorSpan(Color.rgb(255, 95, 95)), 0, 5,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            screenSaverStatus.setText(saverText);
+            screenSaverWaveform.addPeak(audioPeak);
             int position = (int) ((saverSeconds / 60) % 4);
             float shift = 24 * getResources().getDisplayMetrics().density;
-            screenSaverStatus.setTranslationX((position == 0 || position == 3) ? -shift : shift);
-            screenSaverStatus.setTranslationY(position < 2 ? -shift : shift);
+            screenSaverContent.setTranslationX((position == 0 || position == 3) ? -shift : shift);
+            screenSaverContent.setTranslationY(position < 2 ? -shift : shift);
         } else {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             setScreenSaverVisible(false);
@@ -954,7 +974,7 @@ public class MainActivity extends Activity {
         recordingIndicator.setTextColor(recording ? Color.rgb(255, 95, 95) : Color.WHITE);
         phoneWaveform.setVisibility(recording ? View.VISIBLE : View.GONE);
         if (recording) {
-            phoneWaveform.addPeak(RecordService.getAudioPeak());
+            phoneWaveform.addPeak(audioPeak);
         }
         audioIndicator.setText(!recording ? "" : s != null && s.startsWith("録画中: 音声停止")
                 ? "音声停止・映像のみ録画中" : !RecordService.hasAudioData()
