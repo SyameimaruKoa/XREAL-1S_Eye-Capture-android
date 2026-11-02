@@ -42,6 +42,14 @@
 - プロキシ PID 25567 を停止し転送 21080 を解除。ユーザーに物理再接続を依頼中。ドライバー再 bind は kernel の sysfs 重複バグで失敗するため再試行しない。
 - PC で公式 2026-09-14 system OTA の `kernel0` 2 セグメントを LZO 展開し、内側 LZ4 フレームも展開。復元 kernel SHA-256 `0fc0a0b4b14b053e39733d516aee810d8c99bc991a4ba3df49822bed0a7c5703`。既存解析用 venv に lz4・vmlinux-to-elf 等を導入し kallsyms を復元した（minilzo はビルド失敗したが展開済み Image の解析には未使用）。公開版 kernel の `hpd_store` / `soft_reset_store` アドレスは実機 kallsyms と一致するが、kernel ビルド日は実機 2026-08-20、公開版 2026-09-14 でバイナリ全体の同一性は未確認。
 - **前回 soft_reset 試験の重要な訂正:** 公開版 `soft_reset_store` の逆アセンブルは入力先頭10バイトを `soft_reset` と `strncmp` し、一致時だけコールバックを呼び、いずれの場合も書込み長を返す。先の `echo 1` はこの実装ならリセット要求を送らないため、「soft reset が効かなかった」とは判断できない。次の候補は実機版も一致することを確認したうえで正しい入力 `soft_reset` を試すこと。ハードリセットとは区別する。公開版 `hpd_store` の選択肢は `0` / `1` で、先の `1` は入力として妥当だが実際の復帰は起きなかった。
+- ユーザーが再度 USB-C を接続、スマホは eth0 78 と HDMI 1920×1200/120Hz を検出。これから既存アプリの60 fps 準備を実行して不具合を再現し、正しい `soft_reset` 入力を試す。入力後は PD、DP、映像・ネットワーク状態を観測し、USB 切断に備える。録画は開始しない。
+- USB 許可を確認し 60 fps 準備開始、「本体が再起動します」と表示。30 秒以上待って状態を観測する。
+- 再起動後 eth0 80 接続、Android 外部画面なし、グラス `DP=0`・partner PD no、一時設定は 1600×1200/60 fps/33,554,432bps。調査プロキシ PID 2855、転送21080。これから `/sys/class/typec/port0/soft_reset` に公開版が要求する文字列 `soft_reset` を一回書く。USB 切断や PD 再交渉が起こり得るため、切断後も再接続を確認し、ログと DP の結果を検証する。
+- 正しい `soft_reset` を一回書いた結果、グラスの TCPM ログに `SOFT_RESET_SEND`・PD TX・60ms 後 `SNK_UNATTACHED`・再接続後の `SNK_WAIT_CAPABILITIES` が記録された。したがって前回と異なり要求処理が実際に動いたが、能力を受け取れず `SNK_READY`、PD partner no・DP 0・スマホ外部画面なしのまま。グラス側ソフトリセット単独は今回復旧に失敗。eth0 80 は維持、録画停止。
+- 次にスマホ Android の USB ポート状態で `sink/device` と元の `sink/host` がどちらも許容候補、変更可能と表示されることを確認済み。DP 不通状態のまま、スマホ側ポートを `sink/device` に一度切り替え、数秒後に元の `sink/host` に必ず戻すことで、相手側再交渉が生じるか試す。スマホへの制御は Wi-Fi ADB で、録画停止中。USB 接続や給電が一時変化する可能性があり、復帰しなければ物理接続で復旧する。これは Android 標準の dumpsys 操作であり、アプリから一般権限で呼べる保証はない。
+- スマホの USB ロール切替要求後、最終状態は元の `sink/host`、eth0 80 のまま。グラスは PD no・DP 0、スマホ外部画面なし。スマホ kernel に `max77705_data_role_change` 要求は記録されたが実際の役割変更は確認できず、逆方向要求は `No change`。この方法でも今回映像は復帰せず。録画停止、グラスは60fps一時設定、プロキシ PID 2855 と転送21080は調査中。
+- 調査用に Galaxy S21 系公開カーネルの `max77705` ソースを読み取り。通常の data-role 切替は PD の DATA_ROLE_SWAP だが、Type-C port-type 切替は別の MANUAL_ROLE_SWAP として実装される。スマホの実機ファームが同一実装か、後者で DP 回復するかは未確認。root を要する上に給電・データ役割が変わり得るため、復元条件と実機対応をさらに調べるまでポート種別は変更していない。ソース https://github.com/antiagainst/SM-G991U/blob/master/drivers/usb/typec/maxim/max77705_usbc.c
+- プロキシ PID 2855 を停止し転送21080を解除。現在はグラス60 fps 一時設定・DP 非表示・スマホ eth0 接続・録画停止。グラスやスマホの再起動、USB-C 再接続は行っていない。
 
 ## 2026-11-01 引継ぎ直後の状態
 
