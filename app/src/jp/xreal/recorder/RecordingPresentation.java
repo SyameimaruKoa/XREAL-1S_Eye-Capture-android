@@ -120,7 +120,7 @@ final class RecordingPresentation extends Presentation {
             audio.setText("音声データを待機中");
             audio.setTextColor(Color.LTGRAY);
         } else if (exactZero) {
-            audio.setText("音声データが完全にゼロです");
+            audio.setText("録音用の音声が3秒間ゼロです");
             audio.setTextColor(Color.rgb(255, 185, 80));
         } else if (silence) {
             audio.setText("音声入力が非常に小さい状態です");
