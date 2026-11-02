@@ -22,12 +22,19 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.net.Uri;
 import android.provider.DocumentsContract;
 import android.view.View;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
@@ -50,6 +57,10 @@ public class MainActivity extends Activity {
     private TextView audioIndicator;
     private RecordingPresentation.WaveformView phoneWaveform;
     private CheckBox sideDisplayCheck;
+    private CheckBox keepScreenCheck;
+    private FrameLayout screenSaver;
+    private TextView screenSaverStatus;
+    private long lastTouchMs = SystemClock.elapsedRealtime();
     private Button startButton;
     private Button stopButton;
     private Button enableButton;
@@ -253,6 +264,24 @@ public class MainActivity extends Activity {
         });
         root.addView(sideDisplayCheck);
 
+        keepScreenCheck = new CheckBox(this);
+        keepScreenCheck.setText("録画中はスマホを点灯（30秒後に画面保護）");
+        keepScreenCheck.setTextColor(Color.WHITE);
+        keepScreenCheck.setButtonTintList(ColorStateList.valueOf(Color.LTGRAY));
+        keepScreenCheck.setChecked(preferences.getBoolean("keep_screen", true));
+        keepScreenCheck.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton button, boolean checked) {
+                preferences.edit().putBoolean("keep_screen", checked).apply();
+            }
+        });
+        root.addView(keepScreenCheck);
+        TextView keepScreenNote = new TextView(this);
+        keepScreenNote.setText("アプリ表示中の自動消灯を防ぎます。手動ロックには未対応です。");
+        keepScreenNote.setTextColor(Color.LTGRAY);
+        keepScreenNote.setTextSize(12);
+        root.addView(keepScreenNote);
+
         TextView routeLabel = new TextView(this);
         routeLabel.setText("画質・映像の取得経路（ビットレートは録画時の実測例）");
         routeLabel.setTextColor(Color.WHITE);
@@ -371,7 +400,54 @@ public class MainActivity extends Activity {
                     48, 48 + insets.getSystemWindowInsetBottom());
             return insets;
         });
-        return scroll;
+        FrameLayout container = new FrameLayout(this);
+        container.setBackgroundColor(Color.BLACK);
+        container.addView(scroll);
+        screenSaver = new FrameLayout(this);
+        screenSaver.setBackgroundColor(Color.BLACK);
+        screenSaver.setVisibility(View.GONE);
+        screenSaverStatus = new TextView(this);
+        screenSaverStatus.setTextColor(Color.rgb(150, 150, 150));
+        screenSaverStatus.setTextSize(20);
+        screenSaverStatus.setGravity(Gravity.CENTER);
+        screenSaver.addView(screenSaverStatus, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER));
+        screenSaver.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                setScreenSaverVisible(false);
+                lastTouchMs = SystemClock.elapsedRealtime();
+            }
+        });
+        container.addView(screenSaver, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        return container;
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            lastTouchMs = SystemClock.elapsedRealtime();
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    private void setScreenSaverVisible(boolean visible) {
+        if (screenSaver == null || (screenSaver.getVisibility() == View.VISIBLE) == visible) {
+            return;
+        }
+        screenSaver.setVisibility(visible ? View.VISIBLE : View.GONE);
+        WindowInsetsController controller = getWindow().getInsetsController();
+        if (controller != null) {
+            if (visible) {
+                controller.setSystemBarsBehavior(
+                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                controller.hide(WindowInsets.Type.systemBars());
+            } else {
+                controller.show(WindowInsets.Type.systemBars());
+            }
+        }
     }
 
     private void updateDestination() {
@@ -449,6 +525,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        setScreenSaverVisible(false);
         handler.removeCallbacksAndMessages(null);
         if (receiverRegistered) {
             unregisterReceiver(usbReceiver);
@@ -842,6 +920,26 @@ public class MainActivity extends Activity {
     private void pollStatus() {
         String s = RecordService.getStatus();
         boolean recording = RecordService.isRecording();
+        boolean keepScreen = recording && keepScreenCheck.isChecked();
+        if (keepScreen) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            if (SystemClock.elapsedRealtime() - lastTouchMs >= 30000) {
+                setScreenSaverVisible(true);
+            }
+            long saverSeconds = RecordService.getElapsedSeconds();
+            String audioState = s != null && s.startsWith("録画中: 音声停止") ? "音声停止"
+                    : RecordService.isAudioExactZero() ? "音声データがゼロ"
+                    : RecordService.isAudioQuiet() ? "音声が小さいか無音" : "音声入力あり";
+            screenSaverStatus.setText(String.format(Locale.US, "● REC  %02d:%02d:%02d\n%s\n\nタップで戻る",
+                    saverSeconds / 3600, (saverSeconds / 60) % 60, saverSeconds % 60, audioState));
+            int position = (int) ((saverSeconds / 60) % 4);
+            float shift = 24 * getResources().getDisplayMetrics().density;
+            screenSaverStatus.setTranslationX((position == 0 || position == 3) ? -shift : shift);
+            screenSaverStatus.setTranslationY(position < 2 ? -shift : shift);
+        } else {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            setScreenSaverVisible(false);
+        }
         boolean needsRecovery = !glassesStatusPending
                 && preferences.getBoolean("glasses_recovery_required", false);
         if (needsRecovery && !recoveryShown) {
