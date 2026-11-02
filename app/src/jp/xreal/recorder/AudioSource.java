@@ -12,6 +12,7 @@ import android.media.MediaFormat;
 import android.media.MediaRecorder;
 import android.os.SystemClock;
 import android.util.Log;
+import java.util.Locale;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -147,7 +148,7 @@ public final class AudioSource {
         AudioDeviceInfo routed = null;
         for (int i = 0; i < 10; i++) {
             routed = record.getRoutedDevice();
-            if (routed != null && isUsb(routed.getType())) {
+            if (routed != null && routed.getId() == usb.getId()) {
                 break;
             }
             try {
@@ -157,8 +158,8 @@ public final class AudioSource {
                 break;
             }
         }
-        if (routed == null || !isUsb(routed.getType())) {
-            throw new IllegalStateException("AudioRecord is not routed to USB: "
+        if (routed == null || routed.getId() != usb.getId()) {
+            throw new IllegalStateException("AudioRecord is not routed to the selected USB microphone: "
                     + (routed == null ? "null" : routed.getType() + "/" + routed.getProductName()));
         }
         Log.i(TAG, "audio routed id=" + routed.getId() + " type=" + routed.getType()
@@ -179,13 +180,22 @@ public final class AudioSource {
             return null;
         }
         AudioDeviceInfo fallback = null;
+        int usbCount = 0;
         for (AudioDeviceInfo d : am.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
-            if (d.getType() == AudioDeviceInfo.TYPE_USB_HEADSET) {
+            if (!isUsb(d.getType())) {
+                continue;
+            }
+            CharSequence product = d.getProductName();
+            if (product != null && product.toString().toLowerCase(Locale.ROOT).contains("xreal")) {
                 return d;
             }
-            if (isUsb(d.getType()) && fallback == null) {
+            usbCount++;
+            if (fallback == null) {
                 fallback = d;
             }
+        }
+        if (usbCount > 1) {
+            throw new IllegalStateException("Multiple USB microphones found; XREAL could not be identified");
         }
         return fallback;
     }
