@@ -58,6 +58,8 @@ public class MainActivity extends Activity {
     private Button glasses60Button;
     private Button glassesNormalButton;
     private Button glassesRecoverButton;
+    private Button deviceSettingsToggle;
+    private LinearLayout deviceSettings;
     private Button folderButton;
     private Button resetFolderButton;
     private CheckBox diagnosticsCheck;
@@ -70,6 +72,7 @@ public class MainActivity extends Activity {
     private String lastStatus = "";
     private boolean receiverRegistered = false;
     private boolean glassesStatusPending;
+    private boolean recoveryShown;
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override
@@ -163,6 +166,26 @@ public class MainActivity extends Activity {
         });
         root.addView(stopButton);
 
+        deviceSettings = new LinearLayout(this);
+        deviceSettings.setOrientation(LinearLayout.VERTICAL);
+        boolean showRecovery = preferences.getBoolean("glasses_recovery_required", false);
+        deviceSettings.setVisibility(showRecovery ? View.VISIBLE : View.GONE);
+        deviceSettingsToggle = new Button(this);
+        deviceSettingsToggle.setText(showRecovery
+                ? "本体・60fps 設定を閉じる" : "本体・60fps 設定を開く");
+        styleButton(deviceSettingsToggle, Color.rgb(35, 35, 35));
+        deviceSettingsToggle.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                boolean open = deviceSettings.getVisibility() != View.VISIBLE;
+                deviceSettings.setVisibility(open ? View.VISIBLE : View.GONE);
+                deviceSettingsToggle.setText(open
+                        ? "本体・60fps 設定を閉じる" : "本体・60fps 設定を開く");
+            }
+        });
+        root.addView(deviceSettingsToggle);
+        root.addView(deviceSettings);
+
         enableButton = new Button(this);
         enableButton.setText("UVCを有効化（UVCが見えない場合）");
         styleButton(enableButton, Color.rgb(45, 45, 45));
@@ -172,7 +195,7 @@ public class MainActivity extends Activity {
                 enableUvc();
             }
         });
-        root.addView(enableButton);
+        deviceSettings.addView(enableButton);
 
         glassesStatusButton = new Button(this);
         glassesStatusButton.setText("本体の状態を確認（試験中）");
@@ -183,7 +206,7 @@ public class MainActivity extends Activity {
                 checkGlassesStatus();
             }
         });
-        root.addView(glassesStatusButton);
+        deviceSettings.addView(glassesStatusButton);
 
         glasses60Button = new Button(this);
         glasses60Button.setText(PhoneUsbReconnect.isSupported()
@@ -196,7 +219,7 @@ public class MainActivity extends Activity {
                 prepareGlasses60();
             }
         });
-        root.addView(glasses60Button);
+        deviceSettings.addView(glasses60Button);
 
         glassesNormalButton = new Button(this);
         glassesNormalButton.setText(PhoneUsbReconnect.isSupported()
@@ -209,7 +232,7 @@ public class MainActivity extends Activity {
                 restoreGlassesNormal();
             }
         });
-        root.addView(glassesNormalButton);
+        deviceSettings.addView(glassesNormalButton);
 
         glassesRecoverButton = new Button(this);
         glassesRecoverButton.setText("中断した本体設定を復旧（試験中）");
@@ -220,7 +243,7 @@ public class MainActivity extends Activity {
                 recoverGlassesPreparation();
             }
         });
-        root.addView(glassesRecoverButton);
+        deviceSettings.addView(glassesRecoverButton);
 
         sideDisplayCheck = new CheckBox(this);
         sideDisplayCheck.setText("XREAL サイド表示用（中央に拡大。オフ: 固定表示用・右上）");
@@ -844,6 +867,13 @@ public class MainActivity extends Activity {
     private void pollStatus() {
         String s = RecordService.getStatus();
         boolean recording = RecordService.isRecording();
+        boolean needsRecovery = !glassesStatusPending
+                && preferences.getBoolean("glasses_recovery_required", false);
+        if (needsRecovery && !recoveryShown) {
+            deviceSettings.setVisibility(View.VISIBLE);
+            deviceSettingsToggle.setText("本体・60fps 設定を閉じる");
+        }
+        recoveryShown = needsRecovery;
         long seconds = RecordService.getElapsedSeconds();
         recordingIndicator.setText(recording ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
                 seconds / 3600, (seconds / 60) % 60, seconds % 60) : "待機中");
