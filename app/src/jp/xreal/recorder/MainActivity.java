@@ -290,7 +290,7 @@ public class MainActivity extends Activity {
         root.addView(routeLabel);
         videoRouteView = new Spinner(this);
         String[] routes = new String[]{
-                "TCP 通常720p 30fps 約17.0 Mbps（60fps 準備時は1600×1200 約34 Mbps）",
+                "TCP HEVC 自動（実測：720p/30 約17 Mbps、720p/60 約33 Mbps、1600×1200/60 約34 Mbps）",
                 "UVC HEVC 1512p 60fps 約2.03 Mbps",
                 "UVC MJPEG 1080p 30fps 約21.16 Mbps（試験中）",
                 "UVC MJPEG 1080p 60fps 約39.16 Mbps（試験中）"
@@ -325,7 +325,7 @@ public class MainActivity extends Activity {
         root.addView(videoRouteView);
         TextView rateNote = new TextView(this);
         rateNote.setText("実測値は撮影内容によって変わります。\n"
-                + "TCP 60fps は通常の30fpsより左右の画角が狭い状態を確認しています。");
+                + "1600×1200/60fps は720p/30fpsより左右の画角が狭いことを確認しています。720p/60fps の画角は未確認です。");
         rateNote.setTextColor(Color.LTGRAY);
         rateNote.setTextSize(12);
         root.addView(rateNote);
