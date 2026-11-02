@@ -4,19 +4,16 @@
 
 - **最新ユーザー指示:** DeX は使用しない。機器依存の手段は不可。未コミットの DeX 専用 Activity 試作を取り消し、DeX を OFF に戻して汎用 Android の手段を調査する。録画 `VID_0094` は UI 停止、サービス消失。これから通常 APK に戻す。superuser 不使用。
 - DeX 専用の試作コードと診断コードは取り消し、元のアプリをビルドして通常 ADB で再インストール成功。DeX OFF、スマホ・外部 display ON、録画サービス停止。一時スクリーンショットを端末から削除。以下の DeX 調査は履歴のみで、今後の実装・解決策に採用しない。機器依存を避ける制約を DP、第二画面、その他の機能全体に適用する。
-- 2026-11-03 DeX 対応試作中: 録画開始時に `Desktop` 名の非内蔵 display があれば通常 ActivityOptions で専用 `DesktopRecordingActivity` を起動し、黒背景に REC・経過・実測レート・音声状態・波形を表示、録画終了で閉じる。既存 Presentation は維持。スマホの操作・設定でサイド／固定表示を切り替える。これからビルドし、通常権限で導入、DeX 上で録画・スマホ消灯中の外部表示・停止を確認し、最後に DeX を OFF に戻す。superuser 使用なし。未検証の試作として扱う。
-- 試作 APK ビルド・通常 ADB インストール成功。DeX 有効・Desktop display ID 2、MainActivity をスマホ display 0 に起動。これから録画開始し画面と消灯時の継続を確認する。
-- 試作で TCP 録画開始、RecordService 実行中。DeX 画面の確認後にスマホを消灯して再確認し、復帰・停止・DeX OFF する。
-- 試作録画 `VID_0093` は UI 停止・サービス消失。DeX 専用 Activity は起動されず外部画面はホームのまま、消灯試験は未実施。アプリから見える display 名・ID・flags を通常 logcat に出す診断を追加し再ビルドする。現在 DeX 有効、録画停止、試験後は DeX OFF に戻す。
-- 診断版 APK を通常 ADB でインストールし、スマホ display 0 の画面から録画開始を操作。ログ確認と UI 停止を行う。
 - スーパーユーザーは実装・調査とも使用しない。root 由来の以前の loopback プロセスは停止権限がなく残存するが、利用しない。接続状態を変えずに調査する。
-- スマホは ADB 接続中、内蔵・XREAL 外部画面 ON、録画サービス停止。直近 `VID_0091` は TCP 1280×720、1264フレーム、受信平均59.433 fps・33.062 Mbps、音声処理 completed。実音声や同期は同 JSON からは判定できない。
+- スマホは ADB 接続中、内蔵・XREAL 外部画面 ON、録画サービス停止。直近 `VID_0094` は TCP 1280×720、1263フレーム、受信平均59.421 fps・33.823 Mbps、音声処理 completed。実音声や同期は同 JSON からは判定できない。
 - 現在インストール済み APK は音声受信待ち表示・OLED 保護を含む。音声受信後のスマホ／外部表示は確認済み、受信待ち表示自体は実機未捕捉。手動スリープ時の外部画面維持は未解決。
 - TCP の 720p 約60fps は現在の接続で継続するが、発生条件と通常権限による再現・30/60切替は未解決。DP を維持した切替または再起動不要の切替を最優先とし、未検証の設定要求を送らない。録画中は元ファイル保持。
-- Git `master` は `origin/master` より51コミット先行（この記録を含むコミット前）。GitHub Release 最新は v0.1.2、今回の変更は未公開。広画角30/60モード、独立ステレオ、最終 Release は未完了。
+- GitHub Release 最新は v0.1.2、ローカルの今回の変更は未公開。広画角30/60モード、独立ステレオ、最終 Release は未完了。Git の先行数は `git status -sb` で確認する。
 
 ## 2026-11-02 最新指示・最優先課題
 
+- 汎用 Android 公式資料を確認: https://developer.android.com/develop/background-work/background-tasks/awake/screen-on は `FLAG_KEEP_SCREEN_ON` を Activity で使い、アプリがバックグラウンドでは通常どおり消灯し得ると説明。https://developer.android.com/reference/android/app/Presentation は表示可否がシステムポリシーに従い、条件を失うと自動終了し得ると説明。これらは前面維持の暫定動作と整合するが、スマホの手動スリープ時に外部物理画面だけを点灯し続ける汎用 API の存在・不存在を証明しない。機器固有手段は使わない。実機設定変更なし。
+- 過去の DeX 専用 Activity 試作は起動できず、診断中にユーザーから機器依存を避ける指示を受けたため全て取り消した。試作 APK は通常 APK に置換済みで、DeX は無効。各録画は通常停止・保持済み。以下に残る DeX の試験予定・実行中の記述は当時の履歴であり、現在は実行していない。
 - 2026-11-03 Android 15 実機の `dumpsys desktopmode` は XREAL を外部ディスプレイとして認識し、現状 DeX 無効。手動スリープ中の外部表示維持について、通常の Samsung DeX が代替動作を提供するか調べるため、録画停止中に通常 UI から DeX を起動できるかを確認する。USB 接続・グラス設定・superuser 操作はしない。試験後は元の画面モードへ戻し、DP と TCP 動作を確認する。
 - 通常クイック設定の DeX タイルを ADB からクリックし、`mDualModeEnabled=true`・外部 display ID 2・両画面 ON を確認。録画は停止中。これから電源ボタン相当でスマホを一度消灯し、内部・外部 display 状態を確認後、直ちに復帰する。DeX は試験後 OFF に戻す。
 - DeX 有効状態で KEYCODE_SLEEP の約5秒後、Android display 順に内蔵 OFF・外部 ON、power は Awake、DeX dual 有効を確認。DeX 無効時の両方 OFF と異なる。まだ録画中の Presentation の維持、実際の画面内容・装着時視認、再現性は未確認。これからスマホを点灯し、TCP 録画を開始して同条件で画面状態と外部画像を確認し、その後停止・DeX OFF に戻す。
