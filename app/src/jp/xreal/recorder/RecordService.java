@@ -269,9 +269,16 @@ public final class RecordService extends Service {
             cameraInfo.put("video_source", videoRoute == ROUTE_TCP_HEVC
                     ? "USB Ethernet HEVC passthrough" : mjpeg
                     ? "USB UVC MJPEG passthrough" : "USB UVC HEVC passthrough");
-            cameraInfo.put("requested_width", videoSource.getWidth());
-            cameraInfo.put("requested_height", videoSource.getHeight());
-            cameraInfo.put("requested_frames_per_second", videoSource.getFrameRate());
+            if (videoRoute == ROUTE_TCP_HEVC) {
+                cameraInfo.put("requested_width", JSONObject.NULL);
+                cameraInfo.put("requested_height", JSONObject.NULL);
+                cameraInfo.put("requested_frames_per_second", JSONObject.NULL);
+                cameraInfo.put("requested_video_note", "TCP format is determined by the glasses");
+            } else {
+                cameraInfo.put("requested_width", videoSource.getWidth());
+                cameraInfo.put("requested_height", videoSource.getHeight());
+                cameraInfo.put("requested_frames_per_second", videoSource.getFrameRate());
+            }
             cameraInfo.put("audio", "USB microphone, mono AAC, 48000 Hz");
             if (hevcFile != null) {
                 hevcOut = new FileOutputStream(hevcFile);

@@ -264,7 +264,8 @@ public class MainActivity extends Activity {
         videoRouteView.setBackgroundColor(Color.rgb(45, 45, 45));
         root.addView(videoRouteView);
         TextView rateNote = new TextView(this);
-        rateNote.setText("実測値は撮影内容によって変わります。");
+        rateNote.setText("実測値は撮影内容によって変わります。\n"
+                + "TCP 60fps は通常の30fpsより左右の画角が狭い状態を確認しています。");
         rateNote.setTextColor(Color.LTGRAY);
         rateNote.setTextSize(12);
         root.addView(rateNote);
