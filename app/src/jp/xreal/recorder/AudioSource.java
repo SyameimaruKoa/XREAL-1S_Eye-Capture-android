@@ -12,7 +12,7 @@ import android.media.MediaFormat;
 import android.media.MediaRecorder;
 import android.os.SystemClock;
 import android.util.Log;
-import java.util.Locale;
+import java.util.ArrayList;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -179,25 +179,22 @@ public final class AudioSource {
         if (am == null) {
             return null;
         }
-        AudioDeviceInfo fallback = null;
-        int usbCount = 0;
+        ArrayList<AudioDeviceInfo> inputs = new ArrayList<>();
         for (AudioDeviceInfo d : am.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
-            if (!isUsb(d.getType())) {
-                continue;
-            }
-            CharSequence product = d.getProductName();
-            if (product != null && product.toString().toLowerCase(Locale.ROOT).contains("xreal")) {
-                return d;
-            }
-            usbCount++;
-            if (fallback == null) {
-                fallback = d;
+            if (isUsb(d.getType())) {
+                inputs.add(d);
             }
         }
-        if (usbCount > 1) {
-            throw new IllegalStateException("Multiple USB microphones found; XREAL could not be identified");
+        String[] names = new String[inputs.size()];
+        for (int i = 0; i < inputs.size(); i++) {
+            CharSequence name = inputs.get(i).getProductName();
+            names[i] = name == null ? null : name.toString();
         }
-        return fallback;
+        int selected = UsbMicrophoneSelector.select(names);
+        if (selected == UsbMicrophoneSelector.AMBIGUOUS) {
+            throw new IllegalStateException("Multiple USB microphones found; selection is ambiguous");
+        }
+        return selected == UsbMicrophoneSelector.NONE ? null : inputs.get(selected);
     }
 
     private static boolean isUsb(int type) {
