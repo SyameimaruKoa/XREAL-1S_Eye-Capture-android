@@ -156,7 +156,6 @@ public class MainActivity extends Activity {
         statusView.setTextColor(Color.WHITE);
         statusView.setText("待機中");
         statusView.setPadding(0, 0, 0, 24);
-        root.addView(statusView);
 
         startButton = new Button(this);
         startButton.setText("録画開始");
@@ -180,6 +179,7 @@ public class MainActivity extends Activity {
             }
         });
         root.addView(stopButton);
+        root.addView(statusView);
 
         deviceSettings = new LinearLayout(this);
         deviceSettings.setOrientation(LinearLayout.VERTICAL);

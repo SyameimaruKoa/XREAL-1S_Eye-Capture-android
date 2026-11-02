@@ -2,6 +2,9 @@
 
 ## 現在の状態（2026-11-03、以下の開始予定・実行中の記録より優先）
 
+- UI 改善中: 保存完了メッセージが長いと録画ボタンを画面下へ押し出すため、開始・停止ボタンをメッセージより先に配置する。録画処理や情報の内容は変更しない。実機は録画停止・両 display ON、改修後にビルドと表示確認を行う。superuser・USB 設定変更なし。
+- UI 修正 APK はビルド成功。通常 ADB で更新し、開始・停止ボタンと保存メッセージの表示順を確認する。録画サービス停止中、USB 状態は変更しない。
+- 通常 ADB 更新成功、スマホの UI 階層で録画開始・停止ボタンが状態メッセージより前にあることを確認。長い保存メッセージでの実機表示・更新版での録画は未検証。更新後の UI は XREAL 未検出を表示したが、USB 一覧には XREAL 1S があり、USB Ethernet は eth1/eth2 に見える。display 状態は内蔵 ON と UNKNOWN が見え、直前に確認した外部 ON のままとは断定できない。変化の時刻・原因と実際のグラス表示は不明。録画サービス停止、USB 設定操作・再起動・superuser はしていない。再接続は行わず状態を維持。
 - One Pro 向け資料の `0x1101` を検証するため、手元の Glasses Control ネイティブライブラリ `.cache/cg/lib/arm64-v8a/libnr_glasses_api.so` を PC 上で逆アセンブル。実行可能 `.text` 内で同値を即値として使う2命令は、どちらもシンボル範囲 `ddr3_init_1600` に含まれ、周囲では多くの値を4バイト単位で別関数へ渡している。この2箇所をカメラ開始要求の実装とみなす根拠はない。別の符号化・間接参照や他ライブラリは調査しておらず、当該コマンド自体の不存在は証明しない。実機操作なし。
 - 検索キャッシュに残る `taowen/ar-glass-lib` の README は One 系の通常 TCP RPC として現在 EDID の取得 `0x275e`・設定 `0x275f`、入力モード取得 `0x2821`・設定 `0x2822` を挙げる。リポジトリ本体は引き続き 404 で、コードと検証履歴を直接確認できず、キャッシュの対象機や時点も独立検証できない。手元の旧調査資料にも EDID RPC のメッセージ形式があり、画面レイアウト切替の候補にはなるが、以前観測した PD partner 不成立・HPD low の状態を復旧する根拠はない。設定コマンドは実機に送っていない。検索キャッシュ: https://github.com/taowen/ar-glass-lib 、手元の形式記録: `.research/xreal-linux/docs/xreal-link-messages.md`。
 - 公開の One Pro 用実装 `Aloim/Xreal-One-Pro-Eye-RGB-Camera-feed-on-Android` の commit `2f1e03dba72270d105e0ce3144d72105109ac005` を PC 上で確認。HID コマンド表には解像度番号付き `0x1101` が記載されるが、同リポジトリの実際のストリーム実装は UVC probe/commit を使用し、検索したコードから `0x1101` の送信・応答や TCP モード変更の実証は確認できない。対象も One Pro で、1S の DP 維持・高ビットレートを証明しない。UVC 2048×1512 の約60fps という記述はあるが実測 Mbps はなく、既存の低ビットレート UVC の改善根拠にもならない。コマンド送信・USB変更・superuser 使用なし。資料: https://github.com/Aloim/Xreal-One-Pro-Eye-RGB-Camera-feed-on-Android/blob/2f1e03dba72270d105e0ce3144d72105109ac005/docs/camera-access-guide.md
