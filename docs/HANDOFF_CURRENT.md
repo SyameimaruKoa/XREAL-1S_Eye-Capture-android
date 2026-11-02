@@ -2,6 +2,11 @@
 
 ## 2026-11-02 最新指示・最優先課題
 
+- 2026-11-03 画面保護の位置移動を実機検証予定。XREAL は接続・HDMI ON、録画停止、画面保護チェック ON。通常 UI から TCP 録画し、保護画面表示後に時刻を隔ててスクリーンショットを比較する。録画停止・端末状態を確認し、元ファイルは残す。USB の再接続や superuser は使わない。
+- 画面保護試験の TCP 録画開始、RecordService 実行中。保護画面出現後に画像を取得し、1分境界の移動を比較してから UI で停止する。
+- 試験 `VID_0088` は UI から停止しサービス消失。ただし PowerShell のバイナリ標準出力リダイレクトで PC 側 PNG が破損し、位置移動は未判定。次はスマホ上に screencap して通常 adb pull する。元録画は保持。
+- 再試験録画を開始、RecordService 実行中。保護画面の画像2枚取得後に UI 停止予定。
+- 再試験 `VID_0089` は UI で正常停止、RecordService 消失、内蔵・外部 display ON。スマホ上の screencap を adb pull した2画像は共に 1080×2400、黒以外の表示領域が `(269,1012,408,252)` から `(404,1012,408,252)` に移動し、時刻を隔てた横方向の位置変更を確認。端末の screencap は display 指定なしの警告があるが、両画像の寸法と内容はスマホ画面の保護 UI に一致。移動は1回のみの観測で全周期・焼付き防止効果は未検証。映像は 1280×720 と JSON に記録、元録画保持。実機設定・superuser 操作なし。
 - 2026-11-03 第二画面の通常権限調査: 実機 Android は 15。Android 公式の partial wake lock 説明 https://developer.android.com/topic/performance/issues/stuck-wakelock はディスプレイ消灯後も CPU を動かす用途と明示し、外部画面点灯の保証はない。AOSP multi-display FAQ https://source.android.com/docs/core/display/multi_display/faq の画面単独 ON/OFF に関する記述は Android 10 に限定され、Android 15 実機へそのまま一般化できない。現コードは録画サービスで partial wake lock、前面 UI で FLAG_KEEP_SCREEN_ON を使い、実機の手動スリープ試験では両 display が OFF。したがって消灯・ロック中の第二画面は未解決で、既存の常時点灯＋黒画面保護は暫定策。実機設定変更・superuser 操作なし。
 - 2026-11-03 Android の通常 logcat を追加確認。11-02 20:16:58.451 に HDMI ディスプレイ削除が記録され、同 58.514 の XREAL USB デバイス削除より約63ms早かった。11-03 01:35:40.632 に表示サブシステムが接続イベント、40.690 に接続通知、40.739 に HDMI ディスプレイ追加（1920×1200、120Hz）を記録し、XREAL USB の同 40.647 追加とほぼ同時に映像側も再認識された。これは OS の認識履歴であり、ユーザーの実際の視認、物理抜き差し・電源状態、約60fps発生との因果関係を示さない。新たな実機設定変更・superuser 操作なし。
 - 2026-11-03 通常 ADB で Android logcat の保存済み USB 履歴を確認。`VID_0085` 後の 11-02 20:16:58.514 に `XREAL 1S` が USB デバイス一覧から削除され、20:16:58.995 に `USB 2.0 BILLBOARD` が追加。11-03 01:35:37.793 に BILLBOARD が削除され、01:35:40.647 に `XREAL 1S` が追加、その直前に eth0/eth1 のリンク状態変化が記録されていた。約60fpsの `VID_0086` は 01:37 頃で、この認識復帰後にあたる。USB デバイスの認識変化は確認できたが、物理抜き差し・ケーブルや電源の状態・グラスの再起動・60fpsへの因果関係は不明。個体識別子は記録しない。現端末は ADB 接続、内蔵・外部 display ON、RecordService 停止。新たな設定変更・superuser 操作なし。
