@@ -53,6 +53,8 @@ public class MainActivity extends Activity {
     private Button stopButton;
     private Button enableButton;
     private Button glassesStatusButton;
+    private Button glasses60Button;
+    private Button glassesNormalButton;
     private Button folderButton;
     private Button resetFolderButton;
     private CheckBox diagnosticsCheck;
@@ -180,6 +182,28 @@ public class MainActivity extends Activity {
         });
         root.addView(glassesStatusButton);
 
+        glasses60Button = new Button(this);
+        glasses60Button.setText("TCP 60fps を準備（本体再起動・試験中）");
+        styleButton(glasses60Button, Color.rgb(45, 45, 45));
+        glasses60Button.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                prepareGlasses60();
+            }
+        });
+        root.addView(glasses60Button);
+
+        glassesNormalButton = new Button(this);
+        glassesNormalButton.setText("TCP 通常設定に戻す（本体再起動）");
+        styleButton(glassesNormalButton, Color.rgb(45, 45, 45));
+        glassesNormalButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                restoreGlassesNormal();
+            }
+        });
+        root.addView(glassesNormalButton);
+
         sideDisplayCheck = new CheckBox(this);
         sideDisplayCheck.setText("XREAL サイド表示用（中央に拡大。オフ: 固定表示用・右上）");
         sideDisplayCheck.setTextColor(Color.WHITE);
@@ -200,7 +224,7 @@ public class MainActivity extends Activity {
         root.addView(routeLabel);
         videoRouteView = new Spinner(this);
         String[] routes = new String[]{
-                "TCP 720p 30fps 約17.0 Mbps",
+                "TCP 通常720p 30fps 約17.0 Mbps（60fps 準備時は1600×1200 約34 Mbps）",
                 "UVC HEVC 1512p 60fps 約2.03 Mbps",
                 "UVC MJPEG 1080p 30fps 約21.16 Mbps（試験中）",
                 "UVC MJPEG 1080p 60fps 約39.16 Mbps（試験中）"
@@ -457,6 +481,10 @@ public class MainActivity extends Activity {
             setStatus("本体の状態を確認中です");
             return;
         }
+        if (preferences.getBoolean("glasses_recovery_required", false)) {
+            setStatus("録画前に本体の状態を確認してください");
+            return;
+        }
         if (RecordService.isRecording()) {
             setStatus("すでに録画中です");
             return;
@@ -551,11 +579,140 @@ public class MainActivity extends Activity {
                     @Override
                     public void run() {
                         glassesStatusPending = false;
+                        if ("本体は通常設定です".equals(message)
+                                || "本体は TCP 1600×1200 / 60 fps の試験設定です".equals(message)) {
+                            preferences.edit().putBoolean("glasses_recovery_required", false).apply();
+                        }
                         setStatus(message);
                     }
                 });
             }
         }, "xreal-status-check").start();
+    }
+
+    private void prepareGlasses60() {
+        if (RecordService.isRecording() || glassesStatusPending) {
+            setStatus("録画または本体の操作が進行中です");
+            return;
+        }
+        if (preferences.getBoolean("glasses_recovery_required", false)) {
+            setStatus("先に本体の状態を確認してください");
+            return;
+        }
+        findDevice();
+        if (device == null || usbManager == null || !usbManager.hasPermission(device)) {
+            setStatus("XREAL 1S の接続と USB 権限を確認してください");
+            return;
+        }
+        glassesStatusPending = true;
+        if (!preferences.edit().putBoolean("glasses_recovery_required", true).commit()) {
+            glassesStatusPending = false;
+            setStatus("安全状態を保存できないため本体の操作を中止しました");
+            return;
+        }
+        setStatus("TCP 60fps を準備しています。本体が再起動します...");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String result;
+                boolean ready = false;
+                boolean rebootRequested = false;
+                try {
+                    GlassesStatusClient client = new GlassesStatusClient(getApplicationContext());
+                    client.prepare60();
+                    rebootRequested = true;
+                    try {
+                        client.rebootGlasses();
+                    } catch (Exception ignored) {
+                        // Reboot can close the socket before its acknowledgement is received.
+                    }
+                    Thread.sleep(30000);
+                    result = new GlassesStatusClient(getApplicationContext()).readStatus();
+                    if ("本体は TCP 1600×1200 / 60 fps の試験設定です".equals(result)) {
+                        ready = true;
+                        result += "。録画を開始できます。次回の本体再起動で通常設定に戻ります。";
+                    } else {
+                        result = "60fps の設定を確認できません: " + result;
+                    }
+                } catch (Exception e) {
+                    result = (rebootRequested ? "再起動後の状態を確認できません: "
+                            : "準備を完了できません。録画前に本体の状態を確認してください: ")
+                            + e.getMessage();
+                }
+                final String message = result;
+                final boolean confirmed = ready;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        glassesStatusPending = false;
+                        if (confirmed) {
+                            preferences.edit().putBoolean("glasses_recovery_required", false).apply();
+                        }
+                        setStatus(message);
+                    }
+                });
+            }
+        }, "xreal-prepare-60fps").start();
+    }
+
+    private void restoreGlassesNormal() {
+        if (RecordService.isRecording() || glassesStatusPending
+                || preferences.getBoolean("glasses_recovery_required", false)) {
+            setStatus("録画または本体の状態を確認してください");
+            return;
+        }
+        findDevice();
+        if (device == null || usbManager == null || !usbManager.hasPermission(device)) {
+            setStatus("XREAL 1S の接続と USB 権限を確認してください");
+            return;
+        }
+        glassesStatusPending = true;
+        if (!preferences.edit().putBoolean("glasses_recovery_required", true).commit()) {
+            glassesStatusPending = false;
+            setStatus("安全状態を保存できないため本体の操作を中止しました");
+            return;
+        }
+        setStatus("通常設定に戻しています。本体が再起動します...");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String result;
+                boolean confirmed = false;
+                try {
+                    GlassesStatusClient client = new GlassesStatusClient(getApplicationContext());
+                    String state = client.readStatus();
+                    if ("本体は通常設定です".equals(state)) {
+                        result = state;
+                        confirmed = true;
+                    } else if ("本体は TCP 1600×1200 / 60 fps の試験設定です".equals(state)) {
+                        try {
+                            client.rebootGlasses();
+                        } catch (Exception ignored) {
+                            // Reboot can close the socket before its acknowledgement is received.
+                        }
+                        Thread.sleep(30000);
+                        result = new GlassesStatusClient(getApplicationContext()).readStatus();
+                        confirmed = "本体は通常設定です".equals(result);
+                    } else {
+                        result = "通常設定に戻せません: " + state;
+                    }
+                } catch (Exception e) {
+                    result = "本体の状態を確認できません: " + e.getMessage();
+                }
+                final String message = result;
+                final boolean ready = confirmed;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        glassesStatusPending = false;
+                        if (ready) {
+                            preferences.edit().putBoolean("glasses_recovery_required", false).apply();
+                        }
+                        setStatus(message);
+                    }
+                });
+            }
+        }, "xreal-restore-normal").start();
     }
 
     private void pollStatus() {
@@ -580,13 +737,19 @@ public class MainActivity extends Activity {
             lastStatus = s;
             statusView.setText(s);
         }
-        startButton.setEnabled(!recording && !glassesStatusPending);
+        startButton.setEnabled(!recording && !glassesStatusPending
+                && !preferences.getBoolean("glasses_recovery_required", false));
         stopButton.setEnabled(recording);
         folderButton.setEnabled(!recording);
         resetFolderButton.setEnabled(!recording);
         diagnosticsCheck.setEnabled(!recording);
         videoRouteView.setEnabled(!recording);
         glassesStatusButton.setEnabled(!recording && !glassesStatusPending);
+        glasses60Button.setEnabled(!recording && !glassesStatusPending
+                && !preferences.getBoolean("glasses_recovery_required", false));
+        glassesNormalButton.setEnabled(!recording && !glassesStatusPending
+                && !preferences.getBoolean("glasses_recovery_required", false));
+        enableButton.setEnabled(!recording && !glassesStatusPending);
         sideDisplayCheck.setEnabled(!recording);
         handler.postDelayed(new Runnable() {
             @Override

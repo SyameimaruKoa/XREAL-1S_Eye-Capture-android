@@ -16,11 +16,15 @@ import java.nio.charset.StandardCharsets;
 /** Reads limited diagnostic state from the glasses over its USB network. */
 final class GlassesStatusClient {
     private static final int COMMAND = 0x700b;
-    private static final String EXPECTED_SCRIPT_HASH =
-            "fb392f7b4c32bf37230e0e4e0f9ae2ce8a40af543908896d19ea18d4a27372cc";
     private static final byte[] STATUS_COMMAND = (
             "sha256sum /etc/services/pilot/run; "
-                    + "test -e /tmp/sdk_global.json && echo config_present || echo config_absent\0")
+                    + "if test -e /tmp/sdk_global.json; then sha256sum /tmp/sdk_global.json; "
+                    + "else echo config_absent; fi\0")
+            .getBytes(StandardCharsets.US_ASCII);
+    private static final byte[] PENDING_COMMAND = (
+            "if test -e " + GlassesStartupPlan.BACKUP + " || test -e "
+                    + GlassesStartupPlan.CANDIDATE + " || test -e " + GlassesStartupPlan.RESTORE
+                    + "; then echo pending; else echo clear; fi\0")
             .getBytes(StandardCharsets.US_ASCII);
     private final Network network;
     private int sequence;
@@ -54,24 +58,56 @@ final class GlassesStatusClient {
     }
 
     String readStatus() throws IOException {
+        if (!"clear\n".equals(execute(PENDING_COMMAND))) {
+            return "本体に未完了の準備があります。状態の確認が必要です";
+        }
+        String value = execute(STATUS_COMMAND);
+        if (!value.startsWith(GlassesStartupPlan.ORIGINAL_HASH + "  /etc/services/pilot/run\n")) {
+            return "本体の起動設定が既知の状態と異なります";
+        }
+        if (value.contains("\nconfig_absent\n")) {
+            return "本体は通常設定です";
+        }
+        if (value.contains("\n" + GlassesStartupPlan.CONFIG_HASH + "  /tmp/sdk_global.json\n")) {
+            return "本体は TCP 1600×1200 / 60 fps の試験設定です";
+        }
+        return "本体に未確認の一時設定があります";
+    }
+
+    void prepare60() throws IOException {
+        if (!"本体は通常設定です".equals(readStatus())) {
+            throw new IOException("本体が通常設定ではありません");
+        }
+        for (String command : GlassesStartupPlan.prepareCommands()) {
+            executeStep(command);
+        }
+        executeStep(GlassesStartupPlan.commitCommand());
+    }
+
+    void rebootGlasses() throws IOException {
         drain();
-        GlassesCommandProtocol.Reply reply = transact(STATUS_COMMAND);
+        GlassesCommandProtocol.Reply reply = transact("reboot\0".getBytes(StandardCharsets.US_ASCII));
+        if (reply.status != 0) {
+            throw new IOException("本体の再起動要求を確認できません");
+        }
+    }
+
+    private void executeStep(String command) throws IOException {
+        String result = execute((command + "\0").getBytes(StandardCharsets.US_ASCII));
+        if (!(GlassesStartupPlan.MARKER + "\n").equals(result)) {
+            throw new IOException("準備を完了できません。状態を確認してください");
+        }
+    }
+
+    private String execute(byte[] command) throws IOException {
+        drain();
+        GlassesCommandProtocol.Reply reply = transact(command);
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         for (int i = 0; i < 8; i++) {
             output.write(reply.payload, 0, reply.payload.length);
             if (reply.status == 0) {
                 drain();
-                String value = new String(output.toByteArray(), StandardCharsets.US_ASCII);
-                if (!value.startsWith(EXPECTED_SCRIPT_HASH + "  /etc/services/pilot/run\n")) {
-                    return "本体の起動設定が既知の状態と異なります";
-                }
-                if (value.contains("\nconfig_absent\n")) {
-                    return "本体は通常設定です";
-                }
-                if (value.contains("\nconfig_present\n")) {
-                    return "本体に一時設定があります。内容は未確認です";
-                }
-                throw new IOException("本体の設定状態を確認できません");
+                return new String(output.toByteArray(), StandardCharsets.US_ASCII);
             }
             if (reply.status != 250) {
                 throw new IOException("本体の状態確認に失敗しました: " + reply.status);
