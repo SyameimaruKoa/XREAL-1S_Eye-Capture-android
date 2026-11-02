@@ -14,7 +14,6 @@ import android.database.Cursor;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
-import android.hardware.display.DisplayManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -26,7 +25,6 @@ import android.os.Looper;
 import android.net.Uri;
 import android.provider.DocumentsContract;
 import android.view.View;
-import android.view.Display;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
@@ -199,49 +197,45 @@ public class MainActivity extends Activity {
         deviceSettings.addView(enableButton);
 
         glassesStatusButton = new Button(this);
-        glassesStatusButton.setText("本体の状態を確認（試験中）");
+        glassesStatusButton.setText("本体の状態を確認（通常権限で調査中）");
         styleButton(glassesStatusButton, Color.rgb(45, 45, 45));
         glassesStatusButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                checkGlassesStatus();
+                setStatus("通常権限で本体の設定を確認する方法を調査中です");
             }
         });
         deviceSettings.addView(glassesStatusButton);
 
         glasses60Button = new Button(this);
-        glasses60Button.setText(PhoneUsbReconnect.isSupported()
-                ? "TCP 60fps を準備（USB 再接続・root）"
-                : "TCP 60fps を準備（本体再起動・試験中）");
+        glasses60Button.setText("TCP 60fps を準備（通常権限で調査中）");
         styleButton(glasses60Button, Color.rgb(45, 45, 45));
         glasses60Button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                prepareGlasses60();
+                setStatus("通常権限で 60fps に切り替える方法を調査中です");
             }
         });
         deviceSettings.addView(glasses60Button);
 
         glassesNormalButton = new Button(this);
-        glassesNormalButton.setText(PhoneUsbReconnect.isSupported()
-                ? "TCP 通常設定に戻す（USB 再接続・root）"
-                : "TCP 通常設定に戻す（本体再起動）");
+        glassesNormalButton.setText("TCP 通常設定に戻す（通常権限で調査中）");
         styleButton(glassesNormalButton, Color.rgb(45, 45, 45));
         glassesNormalButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                restoreGlassesNormal();
+                setStatus("通常権限で本体の設定を戻す方法を調査中です");
             }
         });
         deviceSettings.addView(glassesNormalButton);
 
         glassesRecoverButton = new Button(this);
-        glassesRecoverButton.setText("中断した本体設定を復旧（試験中）");
+        glassesRecoverButton.setText("中断した本体設定を復旧（通常権限で調査中）");
         styleButton(glassesRecoverButton, Color.rgb(45, 45, 45));
         glassesRecoverButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                recoverGlassesPreparation();
+                setStatus("通常権限で本体の設定を復旧する方法を調査中です");
             }
         });
         deviceSettings.addView(glassesRecoverButton);
@@ -676,9 +670,6 @@ public class MainActivity extends Activity {
                 boolean rebootRequested = false;
                 boolean preparationStarted = false;
                 try {
-                    if (PhoneUsbReconnect.isSupported()) {
-                        PhoneUsbReconnect.checkAvailable();
-                    }
                     GlassesStatusClient client = new GlassesStatusClient(getApplicationContext());
                     preparationStarted = true;
                     client.prepare60(new GlassesStatusClient.OwnershipMarker() {
@@ -690,23 +681,16 @@ public class MainActivity extends Activity {
                         }
                     });
                     rebootRequested = true;
-                    if (PhoneUsbReconnect.isSupported()) {
-                        PhoneUsbReconnect.reconnect();
-                    } else {
-                        try {
-                            client.rebootGlasses();
-                        } catch (Exception ignored) {
-                            // Reboot can close the socket before its acknowledgement is received.
-                        }
+                    try {
+                        client.rebootGlasses();
+                    } catch (Exception ignored) {
+                        // Reboot can close the socket before its acknowledgement is received.
                     }
                     Thread.sleep(30000);
                     result = waitForGlassesStatus();
                     if ("本体は TCP 1600×1200 / 60 fps の試験設定です".equals(result)) {
                         ready = true;
                         result += "。録画を開始できます。次回の本体再起動で通常設定に戻ります。";
-                        if (PhoneUsbReconnect.isSupported() && !hasExternalDisplay()) {
-                            result += " 外部画面は検出されていません（USB 2.0 接続時を含む）。";
-                        }
                     } else {
                         result = "60fps の設定を確認できません: " + result;
                     }
@@ -758,9 +742,6 @@ public class MainActivity extends Activity {
                 boolean confirmed = false;
                 boolean reconnectStarted = false;
                 try {
-                    if (PhoneUsbReconnect.isSupported()) {
-                        PhoneUsbReconnect.checkAvailable();
-                    }
                     GlassesStatusClient client = new GlassesStatusClient(getApplicationContext());
                     String state = client.readStatus();
                     if ("本体は通常設定です".equals(state)) {
@@ -768,21 +749,14 @@ public class MainActivity extends Activity {
                         confirmed = true;
                     } else if ("本体は TCP 1600×1200 / 60 fps の試験設定です".equals(state)) {
                         reconnectStarted = true;
-                        if (PhoneUsbReconnect.isSupported()) {
-                            PhoneUsbReconnect.reconnect();
-                        } else {
-                            try {
-                                client.rebootGlasses();
-                            } catch (Exception ignored) {
-                                // Reboot can close the socket before its acknowledgement is received.
-                            }
+                        try {
+                            client.rebootGlasses();
+                        } catch (Exception ignored) {
+                            // Reboot can close the socket before its acknowledgement is received.
                         }
                         Thread.sleep(30000);
                         result = waitForGlassesStatus();
                         confirmed = "本体は通常設定です".equals(result);
-                        if (confirmed && PhoneUsbReconnect.isSupported() && !hasExternalDisplay()) {
-                            result += "。外部画面は検出されていません（USB 2.0 接続時を含む）";
-                        }
                     } else {
                         result = "通常設定に戻せません: " + state;
                     }
@@ -863,19 +837,6 @@ public class MainActivity extends Activity {
             }
         }
         throw last;
-    }
-
-    private boolean hasExternalDisplay() {
-        DisplayManager manager = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
-        if (manager == null) {
-            return false;
-        }
-        for (Display display : manager.getDisplays()) {
-            if (display.getDisplayId() != Display.DEFAULT_DISPLAY && display.isValid()) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private void pollStatus() {
