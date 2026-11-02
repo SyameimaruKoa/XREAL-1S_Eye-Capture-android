@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.hardware.usb.UsbDevice;
@@ -248,6 +249,7 @@ public class MainActivity extends Activity {
         sideDisplayCheck = new CheckBox(this);
         sideDisplayCheck.setText("XREAL サイド表示用（中央に拡大。オフ: 固定表示用・右上）");
         sideDisplayCheck.setTextColor(Color.WHITE);
+        sideDisplayCheck.setButtonTintList(ColorStateList.valueOf(Color.LTGRAY));
         sideDisplayCheck.setChecked(preferences.getBoolean("display_side", false));
         sideDisplayCheck.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
@@ -276,6 +278,9 @@ public class MainActivity extends Activity {
             public View getView(int position, View convertView, android.view.ViewGroup parent) {
                 TextView view = (TextView) super.getView(position, convertView, parent);
                 view.setTextColor(Color.WHITE);
+                view.setSingleLine(false);
+                view.setMaxLines(3);
+                view.setEllipsize(null);
                 return view;
             }
 
@@ -284,6 +289,9 @@ public class MainActivity extends Activity {
                 TextView view = (TextView) super.getDropDownView(position, convertView, parent);
                 view.setTextColor(Color.WHITE);
                 view.setBackgroundColor(Color.rgb(35, 35, 35));
+                view.setSingleLine(false);
+                view.setMaxLines(3);
+                view.setEllipsize(null);
                 return view;
             }
         };
@@ -338,6 +346,7 @@ public class MainActivity extends Activity {
         diagnosticsCheck = new CheckBox(this);
         diagnosticsCheck.setText("診断用 HEVC・WAV を別保存（容量を多く使用）");
         diagnosticsCheck.setTextColor(Color.WHITE);
+        diagnosticsCheck.setButtonTintList(ColorStateList.valueOf(Color.LTGRAY));
         diagnosticsCheck.setChecked(preferences.getBoolean("diagnostics", false));
         diagnosticsCheck.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
@@ -363,6 +372,11 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(Color.BLACK);
         scroll.addView(root);
+        scroll.setOnApplyWindowInsetsListener((view, insets) -> {
+            root.setPadding(48, 48 + insets.getSystemWindowInsetTop(),
+                    48, 48 + insets.getSystemWindowInsetBottom());
+            return insets;
+        });
         return scroll;
     }
 
@@ -877,6 +891,7 @@ public class MainActivity extends Activity {
         long seconds = RecordService.getElapsedSeconds();
         recordingIndicator.setText(recording ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
                 seconds / 3600, (seconds / 60) % 60, seconds % 60) : "待機中");
+        recordingIndicator.setTextColor(recording ? Color.rgb(255, 95, 95) : Color.WHITE);
         phoneWaveform.setVisibility(recording ? View.VISIBLE : View.GONE);
         if (recording) {
             phoneWaveform.addPeak(RecordService.getAudioPeak());
