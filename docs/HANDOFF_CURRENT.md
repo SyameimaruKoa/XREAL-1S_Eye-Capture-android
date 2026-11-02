@@ -2,6 +2,9 @@
 
 ## 現在の状態（2026-11-03、以下の開始予定・実行中の記録より優先）
 
+- ユーザーが XREAL を直接接続し直した。Android は XREAL 1S、USB Ethernet、1920×1200 の外部 display ON を検出し、録画サービス停止。グラスの実際の視認は未確認。接続後の TCP 映像レートと DP 維持を調べるため、通常 UI で短時間録画して停止する。設定変更・superuser 使用なし、録画保持。
+- 通常 USB 権限を許可後、TCP 録画開始・RecordService 稼働中。UI から停止し結果を確認する。
+- `VID_0102` を通常 UI で停止、サービス消失。JSON は TCP HEVC 1280×720・1348フレーム・受信平均59.43fps・33.38Mbps、音声処理 completed。停止後も Android は外部 display ON を認識。録画ファイル保持、全体復号・音声内容・実際の外部画面の視認は未確認。再接続後もこの試験では約60fpsだが、発生条件・再現性や通常権限での切替を証明しない。superuser 不使用。goal のシステム状態はこの時点で blocked のままで、再開は user/system 制御。
 - 現在の複数 USB 音声機器接続ではユーザー報告どおり XREAL への DP 接続がない。録画サービス停止、スマホ display OFF。DP 維持・復旧の実機検証を再開するため、XREAL の直接接続に戻せるかユーザーへ確認中。再接続はまだ確認していない。通常権限でのモード切替方法も未解決。
 - `VID_0101` 録画時の通常 logcat を再確認。`audio routed id=516 type=22 name=USB-Audio - XREAL 1S`、録画状態 `route=22/516/USB-Audio - XREAL 1S systemSilenced=false` を確認。Android が同時に列挙した USB 入力は XREAL 1件で、複数候補の優先選択試験ではない。次に元ファイルを保持して PC にコピーし、音声・映像を復号して検証する。録画サービス停止、接続変更・superuser なし。
 - コピーはコマンドセッション `29886` で実行中。完了後に復号する。
