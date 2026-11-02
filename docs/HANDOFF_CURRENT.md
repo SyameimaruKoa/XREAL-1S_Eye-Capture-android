@@ -2,6 +2,7 @@
 
 ## 現在の状態（2026-11-03、以下の開始予定・実行中の記録より優先）
 
+- 公開の One Pro 用実装 `Aloim/Xreal-One-Pro-Eye-RGB-Camera-feed-on-Android` の commit `2f1e03dba72270d105e0ce3144d72105109ac005` を PC 上で確認。HID コマンド表には解像度番号付き `0x1101` が記載されるが、同リポジトリの実際のストリーム実装は UVC probe/commit を使用し、検索したコードから `0x1101` の送信・応答や TCP モード変更の実証は確認できない。対象も One Pro で、1S の DP 維持・高ビットレートを証明しない。UVC 2048×1512 の約60fps という記述はあるが実測 Mbps はなく、既存の低ビットレート UVC の改善根拠にもならない。コマンド送信・USB変更・superuser 使用なし。資料: https://github.com/Aloim/Xreal-One-Pro-Eye-RGB-Camera-feed-on-Android/blob/2f1e03dba72270d105e0ce3144d72105109ac005/docs/camera-access-guide.md
 - 放置画面の焼付き対策の実機確認を開始する。録画サービス停止、両 display ON、TCP 自動選択・画面保護有効を確認。通常 UI から録画し、放置画面の位置を1分境界の前後で比較した後、通常 UI から停止する。USB 設定変更・superuser 使用なし、録画は保持する。
 - 通常 UI から録画開始し RecordService 実行中。放置画面を取得して停止する。
 - 確認処理の待機応答が予想外に長く、放置位置の比較画像は取得できなかった。復帰後に通常 UI から停止し、サービス消失と両 display ON を確認。`VID_0100.mp4` は端末に保持、UI 表示は33284映像フレーム・平均59.41 fps・34.04 Mbps、約560秒の音声フレームを報告。全体復号と音声内容は未検証。放置画面の1分境界前後の移動は引き続き未確認。USB 設定変更・superuser 使用なし。
