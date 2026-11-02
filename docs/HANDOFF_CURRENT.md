@@ -10,6 +10,14 @@
 
 ## 2026-11-02 最新指示・最優先課題
 
+- 2026-11-03 Android 15 実機の `dumpsys desktopmode` は XREAL を外部ディスプレイとして認識し、現状 DeX 無効。手動スリープ中の外部表示維持について、通常の Samsung DeX が代替動作を提供するか調べるため、録画停止中に通常 UI から DeX を起動できるかを確認する。USB 接続・グラス設定・superuser 操作はしない。試験後は元の画面モードへ戻し、DP と TCP 動作を確認する。
+- 通常クイック設定の DeX タイルを ADB からクリックし、`mDualModeEnabled=true`・外部 display ID 2・両画面 ON を確認。録画は停止中。これから電源ボタン相当でスマホを一度消灯し、内部・外部 display 状態を確認後、直ちに復帰する。DeX は試験後 OFF に戻す。
+- DeX 有効状態で KEYCODE_SLEEP の約5秒後、Android display 順に内蔵 OFF・外部 ON、power は Awake、DeX dual 有効を確認。DeX 無効時の両方 OFF と異なる。まだ録画中の Presentation の維持、実際の画面内容・装着時視認、再現性は未確認。これからスマホを点灯し、TCP 録画を開始して同条件で画面状態と外部画像を確認し、その後停止・DeX OFF に戻す。
+- スマホ復帰後、既存 Activity が DeX 画面側に移動していたため、録画サービス停止を確認したうえ通常 ADB でアプリのみ停止し、スマホ display 0 に起動し直した。DeX は有効、これから通常 UI で録画開始。
+- DeX 有効で TCP 録画開始、RecordService 稼働中。スマホ消灯後に外部表示とサービスを確認し、復帰して停止する。
+- 消灯中は内蔵 OFF・外部 ON、RecordService 稼働。外部 display 指定スクリーンショット `.cache/dex-rec-check.png` は録画表示ではなく DeX ホームだったため、DeX の存在だけで要求を満たさない。スマホを復帰し UI で `VID_0092` を停止、サービス消失。次に DeX を OFF に戻し表示・接続を確認する。録画ファイル保持。
+- DeX OFF 復帰後は `mDualModeEnabled=false`、内蔵・外部 display ON。`VID_0092` JSON は3907フレーム・59.421fps・33.953 Mbps、音声処理 completed。通常の抜き差し・superuser 操作なし。DeX が外部表示候補から外れる理由を Android の display 情報で確認するため、録画停止のまま DeX を一時的にもう一度 ON にし、読み取り後 OFF に戻す。
+- DeX ON 時の Android display 情報では `Desktop` display ID 2 は `FLAG_OWN_DISPLAY_GROUP`・`FLAG_NO_LOCK_PRESENTATION` を持ち、`FLAG_PRESENTATION` はなかった。一方、別の HDMI 論理 display ID 18 は `FLAG_PRESENTATION` を持った。現在のサービスは presentation カテゴリだけを選ぶ。両 display の物理表示への構成と今回 Presentation が見えなかった直接原因は未確定だが、DeX デスクトップに Activity を表示する代替案を検証する根拠になる。読み取り後 DeX OFF・両 display ON・録画サービス停止を再確認。2回目の DeX OFF 後の再録画は未実施。スマホに残した一時画像は削除。superuser 不使用。
 - 2026-11-03 音声ゼロ表示の対象を修正: 判定は USB 32-bit PCM 全体ではなく左chを16-bitに変換した AAC 入力で、連続3秒ゼロの場合に成立する。従来の「音声データが完全にゼロ」は RAW 全ビットや録画全体を示すと誤解され得るため、スマホ通常画面・保護画面・XREAL 画面を「録音用の音声が3秒間ゼロ」に変更した。音声処理そのものは変更しない。これからビルド確認、通常 ADB で導入予定。録画停止・両画面 ON、superuser 不使用。
 - ビルド・通常 ADB インストール成功、内蔵・外部 display ON。既存 AudioSilenceDetectorTest は合格。音声ゼロ状態の修正文言を実機で発生させて表示する試験は未実施。音声処理・グラス設定は変えていない。
 - 2026-11-03 設定付き StartVideo の公開経路を追加調査。公開 driver の文字列群には `StartVideo, StartMuxer`・`StartRgbCamera`・`StartAudioIn` と対応する停止処理があり、この経路は単なる TCP カメラ fps setter と決めつけられない。既存の名前一覧から該当する外部 StartVideo RPC 名は確認できておらず、候補を実機送信していない。要求の有無、映像 TCP 出力との共存、保存先・停止挙動は未確認。PC 上の静的調査のみ。
