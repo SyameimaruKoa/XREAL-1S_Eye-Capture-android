@@ -2,6 +2,7 @@
 
 ## 現在の状態（2026-11-03、以下の開始予定・実行中の記録より優先）
 
+- 2026-11-03 現行 build/classes で Java テスト9種（AudioSilenceDetector、GlassesCommandProtocol、GlassesRecoveryPlan、GlassesStartupPlan、MatroskaWriter、TcpReadProgress、TcpTimestampRecovery、UsbMicrophoneSelector、VideoWriter）と Python TCP 順序テスト3件を実行し合格。Matroska テストは FFmpeg で生成した JPEG/AAC を入力し、生成 MKV を ffprobe と全体復号で確認。最初は Matroska テストに必須入力を渡さず実行してエラーとなったが、入力を用意した再実行は成功。旧特権機能クラスの単体テストは PC 上で行っただけで、端末やグラスの特権サービスを実行していない。これらは DP 切替や実機の全機能・長時間安定性を証明しない。
 - USB マイク複数候補を実機で用意できないため、選択判断を Android 非依存の小クラスに分離し、XREAL優先、名前不明1件、名前不明複数、XREAL複数を検証するテストを追加中。従来 XREAL 名が複数なら最初を選んでいたが、どちらが対象か確定できないため曖昧として音声を開始しない。通常 XREAL 1台・録画動作は再度実機検証する。superuser 不使用。
 - 選択テスト合格、APK ビルドと通常 ADB インストール成功。これから通常録画・音声ルートを実機確認する。
 - 通常 UI から実機録画開始、RecordService 実行中。ルート確認後に UI 停止する。
