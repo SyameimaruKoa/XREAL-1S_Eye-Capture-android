@@ -2,6 +2,7 @@
 
 ## 現在の状態（2026-11-03、以下の開始予定・実行中の記録より優先）
 
+- 検索キャッシュに残る `taowen/ar-glass-lib` の README は One 系の通常 TCP RPC として現在 EDID の取得 `0x275e`・設定 `0x275f`、入力モード取得 `0x2821`・設定 `0x2822` を挙げる。リポジトリ本体は引き続き 404 で、コードと検証履歴を直接確認できず、キャッシュの対象機や時点も独立検証できない。手元の旧調査資料にも EDID RPC のメッセージ形式があり、画面レイアウト切替の候補にはなるが、以前観測した PD partner 不成立・HPD low の状態を復旧する根拠はない。設定コマンドは実機に送っていない。検索キャッシュ: https://github.com/taowen/ar-glass-lib 、手元の形式記録: `.research/xreal-linux/docs/xreal-link-messages.md`。
 - 公開の One Pro 用実装 `Aloim/Xreal-One-Pro-Eye-RGB-Camera-feed-on-Android` の commit `2f1e03dba72270d105e0ce3144d72105109ac005` を PC 上で確認。HID コマンド表には解像度番号付き `0x1101` が記載されるが、同リポジトリの実際のストリーム実装は UVC probe/commit を使用し、検索したコードから `0x1101` の送信・応答や TCP モード変更の実証は確認できない。対象も One Pro で、1S の DP 維持・高ビットレートを証明しない。UVC 2048×1512 の約60fps という記述はあるが実測 Mbps はなく、既存の低ビットレート UVC の改善根拠にもならない。コマンド送信・USB変更・superuser 使用なし。資料: https://github.com/Aloim/Xreal-One-Pro-Eye-RGB-Camera-feed-on-Android/blob/2f1e03dba72270d105e0ce3144d72105109ac005/docs/camera-access-guide.md
 - 放置画面の焼付き対策の実機確認を開始する。録画サービス停止、両 display ON、TCP 自動選択・画面保護有効を確認。通常 UI から録画し、放置画面の位置を1分境界の前後で比較した後、通常 UI から停止する。USB 設定変更・superuser 使用なし、録画は保持する。
 - 通常 UI から録画開始し RecordService 実行中。放置画面を取得して停止する。
