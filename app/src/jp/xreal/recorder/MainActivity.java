@@ -928,6 +928,7 @@ public class MainActivity extends Activity {
             }
             long saverSeconds = RecordService.getElapsedSeconds();
             String audioState = s != null && s.startsWith("録画中: 音声停止") ? "音声停止"
+                    : !RecordService.hasAudioData() ? "音声データを待機中"
                     : RecordService.isAudioExactZero() ? "音声データがゼロ"
                     : RecordService.isAudioQuiet() ? "音声が小さいか無音" : "音声入力あり";
             screenSaverStatus.setText(String.format(Locale.US, "● REC  %02d:%02d:%02d\n%s\n\nタップで戻る",
@@ -956,7 +957,8 @@ public class MainActivity extends Activity {
             phoneWaveform.addPeak(RecordService.getAudioPeak());
         }
         audioIndicator.setText(!recording ? "" : s != null && s.startsWith("録画中: 音声停止")
-                ? "音声停止・映像のみ録画中" : RecordService.isAudioExactZero()
+                ? "音声停止・映像のみ録画中" : !RecordService.hasAudioData()
+                ? "音声データを待機中" : RecordService.isAudioExactZero()
                 ? "音声データが完全にゼロです" : RecordService.isAudioQuiet()
                 ? "音声入力が非常に小さい状態です" : "USBマイク · モノラル");
         // The service's idle text must not overwrite this Activity's USB/UVC status.

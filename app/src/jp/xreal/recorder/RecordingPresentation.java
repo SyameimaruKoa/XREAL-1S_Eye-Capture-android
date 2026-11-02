@@ -76,7 +76,7 @@ final class RecordingPresentation extends Presentation {
         return view;
     }
 
-    void updateStatus(String state, boolean stopping, boolean silence, boolean exactZero,
+    void updateStatus(String state, boolean stopping, boolean silence, boolean audioSeen, boolean exactZero,
                       int audioPeak, long elapsedSeconds,
                       String rateSummary) {
         if (headline == null) {
@@ -116,6 +116,9 @@ final class RecordingPresentation extends Presentation {
         } else if (error) {
             audio.setText("スマートフォンで詳細を確認");
             audio.setTextColor(Color.rgb(255, 185, 80));
+        } else if (!audioSeen && ready) {
+            audio.setText("音声データを待機中");
+            audio.setTextColor(Color.LTGRAY);
         } else if (exactZero) {
             audio.setText("音声データが完全にゼロです");
             audio.setTextColor(Color.rgb(255, 185, 80));

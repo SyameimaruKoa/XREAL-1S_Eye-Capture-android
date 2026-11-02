@@ -63,6 +63,7 @@ public final class RecordService extends Service {
     private volatile boolean audioExactZero;
     private static volatile boolean phoneExactZero;
     private static volatile boolean phoneQuiet;
+    private static volatile boolean phoneAudioSeen;
     private static final AtomicInteger phonePeak = new AtomicInteger();
     private final AtomicInteger audioPeak = new AtomicInteger();
     private volatile boolean audioSilenceEverDetected;
@@ -111,6 +112,7 @@ public final class RecordService extends Service {
 
     static boolean isAudioExactZero() { return phoneExactZero; }
     static boolean isAudioQuiet() { return phoneQuiet; }
+    static boolean hasAudioData() { return phoneAudioSeen; }
     static int getAudioPeak() { return phonePeak.getAndSet(0); }
     static long getElapsedSeconds() {
         return recording ? Math.max(0, (SystemClock.elapsedRealtime() - recordingStartedMs) / 1000) : 0;
@@ -194,6 +196,7 @@ public final class RecordService extends Service {
             audioExactZero = false;
             phoneExactZero = false;
             phoneQuiet = false;
+            phoneAudioSeen = false;
             phonePeak.set(0);
             audioPeak.set(0);
             audioSilenceEverDetected = false;
@@ -428,6 +431,7 @@ public final class RecordService extends Service {
                             audioExactZero = exactZero;
                             phonePeak.accumulateAndGet(peak, Math::max);
                             phoneExactZero = exactZero;
+                            phoneAudioSeen = true;
                         }
 
                         @Override
@@ -615,7 +619,7 @@ public final class RecordService extends Service {
             }
         }
         long elapsed = Math.max(0, (SystemClock.elapsedRealtime() - recordingStartedMs) / 1000);
-        recordingPresentation.updateStatus(status, stopRequested, audioSilenceDetected,
+        recordingPresentation.updateStatus(status, stopRequested, audioSilenceDetected, phoneAudioSeen,
                 audioExactZero, audioPeak.getAndSet(0), elapsed,
                 getVideoRateSummary());
     }
