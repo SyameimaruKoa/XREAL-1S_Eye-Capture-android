@@ -74,14 +74,52 @@ final class GlassesStatusClient {
         return "本体に未確認の一時設定があります";
     }
 
-    void prepare60() throws IOException {
+    interface OwnershipMarker {
+        void markOwned() throws IOException;
+    }
+
+    void prepare60(OwnershipMarker ownership) throws IOException {
         if (!"本体は通常設定です".equals(readStatus())) {
             throw new IOException("本体が通常設定ではありません");
         }
-        for (String command : GlassesStartupPlan.prepareCommands()) {
-            executeStep(command);
+        String[] commands = GlassesStartupPlan.prepareCommands();
+        for (int i = 0; i < commands.length; i++) {
+            if (i == 2) {
+                ownership.markOwned();
+            }
+            executeStep(commands[i]);
         }
         executeStep(GlassesStartupPlan.commitCommand());
+    }
+
+    String recoverOwnedPreparation(boolean owned) throws IOException {
+        String original = inspect(GlassesStartupPlan.ORIGINAL);
+        String backup = inspect(GlassesStartupPlan.BACKUP);
+        String candidate = inspect(GlassesStartupPlan.CANDIDATE);
+        String restore = inspect(GlassesStartupPlan.RESTORE);
+        String[] commands = GlassesRecoveryPlan.commands(owned, original, backup, candidate, restore);
+        for (String command : commands) {
+            executeStep(command);
+        }
+        return readStatus();
+    }
+
+    private String inspect(String path) throws IOException {
+        String command = "p=" + path + "; if test -L \"$p\"; then echo unsafe; "
+                + "elif test -f \"$p\"; then sha256sum \"$p\"; elif test -e \"$p\"; "
+                + "then echo unsafe; else echo absent; fi";
+        String result = execute((command + "\0").getBytes(StandardCharsets.US_ASCII));
+        if ("absent\n".equals(result)) {
+            return GlassesRecoveryPlan.ABSENT;
+        }
+        if ("unsafe\n".equals(result)) {
+            return GlassesRecoveryPlan.UNSAFE;
+        }
+        String suffix = "  " + path + "\n";
+        if (!result.endsWith(suffix) || result.length() != 64 + suffix.length()) {
+            throw new IOException("復旧対象の情報を確認できません");
+        }
+        return result.substring(0, 64);
     }
 
     void rebootGlasses() throws IOException {

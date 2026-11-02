@@ -37,9 +37,9 @@ final class GlassesStartupPlan {
         commands.add("test ! -e " + BACKUP + " && test ! -e " + CANDIDATE
                 + " && test ! -e " + RESTORE + " && test ! -e " + CONFIG + success());
         commands.add(hashCheck(ORIGINAL_HASH, ORIGINAL) + success());
-        commands.add("cp -p " + ORIGINAL + " " + BACKUP + " && "
+        commands.add("ln " + ORIGINAL + " " + BACKUP + " && "
                 + hashCheck(ORIGINAL_HASH, BACKUP) + success());
-        commands.add("head -n -1 " + BACKUP + " > " + CANDIDATE + success());
+        commands.add("set -C; head -n -1 " + BACKUP + " > " + CANDIDATE + success());
         for (String line : BOOT_LINES) {
             commands.add("printf '%s\\n' " + quote(line) + " >> " + CANDIDATE + success());
         }

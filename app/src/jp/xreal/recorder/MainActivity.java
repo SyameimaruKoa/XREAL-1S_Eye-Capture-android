@@ -55,6 +55,7 @@ public class MainActivity extends Activity {
     private Button glassesStatusButton;
     private Button glasses60Button;
     private Button glassesNormalButton;
+    private Button glassesRecoverButton;
     private Button folderButton;
     private Button resetFolderButton;
     private CheckBox diagnosticsCheck;
@@ -203,6 +204,17 @@ public class MainActivity extends Activity {
             }
         });
         root.addView(glassesNormalButton);
+
+        glassesRecoverButton = new Button(this);
+        glassesRecoverButton.setText("中断した本体設定を復旧（試験中）");
+        styleButton(glassesRecoverButton, Color.rgb(45, 45, 45));
+        glassesRecoverButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                recoverGlassesPreparation();
+            }
+        });
+        root.addView(glassesRecoverButton);
 
         sideDisplayCheck = new CheckBox(this);
         sideDisplayCheck.setText("XREAL サイド表示用（中央に拡大。オフ: 固定表示用・右上）");
@@ -570,7 +582,7 @@ public class MainActivity extends Activity {
             public void run() {
                 String result;
                 try {
-                    result = new GlassesStatusClient(getApplicationContext()).readStatus();
+                    result = waitForGlassesStatus();
                 } catch (Exception e) {
                     result = "本体の状態を確認できません: " + e.getMessage();
                 }
@@ -581,7 +593,8 @@ public class MainActivity extends Activity {
                         glassesStatusPending = false;
                         if ("本体は通常設定です".equals(message)
                                 || "本体は TCP 1600×1200 / 60 fps の試験設定です".equals(message)) {
-                            preferences.edit().putBoolean("glasses_recovery_required", false).apply();
+                            preferences.edit().putBoolean("glasses_recovery_required", false)
+                                    .putBoolean("glasses_owns_preparation", false).apply();
                         }
                         setStatus(message);
                     }
@@ -619,7 +632,14 @@ public class MainActivity extends Activity {
                 boolean rebootRequested = false;
                 try {
                     GlassesStatusClient client = new GlassesStatusClient(getApplicationContext());
-                    client.prepare60();
+                    client.prepare60(new GlassesStatusClient.OwnershipMarker() {
+                        @Override
+                        public void markOwned() throws java.io.IOException {
+                            if (!preferences.edit().putBoolean("glasses_owns_preparation", true).commit()) {
+                                throw new java.io.IOException("復旧情報を保存できません");
+                            }
+                        }
+                    });
                     rebootRequested = true;
                     try {
                         client.rebootGlasses();
@@ -646,7 +666,8 @@ public class MainActivity extends Activity {
                     public void run() {
                         glassesStatusPending = false;
                         if (confirmed) {
-                            preferences.edit().putBoolean("glasses_recovery_required", false).apply();
+                            preferences.edit().putBoolean("glasses_recovery_required", false)
+                                    .putBoolean("glasses_owns_preparation", false).apply();
                         }
                         setStatus(message);
                     }
@@ -691,7 +712,7 @@ public class MainActivity extends Activity {
                             // Reboot can close the socket before its acknowledgement is received.
                         }
                         Thread.sleep(30000);
-                        result = new GlassesStatusClient(getApplicationContext()).readStatus();
+                        result = waitForGlassesStatus();
                         confirmed = "本体は通常設定です".equals(result);
                     } else {
                         result = "通常設定に戻せません: " + state;
@@ -713,6 +734,65 @@ public class MainActivity extends Activity {
                 });
             }
         }, "xreal-restore-normal").start();
+    }
+
+    private void recoverGlassesPreparation() {
+        if (RecordService.isRecording() || glassesStatusPending
+                || !preferences.getBoolean("glasses_recovery_required", false)
+                || !preferences.getBoolean("glasses_owns_preparation", false)) {
+            setStatus("このアプリが作成した未完了の準備を確認できません");
+            return;
+        }
+        findDevice();
+        if (device == null || usbManager == null || !usbManager.hasPermission(device)) {
+            setStatus("XREAL 1S の接続と USB 権限を確認してください");
+            return;
+        }
+        glassesStatusPending = true;
+        setStatus("中断した本体設定を確認しています...");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String result;
+                boolean confirmed = false;
+                try {
+                    result = new GlassesStatusClient(getApplicationContext()).recoverOwnedPreparation(
+                            preferences.getBoolean("glasses_owns_preparation", false));
+                    confirmed = "本体は通常設定です".equals(result)
+                            || "本体は TCP 1600×1200 / 60 fps の試験設定です".equals(result);
+                } catch (Exception e) {
+                    result = "自動復旧できません: " + e.getMessage();
+                }
+                final String message = result;
+                final boolean ready = confirmed;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        glassesStatusPending = false;
+                        if (ready) {
+                            preferences.edit().putBoolean("glasses_recovery_required", false)
+                                    .putBoolean("glasses_owns_preparation", false).apply();
+                        }
+                        setStatus(message);
+                    }
+                });
+            }
+        }, "xreal-recover-preparation").start();
+    }
+
+    private String waitForGlassesStatus() throws Exception {
+        Exception last = null;
+        for (int attempt = 0; attempt < 4; attempt++) {
+            try {
+                return new GlassesStatusClient(getApplicationContext()).readStatus();
+            } catch (Exception e) {
+                last = e;
+                if (attempt < 3) {
+                    Thread.sleep(10000);
+                }
+            }
+        }
+        throw last;
     }
 
     private void pollStatus() {
@@ -749,6 +829,9 @@ public class MainActivity extends Activity {
                 && !preferences.getBoolean("glasses_recovery_required", false));
         glassesNormalButton.setEnabled(!recording && !glassesStatusPending
                 && !preferences.getBoolean("glasses_recovery_required", false));
+        glassesRecoverButton.setEnabled(!recording && !glassesStatusPending
+                && preferences.getBoolean("glasses_recovery_required", false)
+                && preferences.getBoolean("glasses_owns_preparation", false));
         enableButton.setEnabled(!recording && !glassesStatusPending);
         sideDisplayCheck.setEnabled(!recording);
         handler.postDelayed(new Runnable() {
@@ -760,7 +843,6 @@ public class MainActivity extends Activity {
     }
 
     private void setStatus(String s) {
-        lastStatus = s;
         if (statusView != null) {
             statusView.setText(s);
         }
