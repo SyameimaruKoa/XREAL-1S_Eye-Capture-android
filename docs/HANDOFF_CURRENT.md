@@ -2,6 +2,7 @@
 
 ## 現在の状態（2026-11-03、以下の開始予定・実行中の記録より優先）
 
+- PC 上の Android SDK バイナリを追加解析。`NRAxrCameraGetCapabilitiesRequest` 型名を返す仮想表（`0x23a2148`）の処理 `0x195bb88` は、空の一時オブジェクトを構築し、対象オブジェクト `+0x10` から16bit 値を読み、共通処理 `0x2037fd4` に渡す。これは能力照会候補の要求データと制御番号を追う手掛かりだが、その16bit値、空オブジェクトの通信上の完全なエンコード、port 50051 とメソッドの接続、実機で副作用がないことは未確認。実機へ要求は送っていない。superuser 不使用。
 - SDK の AXR 要求形式を特定するため、PC の保存済み `libnr_service.so` でメソッド名・要求型名への AArch64 参照を走査中。セッション `37693` で実行、実機への要求や superuser 操作なし。走査は命令・再配置の一部に限られ、参照が見つからなくても不存在は意味しない。
 - 走査 `37693` は完了。`/frames.service.Frames/StartStreaming` の文字列は `0x1c1c7c8` で参照され、周辺で構造体の先頭に格納されている。`NRAxrCameraGetCapabilitiesRequest` と `NRAxrEnvelopeRequestToFrames` はそれぞれ型名文字列を構築する複数箇所から参照される。文字列と構造体だけでは、この gRPC メソッドと各要求型の接続、シリアライズフィールド、実機での挙動を確定できない。前述のメソッドは開始操作の可能性があるため送信していない。PC 読取りのみ、superuser 不使用。
 - `libnr_service.so` の AXR 型情報は一部がコード生成されたバイナリ内にあり、フィールド番号・要求形式は文字列だけでは確定できない。前回は reflection v1alpha のみ試したため、別仕様の標準 gRPC reflection v1 のサービス一覧を同じ USB Network 固定・一時ローカル中継で1回だけ照会する。カメラの開始や設定は要求せず、録画停止・両 display ON、完了後に中継と転送を除去。superuser 不使用。
