@@ -136,12 +136,15 @@ final class RecordingPresentation extends Presentation {
     static final class WaveformView extends View {
         private final int[] peaks = new int[48];
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint baselinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private int next;
 
         WaveformView(Context context) {
             super(context);
             paint.setColor(Color.LTGRAY);
             paint.setStrokeWidth(4);
+            baselinePaint.setColor(Color.DKGRAY);
+            baselinePaint.setStrokeWidth(2);
         }
 
         void addPeak(int peak) {
@@ -161,6 +164,7 @@ final class RecordingPresentation extends Presentation {
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             float center = getHeight() / 2.0f;
+            canvas.drawLine(0, center, getWidth(), center, baselinePaint);
             for (int i = 0; i < peaks.length; i++) {
                 int peak = peaks[(next + i) % peaks.length];
                 float amplitude = (float) Math.sqrt(Math.min(32768, peak) / 32768.0)
