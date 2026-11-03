@@ -75,6 +75,7 @@ public final class RecordService extends Service {
     private static volatile long recordingStartedMs;
     private DisplayManager displayManager;
     private RecordingPresentation recordingPresentation;
+    private int presentationMode = -1;
     private final Handler displayHandler = new Handler(Looper.getMainLooper());
     private final Runnable displayUpdate = new Runnable() {
         @Override
@@ -604,16 +605,22 @@ public final class RecordService extends Service {
             dismissRecordingDisplay();
             return;
         }
+        int displayMode = RecordingPresentation.getDisplayMode(
+                getSharedPreferences("recording_options", MODE_PRIVATE));
+        if (displayMode == RecordingPresentation.MODE_OFF) {
+            dismissRecordingDisplay();
+            return;
+        }
         if (recordingPresentation != null
-                && recordingPresentation.getDisplay().getDisplayId() != target.getDisplayId()) {
+                && (recordingPresentation.getDisplay().getDisplayId() != target.getDisplayId()
+                || presentationMode != displayMode)) {
             dismissRecordingDisplay();
         }
         if (recordingPresentation == null) {
             try {
-                boolean sideMode = getSharedPreferences("recording_options", MODE_PRIVATE)
-                        .getBoolean("display_side", false);
-                recordingPresentation = new RecordingPresentation(this, target, sideMode);
+                recordingPresentation = new RecordingPresentation(this, target, displayMode);
                 recordingPresentation.show();
+                presentationMode = displayMode;
             } catch (RuntimeException e) {
                 Log.w(TAG, "external recording display unavailable", e);
                 dismissRecordingDisplay();
@@ -635,6 +642,7 @@ public final class RecordService extends Service {
             }
             recordingPresentation = null;
         }
+        presentationMode = -1;
     }
 
     private void releaseWakeLock() {

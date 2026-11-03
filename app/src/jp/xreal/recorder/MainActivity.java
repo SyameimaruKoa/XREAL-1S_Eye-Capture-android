@@ -58,7 +58,7 @@ public class MainActivity extends Activity {
     private TextView recordingIndicator;
     private TextView audioIndicator;
     private RecordingPresentation.WaveformView phoneWaveform;
-    private CheckBox sideDisplayCheck;
+    private Button displayModeButton;
     private CheckBox keepScreenCheck;
     private FrameLayout screenSaver;
     private TextView screenSaverStatus;
@@ -87,6 +87,11 @@ public class MainActivity extends Activity {
             "UVC HEVC\n2048×1512 / 60 fps · 約2.03 Mbps",
             "UVC MJPEG（試験中）\n1920×1080 / 30 fps · 約21.16 Mbps",
             "UVC MJPEG（試験中）\n1920×1080 / 60 fps · 約39.16 Mbps"
+    };
+    private static final String[] DISPLAY_MODES = {
+            "固定表示（右上）",
+            "サイド表示（中央・拡大）",
+            "オフ（通常の複製）"
     };
     private SharedPreferences preferences;
     private String outputTree;
@@ -264,18 +269,24 @@ public class MainActivity extends Activity {
         });
         deviceSettings.addView(glassesRecoverButton);
 
-        sideDisplayCheck = new CheckBox(this);
-        sideDisplayCheck.setText("XREAL サイド表示用（中央に拡大。オフ: 固定表示用・右上）");
-        sideDisplayCheck.setTextColor(Color.WHITE);
-        sideDisplayCheck.setButtonTintList(ColorStateList.valueOf(Color.LTGRAY));
-        sideDisplayCheck.setChecked(preferences.getBoolean("display_side", false));
-        sideDisplayCheck.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton button, boolean checked) {
-                preferences.edit().putBoolean("display_side", checked).apply();
-            }
+        displayModeButton = new Button(this);
+        styleButton(displayModeButton, Color.rgb(45, 45, 45));
+        displayModeButton.setText("XREAL 第二画面: "
+                + DISPLAY_MODES[RecordingPresentation.getDisplayMode(preferences)]);
+        displayModeButton.setOnClickListener(view -> {
+            int selected = RecordingPresentation.getDisplayMode(preferences);
+            AlertDialog dialog = new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+                    .setTitle("XREAL 第二画面")
+                    .setSingleChoiceItems(DISPLAY_MODES, selected, (choice, index) -> {
+                        preferences.edit().putInt(RecordingPresentation.MODE_PREFERENCE, index).apply();
+                        displayModeButton.setText("XREAL 第二画面: " + DISPLAY_MODES[index]);
+                        choice.dismiss();
+                    })
+                    .setNegativeButton("キャンセル", null)
+                    .create();
+            dialog.show();
         });
-        root.addView(sideDisplayCheck);
+        root.addView(displayModeButton);
 
         keepScreenCheck = new CheckBox(this);
         keepScreenCheck.setText("録画中はスマホを点灯（30秒後に画面保護）");
@@ -1020,7 +1031,6 @@ public class MainActivity extends Activity {
                 && preferences.getBoolean("glasses_recovery_required", false)
                 && preferences.getBoolean("glasses_owns_preparation", false));
         enableButton.setEnabled(!recording && !glassesStatusPending);
-        sideDisplayCheck.setEnabled(!recording);
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {

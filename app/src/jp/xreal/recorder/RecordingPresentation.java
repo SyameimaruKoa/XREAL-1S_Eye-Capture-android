@@ -2,6 +2,7 @@ package jp.xreal.recorder;
 
 import android.app.Presentation;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.Canvas;
@@ -18,6 +19,10 @@ import java.util.Locale;
 
 /** Compact, high-contrast recording status for an external XREAL display. */
 final class RecordingPresentation extends Presentation {
+    static final int MODE_FIXED = 0;
+    static final int MODE_SIDE = 1;
+    static final int MODE_OFF = 2;
+    static final String MODE_PREFERENCE = "display_mode";
     private TextView headline;
     private TextView elapsed;
     private TextView audio;
@@ -26,9 +31,15 @@ final class RecordingPresentation extends Presentation {
     private WaveformView waveform;
     private final boolean sideMode;
 
-    RecordingPresentation(Context context, Display display, boolean sideMode) {
+    RecordingPresentation(Context context, Display display, int displayMode) {
         super(context, display);
-        this.sideMode = sideMode;
+        this.sideMode = displayMode == MODE_SIDE;
+    }
+
+    static int getDisplayMode(SharedPreferences preferences) {
+        int fallback = preferences.getBoolean("display_side", false) ? MODE_SIDE : MODE_FIXED;
+        int mode = preferences.getInt(MODE_PREFERENCE, fallback);
+        return mode >= MODE_FIXED && mode <= MODE_OFF ? mode : fallback;
     }
 
     @Override
