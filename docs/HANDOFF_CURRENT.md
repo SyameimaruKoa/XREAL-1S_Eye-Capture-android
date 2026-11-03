@@ -2,6 +2,10 @@
 
 ## 現在の状態（2026-11-03、以下の開始予定・実行中の記録より優先）
 
+- port 50051 のプロトコル確認として、USB Network 指定で標準 HTTP/2 の接続開始文字列と空 SETTINGS のみを送り、応答ヘッダーを短時間読む。gRPC メソッドやカメラ設定は要求しない。録画停止・両 display ON、superuser 不使用。事前に状態を記録し、実行後の画面・録画状態を確認する。
+- HTTP/2 の応答は `000018040000000000`（長さ24・SETTINGS・stream 0）、標準 HTTP/2 の SETTINGS フレームと一致。内蔵・外部 display ON、録画停止、一時 dex 除去。gRPC の標準 reflection が有効かを読み取り専用のサービス一覧要求で確認する。Android USB Network に固定した一時ローカル中継と ADB 転送を用い、作業後停止・除去する。カメラ開始・設定要求は送らない。reflection が無効でも対象機能の不存在を意味しない。superuser 不使用。
+- ローカル限定の通常権限中継セッション `93040`、ADB 転送 tcp:23151 が実行中。標準 reflection のサービス一覧を1回だけ照会後、中継完了・転送解除・端末の一時 dex 除去を確認する。
+- 標準 gRPC v1alpha reflection `ServerReflectionInfo` のサービス一覧要求は `UNIMPLEMENTED` を返した。HTTP/2 だけでなく gRPC の応答を確認できたが、サービス一覧・カメラ API の有無は分からず、reflection が未実装でも通常 API の不存在は示さない。カメラ開始や設定は要求していない。中継 `93040` は終了、転送解除・端末の一時 dex 除去、サービス停止・内蔵/外部 display ON を確認。通常権限、Python 追加パッケージは既存仮想環境内のみ。
 - 公開 `Screen-XREAL-1S` の調査記録はカラーパラメーター候補として gRPC `Frames/StartStreaming`・port 50051 に言及するが、要求形式や TCP HEVC・1S での制御成功は未確認（https://safaia.net/nikryden/Screen-XREAL-1S/blob/main/docs/STATUS.md）。接続後の実機で、まず 169.254.2.1:50051 が TCP 接続を受け付けるかだけを通常権限で確認する。要求データ・設定変更は送らない。録画停止、両 display ON、superuser 不使用。
 - shell の通常ルーティングは Wi-Fi を選び、送信元 IP を指定しても既知 port 52999 に届かなかったため、この失敗は候補ポートの状態を意味しない。USB Ethernet の Android Network を `Network.bindSocket` で指定する一時的な読み取り専用プローブを作成・ビルドし、既知 52999 を対照に 50051 の接続可否だけを確認する。アプリ・グラス設定は変更せず、要求データは送らない。
 - 上記プローブを通常 shell 権限で実行し、同じ USB Ethernet Network に固定した TCP 接続は 52999・50051 とも成功。接続しただけで要求データは送っておらず、50051 が gRPC であること、`Frames/StartStreaming` の存在・要求・カメラ制御・ビットレート・DP への影響は未確認。プローブ dex は端末から削除し、録画サービス停止・内蔵/外部 display ON を確認。公開 firmware 抽出物と手元 SDK の `StartStreaming` 文字列検索では実装を特定できなかった。superuser 不使用。
