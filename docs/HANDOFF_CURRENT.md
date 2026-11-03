@@ -2,6 +2,7 @@
 
 ## 現在の状態（2026-11-03、以下の開始予定・実行中の記録より優先）
 
+- Android 側 XREAL `libnr_service.so` の保存済み文字列を読み直し、正式候補 `/frames.service.Frames/StartStreaming` を確認。あわせて `NRAxrCameraGetCapabilitiesRequest/Response`、`NRAxrSensorGetCapabilitiesRequest/Response`、`NRAxrSensorSensorStreamRequestParameters`、`NRAxrEnvelopeRequestToFrames/ResponseFromFrames` 等の型名が存在する。これは SDK バイナリの静的文字列であり、実機 port 50051 で各型・メソッドが対応すること、取得専用の能力照会方法、TCP HEVC のモード変更や要求形式を証明しない。実機へこのメソッドや設定は送っていない。次はシリアライズの対応関係を公開バイナリ上で追う。superuser 不使用。
 - port 50051 のプロトコル確認として、USB Network 指定で標準 HTTP/2 の接続開始文字列と空 SETTINGS のみを送り、応答ヘッダーを短時間読む。gRPC メソッドやカメラ設定は要求しない。録画停止・両 display ON、superuser 不使用。事前に状態を記録し、実行後の画面・録画状態を確認する。
 - HTTP/2 の応答は `000018040000000000`（長さ24・SETTINGS・stream 0）、標準 HTTP/2 の SETTINGS フレームと一致。内蔵・外部 display ON、録画停止、一時 dex 除去。gRPC の標準 reflection が有効かを読み取り専用のサービス一覧要求で確認する。Android USB Network に固定した一時ローカル中継と ADB 転送を用い、作業後停止・除去する。カメラ開始・設定要求は送らない。reflection が無効でも対象機能の不存在を意味しない。superuser 不使用。
 - ローカル限定の通常権限中継セッション `93040`、ADB 転送 tcp:23151 が実行中。標準 reflection のサービス一覧を1回だけ照会後、中継完了・転送解除・端末の一時 dex 除去を確認する。
