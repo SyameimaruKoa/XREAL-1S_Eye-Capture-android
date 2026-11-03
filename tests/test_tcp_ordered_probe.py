@@ -25,6 +25,15 @@ def read_exact(sock, size):
 
 
 class OrderedProbeTest(unittest.TestCase):
+    def test_fps_getter_accepts_observed_numeric_reply_only(self):
+        spec = importlib.util.spec_from_file_location("ordered_probe", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertTrue(module.reply_succeeded(0x288c, b"\x18\x00", b"\x22\x02\x10\x3c"))
+        self.assertFalse(module.reply_succeeded(0x288d, b"\x18\x00", b"\x22\x02\x10\x3c"))
+        self.assertFalse(module.reply_succeeded(0x288c, b"\x18\x00", b"\x22\x02\x08\x01"))
+        self.assertFalse(module.reply_succeeded(0x288c, b"\x18\x00", b"\x22\x02\x10\x80"))
+
     def test_video_access_unit_capture(self):
         spec = importlib.util.spec_from_file_location("ordered_probe", SCRIPT)
         module = importlib.util.module_from_spec(spec)

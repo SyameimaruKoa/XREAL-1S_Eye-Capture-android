@@ -8,6 +8,14 @@ import struct
 import time
 
 
+def reply_succeeded(command, request_body, response):
+    if response == b"\x22\x00":
+        return True
+    return (command == 0x288c and request_body == b"\x18\x00"
+            and len(response) == 4 and response[:3] == b"\x22\x02\x10"
+            and 0 < response[3] < 128)
+
+
 def read_exact(sock, count):
     data = bytearray()
     while len(data) < count:
@@ -154,7 +162,7 @@ def main():
             for index, (command, body) in enumerate(steps, 1):
                 response = transact(sock, command, index, body, args.timeout)
                 print("reply step=%d command=%04x body=%s" % (index, command, response.hex()), flush=True)
-                if response != b"\x22\x00":
+                if not reply_succeeded(command, body, response):
                     raise RuntimeError("non-success reply; remaining requests were not sent")
             if video is not None:
                 receive_video(video, args.video_output, args.video_seconds)
@@ -164,7 +172,7 @@ def main():
                 try:
                     response = transact(sock, command, index, body, args.timeout)
                     print("cleanup reply=%d command=%04x body=%s" % (index, command, response.hex()), flush=True)
-                    if response != b"\x22\x00":
+                    if not reply_succeeded(command, body, response):
                         cleanup_failed = True
                 except (OSError, ValueError) as exc:
                     print("cleanup failed command=%04x error=%s" % (command, exc), flush=True)
