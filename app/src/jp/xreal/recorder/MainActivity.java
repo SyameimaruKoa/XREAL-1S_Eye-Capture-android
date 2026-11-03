@@ -2,6 +2,7 @@ package jp.xreal.recorder;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -40,8 +41,6 @@ import android.widget.CompoundButton;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.Spinner;
-import android.widget.ArrayAdapter;
 import android.widget.TextView;
 
 import java.util.Locale;
@@ -63,6 +62,8 @@ public class MainActivity extends Activity {
     private CheckBox keepScreenCheck;
     private FrameLayout screenSaver;
     private TextView screenSaverStatus;
+    private TextView screenSaverRate;
+    private TextView screenSaverAudio;
     private LinearLayout screenSaverContent;
     private RecordingPresentation.WaveformView screenSaverWaveform;
     private long lastTouchMs = SystemClock.elapsedRealtime();
@@ -79,7 +80,14 @@ public class MainActivity extends Activity {
     private Button resetFolderButton;
     private CheckBox diagnosticsCheck;
     private TextView destinationView;
-    private Spinner videoRouteView;
+    private Button videoRouteView;
+    private int selectedVideoRoute;
+    private static final String[] VIDEO_ROUTES = {
+            "TCP HEVC 自動\n720p/30 約17 Mbps · 720p/60 約33 Mbps\n1600×1200/60 約34 Mbps",
+            "UVC HEVC\n2048×1512 / 60 fps · 約2.03 Mbps",
+            "UVC MJPEG（試験中）\n1920×1080 / 30 fps · 約21.16 Mbps",
+            "UVC MJPEG（試験中）\n1920×1080 / 60 fps · 約39.16 Mbps"
+    };
     private SharedPreferences preferences;
     private String outputTree;
     private String outputLabel;
@@ -288,48 +296,36 @@ public class MainActivity extends Activity {
         root.addView(keepScreenNote);
 
         TextView routeLabel = new TextView(this);
-        routeLabel.setText("画質・映像の取得経路（ビットレートは録画時の実測例）");
+        routeLabel.setText("録画モード");
         routeLabel.setTextColor(Color.WHITE);
         routeLabel.setTextSize(14);
         routeLabel.setPadding(0, 24, 0, 8);
         root.addView(routeLabel);
-        videoRouteView = new Spinner(this);
-        String[] routes = new String[]{
-                "TCP HEVC 自動（実測：720p/30 約17 Mbps、720p/60 約33 Mbps、1600×1200/60 約34 Mbps）",
-                "UVC HEVC 1512p 60fps 約2.03 Mbps",
-                "UVC MJPEG 1080p 30fps 約21.16 Mbps（試験中）",
-                "UVC MJPEG 1080p 60fps 約39.16 Mbps（試験中）"
-        };
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
-                android.R.layout.simple_spinner_item, routes) {
-            @Override
-            public View getView(int position, View convertView, android.view.ViewGroup parent) {
-                TextView view = (TextView) super.getView(position, convertView, parent);
-                view.setTextColor(Color.WHITE);
-                view.setSingleLine(false);
-                view.setMaxLines(3);
-                view.setEllipsize(null);
-                return view;
-            }
-
-            @Override
-            public View getDropDownView(int position, View convertView, android.view.ViewGroup parent) {
-                TextView view = (TextView) super.getDropDownView(position, convertView, parent);
-                view.setTextColor(Color.WHITE);
-                view.setBackgroundColor(Color.rgb(35, 35, 35));
-                view.setSingleLine(false);
-                view.setMaxLines(3);
-                view.setEllipsize(null);
-                return view;
-            }
-        };
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        videoRouteView.setAdapter(adapter);
-        videoRouteView.setSelection(preferences.getInt("video_route", 0));
-        videoRouteView.setBackgroundColor(Color.rgb(45, 45, 45));
+        selectedVideoRoute = preferences.getInt("video_route", RecordService.ROUTE_TCP_HEVC);
+        if (selectedVideoRoute < 0 || selectedVideoRoute >= VIDEO_ROUTES.length) {
+            selectedVideoRoute = RecordService.ROUTE_TCP_HEVC;
+        }
+        videoRouteView = new Button(this);
+        styleButton(videoRouteView, Color.rgb(45, 45, 45));
+        videoRouteView.setSingleLine(false);
+        videoRouteView.setText(VIDEO_ROUTES[selectedVideoRoute] + "\nタップして変更");
+        videoRouteView.setOnClickListener(view -> {
+            AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("録画モードを選択")
+                    .setSingleChoiceItems(VIDEO_ROUTES, selectedVideoRoute, (choice, index) -> {
+                        selectedVideoRoute = index;
+                        preferences.edit().putInt("video_route", index).commit();
+                        videoRouteView.setText(VIDEO_ROUTES[index] + "\nタップして変更");
+                        choice.dismiss();
+                    })
+                    .setNegativeButton("キャンセル", null)
+                    .create();
+            dialog.show();
+        });
         root.addView(videoRouteView);
         TextView rateNote = new TextView(this);
-        rateNote.setText("実測値は撮影内容によって変わります。\n"
+        rateNote.setText("ビットレートは録画の実測例で、撮影内容によって変わります。\n"
+                + "TCP の解像度・fps は本体の状態で決まり、アプリからは切り替えられません。\n"
                 + "1600×1200/60fps は720p/30fpsより左右の画角が狭いことを確認しています。720p/60fps の画角は未確認です。");
         rateNote.setTextColor(Color.LTGRAY);
         rateNote.setTextSize(12);
@@ -418,11 +414,29 @@ public class MainActivity extends Activity {
         screenSaverStatus.setTextColor(Color.rgb(150, 150, 150));
         screenSaverStatus.setTextSize(20);
         screenSaverStatus.setGravity(Gravity.CENTER);
+        screenSaverStatus.setSingleLine(false);
+        screenSaverStatus.setMaxLines(10);
         screenSaverContent.addView(screenSaverStatus);
+        screenSaverRate = new TextView(this);
+        screenSaverRate.setTextColor(Color.rgb(150, 150, 150));
+        screenSaverRate.setTextSize(14);
+        screenSaverRate.setGravity(Gravity.CENTER);
+        screenSaverContent.addView(screenSaverRate);
+        screenSaverAudio = new TextView(this);
+        screenSaverAudio.setTextColor(Color.rgb(150, 150, 150));
+        screenSaverAudio.setTextSize(16);
+        screenSaverAudio.setGravity(Gravity.CENTER);
+        screenSaverContent.addView(screenSaverAudio);
         screenSaverWaveform = new RecordingPresentation.WaveformView(this);
         float density = getResources().getDisplayMetrics().density;
         screenSaverContent.addView(screenSaverWaveform, new LinearLayout.LayoutParams(
                 (int) (220 * density), (int) (40 * density)));
+        TextView screenSaverHint = new TextView(this);
+        screenSaverHint.setText("タップで戻る");
+        screenSaverHint.setTextColor(Color.rgb(150, 150, 150));
+        screenSaverHint.setTextSize(14);
+        screenSaverHint.setGravity(Gravity.CENTER);
+        screenSaverContent.addView(screenSaverHint);
         screenSaver.addView(screenSaverContent, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER));
@@ -598,7 +612,7 @@ public class MainActivity extends Activity {
             return;
         }
         if (videoRouteView != null
-                && videoRouteView.getSelectedItemPosition() == RecordService.ROUTE_TCP_HEVC) {
+                && selectedVideoRoute == RecordService.ROUTE_TCP_HEVC) {
             setStatus("XREAL 1S 接続済み: TCP映像は録画開始時に確認します");
         } else if (hasUvc(found)) {
             setStatus("準備完了: UVC IF10 / EP 0x89 を検出");
@@ -639,7 +653,7 @@ public class MainActivity extends Activity {
             setStatus("USB権限を許可してから再試行してください");
             return;
         }
-        int route = videoRouteView.getSelectedItemPosition();
+        int route = selectedVideoRoute;
         if (route != RecordService.ROUTE_TCP_HEVC && !hasUvc(device)) {
             setStatus("UVCがありません。先にUVCを有効化してください");
             return;
@@ -946,12 +960,13 @@ public class MainActivity extends Activity {
                     : RecordService.isAudioExactZero() ? "録音用の音声が3秒間ゼロ"
                     : RecordService.isAudioQuiet() ? "音声が小さいか無音" : "音声入力あり";
             SpannableString saverText = new SpannableString(String.format(Locale.US,
-                    "● REC  %02d:%02d:%02d\n%s\n%s\nタップで戻る",
-                    saverSeconds / 3600, (saverSeconds / 60) % 60, saverSeconds % 60,
-                    RecordService.getVideoRateSummary(), audioState));
+                    "● REC  %02d:%02d:%02d",
+                    saverSeconds / 3600, (saverSeconds / 60) % 60, saverSeconds % 60));
             saverText.setSpan(new ForegroundColorSpan(Color.rgb(255, 95, 95)), 0, 5,
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             screenSaverStatus.setText(saverText);
+            screenSaverRate.setText(RecordService.getVideoRateSummary().replace("受信平均 ", ""));
+            screenSaverAudio.setText(audioState);
             screenSaverWaveform.addPeak(audioPeak);
             int position = (int) ((saverSeconds / 60) % 4);
             float shift = 24 * getResources().getDisplayMetrics().density;
