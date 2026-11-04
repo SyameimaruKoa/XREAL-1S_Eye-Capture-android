@@ -226,45 +226,51 @@ public class MainActivity extends Activity {
         deviceSettings.addView(enableButton);
 
         glassesStatusButton = new Button(this);
-        glassesStatusButton.setText("本体の状態を確認（通常権限で調査中）");
+        glassesStatusButton.setText("本体の状態を確認");
         styleButton(glassesStatusButton, Color.rgb(45, 45, 45));
         glassesStatusButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                setStatus("通常権限で本体の設定を確認する方法を調査中です");
+                checkGlassesStatus();
             }
         });
         deviceSettings.addView(glassesStatusButton);
 
         glasses60Button = new Button(this);
-        glasses60Button.setText("TCP 60fps を準備（通常権限で調査中）");
+        glasses60Button.setText("TCP 60fps を準備（本体再起動）");
         styleButton(glasses60Button, Color.rgb(45, 45, 45));
         glasses60Button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                setStatus("通常権限で 60fps に切り替える方法を調査中です");
+                prepareGlasses60();
             }
         });
         deviceSettings.addView(glasses60Button);
+        TextView glassesModeNote = new TextView(this);
+        glassesModeNote.setText("60fps は本体を再起動します。映像が消えた場合、USB-C の抜き差しで"
+                + "通常設定に戻ることがあります。60fps は左右の画角が狭くなります。");
+        glassesModeNote.setTextColor(Color.LTGRAY);
+        glassesModeNote.setTextSize(12);
+        deviceSettings.addView(glassesModeNote);
 
         glassesNormalButton = new Button(this);
-        glassesNormalButton.setText("TCP 通常設定に戻す（通常権限で調査中）");
+        glassesNormalButton.setText("TCP 通常設定に戻す（本体再起動）");
         styleButton(glassesNormalButton, Color.rgb(45, 45, 45));
         glassesNormalButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                setStatus("通常権限で本体の設定を戻す方法を調査中です");
+                restoreGlassesNormal();
             }
         });
         deviceSettings.addView(glassesNormalButton);
 
         glassesRecoverButton = new Button(this);
-        glassesRecoverButton.setText("中断した本体設定を復旧（通常権限で調査中）");
+        glassesRecoverButton.setText("中断した本体設定を復旧");
         styleButton(glassesRecoverButton, Color.rgb(45, 45, 45));
         glassesRecoverButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                setStatus("通常権限で本体の設定を復旧する方法を調査中です");
+                recoverGlassesPreparation();
             }
         });
         deviceSettings.addView(glassesRecoverButton);
@@ -336,7 +342,7 @@ public class MainActivity extends Activity {
         root.addView(videoRouteView);
         TextView rateNote = new TextView(this);
         rateNote.setText("ビットレートは録画の実測例で、撮影内容によって変わります。\n"
-                + "TCP の解像度・fps は本体の状態で決まり、アプリからは切り替えられません。\n"
+                + "TCP の解像度・fps は本体の状態で決まります。60fps は本体設定から準備できます。\n"
                 + "1600×1200/60fps は720p/30fpsより左右の画角が狭いことを確認しています。720p/60fps の画角は未確認です。");
         rateNote.setTextColor(Color.LTGRAY);
         rateNote.setTextSize(12);
@@ -777,7 +783,8 @@ public class MainActivity extends Activity {
             setStatus("安全状態を保存できないため本体の操作を中止しました");
             return;
         }
-        setStatus("TCP 60fps を準備しています。本体が再起動します...");
+        setStatus("TCP 60fps を準備しています。本体が再起動します。"
+                + "映像が消えた場合、USB-C の抜き差しで通常設定に戻ることがあります...");
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -806,7 +813,8 @@ public class MainActivity extends Activity {
                     result = waitForGlassesStatus();
                     if ("本体は TCP 1600×1200 / 60 fps の試験設定です".equals(result)) {
                         ready = true;
-                        result += "。録画を開始できます。次回の本体再起動で通常設定に戻ります。";
+                        result += "。録画を開始できます。映像が消えた場合、USB-C の抜き差しで"
+                                + "通常設定に戻ることがあります。次回の本体再起動で通常設定に戻ります。";
                     } else {
                         result = "60fps の設定を確認できません: " + result;
                     }
