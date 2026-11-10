@@ -24,7 +24,8 @@ final class GlassesLivePlan {
     static String[] stageScriptCommands(String script, String token) {
         String path = temporaryPath(token);
         List<String> commands = new ArrayList<>();
-        commands.add("umask 077; set -C; : > " + path + " && echo xreal_live_stage_ok");
+        commands.add("umask 077; set -C; printf '%s\\n' " + quote(ownerLine(token))
+                + " > " + path + " && echo xreal_live_stage_ok");
         for (int start = 0; start < script.length(); start += 250) {
             String chunk = script.substring(start, Math.min(start + 250, script.length()));
             commands.add("printf '%s' " + quote(chunk) + " >> " + path
@@ -39,8 +40,8 @@ final class GlassesLivePlan {
 
     static String executeScriptCommand(String script, String token) {
         String path = temporaryPath(token);
-        return "echo '" + sha256(script) + "  " + path
-                + "' | sha256sum -c >/dev/null && sh " + path + "; rm -f " + path;
+        return "echo '" + sha256(ownedScript(script, token)) + "  " + path
+                + "' | sha256sum -c >/dev/null && sh " + path + "; " + cleanupCommand(token);
     }
 
     static String readCommand() {
@@ -54,7 +55,19 @@ final class GlassesLivePlan {
     }
 
     static String cleanupCommand(String token) {
-        return "rm -f " + temporaryPath(token);
+        String path = temporaryPath(token);
+        return "if [ ! -e " + path + " ] && [ ! -L " + path + " ]; then :; "
+                + "elif [ ! -L " + path + " ] && [ \"$(head -n 1 " + path + ")\" = "
+                + quote(ownerLine(token)) + " ]; then rm -f " + path + "; else exit 1; fi";
+    }
+
+    private static String ownerLine(String token) {
+        temporaryPath(token);
+        return "# xreal-live:" + token;
+    }
+
+    private static String ownedScript(String script, String token) {
+        return ownerLine(token) + "\n" + script;
     }
 
     private static String temporaryPath(String token) {

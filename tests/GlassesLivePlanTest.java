@@ -19,11 +19,15 @@ public final class GlassesLivePlanTest {
                         "stage exceeds the verified command length");
             }
             require(stages[0].contains("set -C"), "creation must not overwrite a file");
+            require(stages[0].contains("# xreal-live:" + token), "temporary file has an ownership marker");
             String run = GlassesLivePlan.executeCommand(mode, token);
             require(run.contains("sha256sum -c") && run.contains("&& sh "),
                     "script must be verified before execution");
             require(run.endsWith(GlassesLivePlan.cleanupCommand(token)),
                     "script must be removed after execution");
+            require(GlassesLivePlan.cleanupCommand(token).contains("head -n 1")
+                    && GlassesLivePlan.cleanupCommand(token).contains("! -L"),
+                    "cleanup must verify the marker and reject symlinks");
         }
         require(!GlassesLivePlan.executeCommand(true, token)
                 .equals(GlassesLivePlan.executeCommand(false, token)), "mode hashes differ");

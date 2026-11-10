@@ -1,6 +1,7 @@
 package jp.xreal.recorder;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
@@ -27,9 +28,11 @@ final class GlassesStatusClient {
                     + "; then echo pending; else echo clear; fi\0")
             .getBytes(StandardCharsets.US_ASCII);
     private final Network network;
+    private final SharedPreferences preferences;
     private int sequence;
 
     GlassesStatusClient(Context context) throws IOException {
+        preferences = context.getSharedPreferences("recording_options", Context.MODE_PRIVATE);
         ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
         if (manager == null) {
             throw new IOException("ネットワークを確認できません");
@@ -97,8 +100,18 @@ final class GlassesStatusClient {
     }
 
     private String runLiveScript(String script, String token) throws IOException {
+        GlassesLivePlan.cleanupCommand(token);
+        String pending = preferences.getString("live_temp_token", "");
+        if (!pending.isEmpty()) {
+            cleanupLiveTemporary(pending);
+            if (!preferences.edit().remove("live_temp_token").commit()) {
+                throw new IOException("一時ファイルの復旧状態を保存できません");
+            }
+        }
+        if (!preferences.edit().putString("live_temp_token", token).commit()) {
+            throw new IOException("一時ファイルの復旧情報を保存できません");
+        }
         IOException failure = null;
-        boolean created = false;
         String result = null;
         try {
             for (String stage : GlassesLivePlan.stageScriptCommands(script, token)) {
@@ -106,19 +119,19 @@ final class GlassesStatusClient {
                 if (!"xreal_live_stage_ok\n".equals(stageResult)) {
                     throw new IOException("一時準備の状態を確認できません");
                 }
-                created = true;
             }
             result = execute((GlassesLivePlan.executeScriptCommand(script, token) + "\0")
                     .getBytes(StandardCharsets.US_ASCII));
         } catch (IOException e) {
             failure = e;
         }
-        if (created) {
-            try {
-                cleanupLiveTemporary(token);
-            } catch (IOException e) {
-                throw new IOException("一時ファイルの削除を確認できません。本体を再接続して再確認してください", e);
+        try {
+            cleanupLiveTemporary(token);
+            if (!preferences.edit().remove("live_temp_token").commit()) {
+                throw new IOException("一時ファイルの復旧状態を保存できません");
             }
+        } catch (IOException e) {
+            throw new IOException("一時ファイルの削除を確認できません。本体を再接続して再確認してください", e);
         }
         if (failure != null) {
             throw failure;
