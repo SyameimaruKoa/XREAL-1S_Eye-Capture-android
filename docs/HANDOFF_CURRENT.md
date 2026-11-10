@@ -2,6 +2,7 @@
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
 
+- 2026-11-10 TCP 接続障害の追加調査: 実機 `ip rule` の優先度13001は Android Network 指定に対応するルール16000より先に table 52 を参照し、table 52 の default は `tailscale0`。`ip route get 169.254.2.1 mark 0x10069` は tailscale0 / 100.121.62.116、同 `mark 0x10020069` は eth0 / 169.254.2.10 を返した。通常 shell の `ping -I eth0` は `SO_BINDTODEVICE: Operation not permitted`。これは前回の VPN 側送信元と整合する実機証拠だが、アプリから追加マークやインターフェース指定を適用できるとは示していない。ルーティング・Tailscale 設定・端末 root は変更していない。録画サービス停止、eth0 接続中。
 - 2026-11-10 保存容量調査: ユーザーが旧 Android/data/Movies を `logs/Android-data/` に移動。集計は WAV 24件 4,565,377,056 bytes、MP4 22件 3,209,920,052 bytes、HEVC 24件 3,119,490,412 bytes、その他約61 MB。100XREAL の MP4 に同サイズの旧 MP4 は見つからず、同一ファイルの重複とは確認できない。現行コードは診断保存有効時のみ HEVC・WAV を生成し、WAV は 2ch 32-bit PCM、出力 MP4 はモノラル AAC なので単純な同一コピーではない。実機の診断保存設定は false、Movies ディレクトリは空、録画サービス停止。これから通常 UI で短時間 TCP 録画し、停止後に動画保存と Movies が空のままか確認する。既存データは削除しない。
 - 上記の通常録画確認: USB 権限を許可し、UI の「録画開始」を押した。停止操作後に結果と Movies を確認する。中断時は実行中サービスと画面を確認し通常停止する。
 - 通常録画確認は接続時に失敗し開始されなかった。画面に `SocketTimeoutException`、接続元 `100.121.62.116` と表示。TCP コードは 169.254.2.x の Android Network を選んで `bindSocket` しているが、今回は VPN 側アドレスから送られた表示で、原因・回避方法は未確定。録画サービスなし、Movies は空のまま。従って実録画時の空状態は今回未検証。XREAL 外部画面は Android 上で ON。診断保存 false は実機設定ファイルとコードの両方で確認済み。
