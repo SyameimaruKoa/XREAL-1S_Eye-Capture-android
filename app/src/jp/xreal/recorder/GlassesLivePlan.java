@@ -1,5 +1,11 @@
 package jp.xreal.recorder;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.List;
+
 /** Builds the guarded, firmware-specific live camera mode command. */
 final class GlassesLivePlan {
     static final String DRIVER_HASH =
@@ -10,6 +16,54 @@ final class GlassesLivePlan {
     static final String UNCERTAIN = "xreal_live_mode_uncertain";
 
     private GlassesLivePlan() { }
+
+    static String[] stageCommands(boolean sixtyFps, String token) {
+        String path = temporaryPath(token);
+        String script = command(sixtyFps);
+        List<String> commands = new ArrayList<>();
+        commands.add("umask 077; set -C; : > " + path + " && echo xreal_live_stage_ok");
+        for (int start = 0; start < script.length(); start += 250) {
+            String chunk = script.substring(start, Math.min(start + 250, script.length()));
+            commands.add("printf '%s' " + quote(chunk) + " >> " + path
+                    + " && echo xreal_live_stage_ok");
+        }
+        return commands.toArray(new String[0]);
+    }
+
+    static String executeCommand(boolean sixtyFps, String token) {
+        String path = temporaryPath(token);
+        return "echo '" + sha256(command(sixtyFps)) + "  " + path
+                + "' | sha256sum -c >/dev/null && sh " + path + "; rm -f " + path;
+    }
+
+    static String cleanupCommand(String token) {
+        return "rm -f " + temporaryPath(token);
+    }
+
+    private static String temporaryPath(String token) {
+        if (token == null || !token.matches("[0-9a-f]{32}")) {
+            throw new IllegalArgumentException("Invalid temporary token");
+        }
+        return "/tmp/xreal-live-" + token;
+    }
+
+    private static String quote(String value) {
+        return "'" + value.replace("'", "'\\''") + "'";
+    }
+
+    private static String sha256(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.US_ASCII));
+            StringBuilder result = new StringBuilder();
+            for (byte item : digest) {
+                result.append(String.format(java.util.Locale.US, "%02x", item & 0xff));
+            }
+            return result.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     static String command(boolean sixtyFps) {
         String expected = sixtyFps ? "1280 720 30" : "1600 1200 60";
