@@ -211,9 +211,6 @@ public class MainActivity extends Activity {
                         ? "本体・60fps 設定を閉じる" : "本体・60fps 設定を開く");
             }
         });
-        root.addView(deviceSettingsToggle);
-        root.addView(deviceSettings);
-
         enableButton = new Button(this);
         enableButton.setText("UVCを有効化（UVCが見えない場合）");
         styleButton(enableButton, Color.rgb(45, 45, 45));
@@ -293,6 +290,8 @@ public class MainActivity extends Activity {
             dialog.show();
         });
         root.addView(displayModeButton);
+        root.addView(deviceSettingsToggle);
+        root.addView(deviceSettings);
 
         keepScreenCheck = new CheckBox(this);
         keepScreenCheck.setText("録画中はスマホを点灯（30秒後に画面保護）");
