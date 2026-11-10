@@ -258,8 +258,8 @@ public class MainActivity extends Activity {
         });
         deviceSettings.addView(glasses60Button);
         TextView glassesModeNote = new TextView(this);
-        glassesModeNote.setText("60fps は本体を再起動します。映像が消えた場合、USB-C の抜き差しで"
-                + "通常設定に戻ることがあります。60fps は左右の画角が狭くなります。");
+        glassesModeNote.setText("以下の旧方式は本体を再起動します。映像が消えた場合は USB-C の"
+                + "抜き差しが必要になることがあります。1600×1200 は720pより左右の画角が狭くなります。");
         glassesModeNote.setTextColor(Color.LTGRAY);
         glassesModeNote.setTextSize(12);
         deviceSettings.addView(glassesModeNote);
@@ -758,18 +758,31 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 String result;
+                boolean startupConfirmed = false;
                 try {
                     result = waitForGlassesStatus();
+                    startupConfirmed = "本体は通常設定です".equals(result)
+                            || "本体は TCP 1600×1200 / 60 fps の試験設定です".equals(result);
+                    if ("本体は通常設定です".equals(result)) {
+                        result = "起動設定は通常です";
+                    }
+                    try {
+                        String live = new GlassesStatusClient(getApplicationContext()).readLiveMode(liveToken());
+                        result += "\n現在の TCP 設定: "
+                                + ("1600 1200 60".equals(live) ? "1600×1200 / 60fps" : "1280×720 / 30fps");
+                    } catch (Exception e) {
+                        result += "\n現在の TCP 設定は確認できません";
+                    }
                 } catch (Exception e) {
                     result = "本体の状態を確認できません: " + e.getMessage();
                 }
                 final String message = result;
+                final boolean confirmed = startupConfirmed;
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
                         glassesStatusPending = false;
-                        if ("本体は通常設定です".equals(message)
-                                || "本体は TCP 1600×1200 / 60 fps の試験設定です".equals(message)) {
+                        if (confirmed) {
                             preferences.edit().putBoolean("glasses_recovery_required", false)
                                     .putBoolean("glasses_owns_preparation", false).apply();
                         }
