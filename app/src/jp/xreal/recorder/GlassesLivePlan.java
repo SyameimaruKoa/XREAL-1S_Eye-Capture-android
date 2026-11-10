@@ -18,8 +18,11 @@ final class GlassesLivePlan {
     private GlassesLivePlan() { }
 
     static String[] stageCommands(boolean sixtyFps, String token) {
+        return stageScriptCommands(command(sixtyFps), token);
+    }
+
+    static String[] stageScriptCommands(String script, String token) {
         String path = temporaryPath(token);
-        String script = command(sixtyFps);
         List<String> commands = new ArrayList<>();
         commands.add("umask 077; set -C; : > " + path + " && echo xreal_live_stage_ok");
         for (int start = 0; start < script.length(); start += 250) {
@@ -31,9 +34,23 @@ final class GlassesLivePlan {
     }
 
     static String executeCommand(boolean sixtyFps, String token) {
+        return executeScriptCommand(command(sixtyFps), token);
+    }
+
+    static String executeScriptCommand(String script, String token) {
         String path = temporaryPath(token);
-        return "echo '" + sha256(command(sixtyFps)) + "  " + path
+        return "echo '" + sha256(script) + "  " + path
                 + "' | sha256sum -c >/dev/null && sh " + path + "; rm -f " + path;
+    }
+
+    static String readCommand() {
+        String change = command(true);
+        int index = change.indexOf("current=$(dd");
+        if (index < 0) {
+            throw new IllegalStateException("Live mode guard missing");
+        }
+        return change.substring(0, index)
+                + "dd if=/proc/$p/mem bs=4 skip=$index count=3 2>/dev/null | od -An -tu4 | xargs";
     }
 
     static String cleanupCommand(String token) {

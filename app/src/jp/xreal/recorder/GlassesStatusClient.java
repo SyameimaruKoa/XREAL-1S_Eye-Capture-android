@@ -79,24 +79,37 @@ final class GlassesStatusClient {
     }
 
     void setLiveMode(boolean sixtyFps, String token) throws IOException {
+        String result = runLiveScript(GlassesLivePlan.command(sixtyFps), token);
+        if (!(GlassesLivePlan.SUCCESS + "\n").equals(result)) {
+            if ((GlassesLivePlan.ROLLED_BACK + "\n").equals(result)) {
+                throw new IOException("切替に失敗し、元の設定に戻しました");
+            }
+            throw new IOException("切替結果を確認できません。本体の状態を確認してください");
+        }
+    }
+
+    String readLiveMode(String token) throws IOException {
+        String result = runLiveScript(GlassesLivePlan.readCommand(), token);
+        if ("1280 720 30\n".equals(result) || "1600 1200 60\n".equals(result)) {
+            return result.trim();
+        }
+        throw new IOException("対応する録画設定を確認できません");
+    }
+
+    private String runLiveScript(String script, String token) throws IOException {
         IOException failure = null;
         boolean created = false;
+        String result = null;
         try {
-            for (String stage : GlassesLivePlan.stageCommands(sixtyFps, token)) {
-                String result = execute((stage + "\0").getBytes(StandardCharsets.US_ASCII));
-                if (!"xreal_live_stage_ok\n".equals(result)) {
+            for (String stage : GlassesLivePlan.stageScriptCommands(script, token)) {
+                String stageResult = execute((stage + "\0").getBytes(StandardCharsets.US_ASCII));
+                if (!"xreal_live_stage_ok\n".equals(stageResult)) {
                     throw new IOException("一時準備の状態を確認できません");
                 }
                 created = true;
             }
-            String result = execute((GlassesLivePlan.executeCommand(sixtyFps, token) + "\0")
+            result = execute((GlassesLivePlan.executeScriptCommand(script, token) + "\0")
                     .getBytes(StandardCharsets.US_ASCII));
-            if (!(GlassesLivePlan.SUCCESS + "\n").equals(result)) {
-                if ((GlassesLivePlan.ROLLED_BACK + "\n").equals(result)) {
-                    throw new IOException("切替に失敗し、元の設定に戻しました");
-                }
-                throw new IOException("切替結果を確認できません。本体の状態を確認してください");
-            }
         } catch (IOException e) {
             failure = e;
         }
@@ -110,6 +123,7 @@ final class GlassesStatusClient {
         if (failure != null) {
             throw failure;
         }
+        return result;
     }
 
     void cleanupLiveTemporary(String token) throws IOException {

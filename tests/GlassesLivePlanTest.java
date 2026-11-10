@@ -27,6 +27,11 @@ public final class GlassesLivePlanTest {
         }
         require(!GlassesLivePlan.executeCommand(true, token)
                 .equals(GlassesLivePlan.executeCommand(false, token)), "mode hashes differ");
+        String read = GlassesLivePlan.readCommand();
+        require(read.contains(GlassesLivePlan.DRIVER_HASH) && read.contains("od -An -tu4"),
+                "mode query includes the firmware guard and reads values");
+        require(!read.contains("of=/proc/") && !read.contains("conv=notrunc"),
+                "mode query must not write process memory");
         try {
             GlassesLivePlan.stageCommands(true, "../invalid");
             throw new AssertionError("invalid path token accepted");
