@@ -14,9 +14,9 @@ import android.provider.OpenableColumns;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Locale;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /** Creates a user-visible MP4 without requiring direct filesystem access. */
 final class RecordingOutput {
@@ -42,7 +42,7 @@ final class RecordingOutput {
         boolean pending = tree == null;
         String extension = mjpeg ? "mkv" : "mp4";
         String mimeType = mjpeg ? "video/x-matroska" : "video/mp4";
-        String filename = nextFilename(resolver, tree, extension);
+        String filename = nextFilename(resolver, tree, extension, captureTimeMs);
         if (tree != null) {
             Uri directory = DocumentsContract.buildDocumentUriUsingTree(tree,
                     DocumentsContract.getTreeDocumentId(tree));
@@ -70,7 +70,10 @@ final class RecordingOutput {
         return new RecordingOutput(resolver, uri, pending, actualName, tree);
     }
 
-    private static String nextFilename(ContentResolver resolver, Uri tree, String extension) throws IOException {
+    private static String nextFilename(ContentResolver resolver, Uri tree,
+                                       String extension, long captureTimeMs) throws IOException {
+        String base = "VID_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+                .format(new Date(captureTimeMs));
         Uri children;
         String selection = null;
         String[] selectionArgs = null;
@@ -82,8 +85,19 @@ final class RecordingOutput {
             selection = MediaStore.Video.Media.RELATIVE_PATH + "=?";
             selectionArgs = new String[]{Environment.DIRECTORY_DCIM + "/100XREAL/"};
         }
-        Pattern pattern = Pattern.compile("VID_([0-9]+)\\.(mp4|mkv)", Pattern.CASE_INSENSITIVE);
-        long max = 0;
+        ensureNameAvailable(resolver, children, selection, selectionArgs, base);
+        if (tree == null) {
+            ensureNameAvailable(resolver, MediaStore.Files.getContentUri("external"),
+                    MediaStore.MediaColumns.RELATIVE_PATH + "=?",
+                    new String[]{Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL/"},
+                    base);
+        }
+        return base + "." + extension;
+    }
+
+    private static void ensureNameAvailable(ContentResolver resolver, Uri children, String selection,
+                                            String[] selectionArgs, String base)
+            throws IOException {
         try (Cursor cursor = resolver.query(children,
                 new String[]{MediaStore.MediaColumns.DISPLAY_NAME}, selection, selectionArgs, null)) {
             if (cursor == null) {
@@ -91,20 +105,13 @@ final class RecordingOutput {
             }
             while (cursor.moveToNext()) {
                 String name = cursor.getString(0);
-                Matcher match = pattern.matcher(name == null ? "" : name);
-                if (match.matches()) {
-                    try {
-                        max = Math.max(max, Long.parseLong(match.group(1)));
-                    } catch (NumberFormatException e) {
-                        throw new IOException("Invalid recording number: " + name, e);
-                    }
+                if (name != null && (name.equalsIgnoreCase(base + ".mp4")
+                        || name.equalsIgnoreCase(base + ".mkv")
+                        || name.equalsIgnoreCase(base + ".json"))) {
+                    throw new IOException("Recording name already exists: " + base);
                 }
             }
         }
-        if (max == Long.MAX_VALUE) {
-            throw new IOException("Recording number limit reached");
-        }
-        return String.format(Locale.US, "VID_%04d.%s", max + 1, extension);
     }
 
     MuxerSink openMuxer() throws IOException {
