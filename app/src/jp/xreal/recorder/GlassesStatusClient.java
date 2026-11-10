@@ -78,6 +78,49 @@ final class GlassesStatusClient {
         void markOwned() throws IOException;
     }
 
+    void setLiveMode(boolean sixtyFps, String token) throws IOException {
+        IOException failure = null;
+        boolean created = false;
+        try {
+            for (String stage : GlassesLivePlan.stageCommands(sixtyFps, token)) {
+                String result = execute((stage + "\0").getBytes(StandardCharsets.US_ASCII));
+                if (!"xreal_live_stage_ok\n".equals(result)) {
+                    throw new IOException("一時準備の状態を確認できません");
+                }
+                created = true;
+            }
+            String result = execute((GlassesLivePlan.executeCommand(sixtyFps, token) + "\0")
+                    .getBytes(StandardCharsets.US_ASCII));
+            if (!(GlassesLivePlan.SUCCESS + "\n").equals(result)) {
+                if ((GlassesLivePlan.ROLLED_BACK + "\n").equals(result)) {
+                    throw new IOException("切替に失敗し、元の設定に戻しました");
+                }
+                throw new IOException("切替結果を確認できません。本体の状態を確認してください");
+            }
+        } catch (IOException e) {
+            failure = e;
+        }
+        if (created) {
+            try {
+                cleanupLiveTemporary(token);
+            } catch (IOException e) {
+                throw new IOException("一時ファイルの削除を確認できません。本体を再接続して再確認してください", e);
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
+    }
+
+    void cleanupLiveTemporary(String token) throws IOException {
+        String command = GlassesLivePlan.cleanupCommand(token)
+                + "; test ! -e /tmp/xreal-live-" + token + " && echo xreal_live_clean";
+        String result = execute((command + "\0").getBytes(StandardCharsets.US_ASCII));
+        if (!"xreal_live_clean\n".equals(result)) {
+            throw new IOException("一時ファイルの削除を確認できません");
+        }
+    }
+
     void prepare60(OwnershipMarker ownership) throws IOException {
         if (!"本体は通常設定です".equals(readStatus())) {
             throw new IOException("本体が通常設定ではありません");
