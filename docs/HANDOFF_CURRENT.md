@@ -2,6 +2,8 @@
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
 
+- 2026-11-10 再開後の録画試験は TCP 接続待ちで失敗し、映像は開始せずサービス停止。table 52 から前回の `throw 169.254.2.0/24` と `throw 169.254.1.0/24` が消え、XREAL 宛てが再び tailscale0 に向いている一方、Wi-Fi の throw は残る。LAN アクセス設定自体の現在値は未確認で、USB 再列挙との因果は未確定。ユーザーに前回の `tailscale set --exit-node-allow-lan-access=true` 再実行を依頼中。公開 [Tailscale の現行 linkChange 実装](https://github.com/tailscale/tailscale/blob/main/ipn/ipnlocal/local.go)は一定のネットワーク変化時に LAN 経路を再設定するが、実機版・今回の変化の検出可否は未確認。設定変更・root・再起動は行っていない。
+- 2026-11-10 再開時: adb 再接続後、eth0 インターフェース番号55・169.254.2.10、XREAL 外部 display 検出、録画サービスなし。前回観測の eth0 番号51から変わったため USB が再列挙された可能性があるが、原因・日時は未確認。自然発生した720p約60fpsが接続直後に起こるというユーザー観察を踏まえ、グラス設定や root を操作せず、現在の通常 TCP を短時間録画して実測する。既存動画保持、終了は UI、画面保護時は解除してから停止する。
 - 2026-11-10 追加音声調査予定: ユーザーが移動した `logs/Android-data/` 内の過去の 2ch WAV について、左右の非ゼロ数・完全一致率・レベルをオフライン集計し、独立した左右信号の証拠があるか確認する。録音時の入力経路・環境が不明なファイルもあるため、結果だけでマイク数を断定しない。元データには書き込まない。実機は録画停止・USB Ethernet 接続。
 - 上記 WAV 全24本は 2ch / 32-bit として読み取り可能で、合計 570,672,000 ステレオフレームすべての左右整数サンプルが完全一致した。非ゼロの音声を含むファイルでも一致しており、少なくともこの過去の録音経路で独立した左右信号は得られていない。端末側の複製かグラス入力が元から同一か、録音当時のルーティングやマイク構成は本結果では判別できない。オフライン全ファイル走査 session 21671 は終了0、元データ変更なし。
 - 2026-11-10 SDK RGB 開始入口の追跡: 保存済み C# ソースでは `RGBCameraFrameProvider.Play()` → `XREALRGBCameraTexture.StartCapture()` → `XREALPlugin.StartRGBCameraDataCapture()` → ネイティブ `StartRGBCameraDataCapture(null, IntPtr.Zero)` と進み、この呼出し列には幅・高さ・fps 引数がない。`FrameCaptureContext` の事前 `TryStartRGBCamera()` も同じ引数なし開始を使用する。前回のエンコーダー fps 追跡をネイティブ入口まで延長した結果だが、ネイティブ内部の状態参照・別 API・別 SDK 版は否定できず、TCP 60fps 実現の証拠ではない。実機変更なし、録画サービス停止・USB Ethernet 接続。
