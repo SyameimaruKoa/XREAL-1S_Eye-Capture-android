@@ -231,7 +231,8 @@ final class TcpSource implements VideoSource {
                     height = frameHeight;
                     dimensionsReceived = true;
                 } else if (!dimensionsReceived || frameWidth != width || frameHeight != height) {
-                    throw new IOException("Unexpected TCP video dimensions");
+                    throw new IOException("Unexpected TCP video dimensions: "
+                            + frameWidth + "x" + frameHeight);
                 }
                 byte[] au = Arrays.copyOfRange(body, FRAME_HEADER, body.length);
                 int nalType = (au[4] >> 1) & 0x3f;
