@@ -562,7 +562,7 @@ public final class RecordService extends Service {
                     status += "\n保存先への公開失敗: " + t.getMessage();
                 }
             }
-            recording = false;
+            // Keep recording true until onDestroy so a new start cannot race stopSelf.
             displayHandler.post(new Runnable() {
                 @Override
                 public void run() {
