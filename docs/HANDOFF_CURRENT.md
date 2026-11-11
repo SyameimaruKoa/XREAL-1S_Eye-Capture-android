@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-11 スリープ試験動画解析: コピー .cache/trial-sleep-223422.mp4、ffprobe は1280×720 HEVC、2404フレーム、80.542秒、約29.85fps・16.70Mbps、AAC mono 81.045秒。映像PTSの隣接間隔は最大33.523ms、50ms超0、非増加0。録画に中断や長いPTS間隔は検出されなかったが、画面OFF区間の正確なタイムスタンプは確定しておらず、その区間の実映像・音声内容の連続性は未確認。コピーsession 82594終了0。端末の cmd display help は接続displayのenable/disableを列挙するが、通常アプリ権限から利用可能とは示さず、実行していない。
+- 2026-11-11 追加読取: 現在の Android power dump に uid 1000 の DisplayDeviceRepository.mHDMIWakeLock（SCREEN_DIM_WAKE_LOCK、displayId=-1）が保持され、前回の自然消灯対照では同じロックを計測していないが両画面が点灯し続けた要因候補。前回スリープ試験録画 VID_20261111_223422.mp4 をPCへコピー・ffprobe中 session 82594。実際の撮影時刻と画面OFF区間の正確な対応は未確認。録画停止、設定変更なし。
 - 2026-11-11 第二画面フラグ対照: 変更なし v0.1.8 でも screen_off_timeout=15000、stay_on_while_plugged_in=0、アプリ録画中点灯=false、外部固定、録画開始約25秒後は内蔵・HDMIともON・Awake。よって試作で両画面ONだったことをFLAG_KEEP_SCREEN_ONの効果と判断できず、自然消灯が実際に発生する条件も未確定。明示 sleep では試作中も両方OFF。VID_20261111_224118.mp4 保存・録画サービス停止。timeout=120000、充電中点灯=15、アプリ点灯=true、第二画面オフを読戻し確認。リリース APK v0.1.8 を再導入、試作コード取消済み。スマホroot・グラス再起動なし。
 - 2026-11-11 外部画面 KEEP_SCREEN_ON 試作: 画面timeout 15秒、充電中点灯無効、スマホ録画中点灯オフ・外部固定表示で録画。25秒後は内蔵とHDMIともON、明示 sleep では両方OFF・Dozing。録画はSTOPで保存 VID_20261111_223901.mp4。元の設定 timeout=120000、充電中点灯=15、スマホ録画中点灯=true、外部画面オフを復元。リリース v0.1.8 APKを再導入、実験コードは取り消し。自然消灯の挙動に同フラグが影響したかは対照未実施。これから同条件で既存リリース版を対照試験し、終了後同様に設定を復元する。
 - 2026-11-11 第二画面の通常権限試験前: Git c3f2e45、録画停止、TCP通常30fps・第二画面オフ。RecordingPresentation の外部ウィンドウに FLAG_KEEP_SCREEN_ON を追加した試作をビルド・導入予定。自然消灯条件を作るため一時的に screen_off_timeout=15000、stay_on_while_plugged_in=0 にし、元の値はそれぞれ 120000・15 に必ず戻す。アプリのスマホ点灯設定も変更する場合は元値に戻す。録画中の画面とAndroid display状態を確認後UIで停止し、設定・リリースAPKを復元。手動 sleep の挙動とは分けて評価、スマホroot不使用。
