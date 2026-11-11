@@ -256,13 +256,13 @@ public class MainActivity extends Activity {
                 prepareGlasses60();
             }
         });
-        deviceSettings.addView(glasses60Button);
         TextView glassesModeNote = new TextView(this);
         glassesModeNote.setText("以下の旧方式は本体を再起動します。映像が消えた場合は USB-C の"
                 + "抜き差しが必要になることがあります。1600×1200 は720pより左右の画角が狭くなります。");
         glassesModeNote.setTextColor(Color.LTGRAY);
         glassesModeNote.setTextSize(12);
         deviceSettings.addView(glassesModeNote);
+        deviceSettings.addView(glasses60Button);
 
         glassesNormalButton = new Button(this);
         glassesNormalButton.setText("TCP 通常設定に戻す（本体再起動）");
@@ -304,8 +304,6 @@ public class MainActivity extends Activity {
             dialog.show();
         });
         root.addView(displayModeButton);
-        root.addView(deviceSettingsToggle);
-        root.addView(deviceSettings);
 
         keepScreenCheck = new CheckBox(this);
         keepScreenCheck.setText("録画中はスマホを点灯（30秒後に画面保護）");
@@ -318,12 +316,10 @@ public class MainActivity extends Activity {
                 preferences.edit().putBoolean("keep_screen", checked).apply();
             }
         });
-        root.addView(keepScreenCheck);
         TextView keepScreenNote = new TextView(this);
         keepScreenNote.setText("アプリ表示中の自動消灯を防ぎます。手動ロックには未対応です。");
         keepScreenNote.setTextColor(Color.LTGRAY);
         keepScreenNote.setTextSize(12);
-        root.addView(keepScreenNote);
 
         TextView routeLabel = new TextView(this);
         routeLabel.setText("録画モード");
@@ -360,6 +356,10 @@ public class MainActivity extends Activity {
         rateNote.setTextColor(Color.LTGRAY);
         rateNote.setTextSize(12);
         root.addView(rateNote);
+        root.addView(deviceSettingsToggle);
+        root.addView(deviceSettings);
+        root.addView(keepScreenCheck);
+        root.addView(keepScreenNote);
 
         destinationView = new TextView(this);
         destinationView.setTextColor(Color.WHITE);
