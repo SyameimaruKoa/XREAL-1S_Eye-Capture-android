@@ -759,6 +759,7 @@ public class MainActivity extends Activity {
             public void run() {
                 String result;
                 boolean startupConfirmed = false;
+                boolean liveConfirmed = false;
                 try {
                     result = waitForGlassesStatus();
                     startupConfirmed = "本体は通常設定です".equals(result)
@@ -768,6 +769,7 @@ public class MainActivity extends Activity {
                     }
                     try {
                         String live = new GlassesStatusClient(getApplicationContext()).readLiveMode(liveToken());
+                        liveConfirmed = true;
                         result += "\n現在の TCP 設定: "
                                 + ("1600 1200 60".equals(live) ? "1600×1200 / 60fps" : "1280×720 / 30fps");
                     } catch (Exception e) {
@@ -778,6 +780,7 @@ public class MainActivity extends Activity {
                 }
                 final String message = result;
                 final boolean confirmed = startupConfirmed;
+                final boolean confirmedLive = liveConfirmed;
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
@@ -785,6 +788,9 @@ public class MainActivity extends Activity {
                         if (confirmed) {
                             preferences.edit().putBoolean("glasses_recovery_required", false)
                                     .putBoolean("glasses_owns_preparation", false).apply();
+                        }
+                        if (confirmedLive) {
+                            preferences.edit().putBoolean("live_mode_uncertain", false).apply();
                         }
                         setStatus(message);
                     }
