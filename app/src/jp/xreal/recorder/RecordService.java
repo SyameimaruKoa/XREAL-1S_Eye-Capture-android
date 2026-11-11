@@ -59,6 +59,7 @@ public final class RecordService extends Service {
 
     private PowerManager.WakeLock wakeLock;
     private Thread worker;
+    private volatile boolean destroyed;
     private volatile boolean stopRequested;
     private volatile boolean audioSilenceDetected;
     private volatile boolean audioExactZero;
@@ -575,6 +576,9 @@ public final class RecordService extends Service {
             } catch (Throwable ignored) {
             }
             stopSelf();
+            if (destroyed) {
+                recording = false;
+            }
         }
     }
 
@@ -672,6 +676,7 @@ public final class RecordService extends Service {
 
     @Override
     public void onDestroy() {
+        destroyed = true;
         displayHandler.removeCallbacksAndMessages(null);
         if (displayManager != null) {
             displayManager.unregisterDisplayListener(displayListener);
@@ -687,7 +692,9 @@ public final class RecordService extends Service {
                 Thread.currentThread().interrupt();
             }
         }
-        recording = false;
+        if (t == null || !t.isAlive()) {
+            recording = false;
+        }
         startPending = false;
         super.onDestroy();
     }
