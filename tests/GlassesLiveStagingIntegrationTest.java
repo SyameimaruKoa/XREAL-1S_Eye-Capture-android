@@ -50,6 +50,12 @@ public final class GlassesLiveStagingIntegrationTest {
                     + " && test ! -e " + path);
             require(!tampered.contains("execution-marker"), "tampered script ran");
 
+            String longScript = script + " # " + new String(new char[600]).replace('\0', 'x');
+            String[] parts = GlassesLivePlan.stageScriptCommands(longScript, token);
+            require(parts.length > 2, "interrupted script must have remaining stages");
+            shell(parts[0] + " && " + parts[1] + " && " + GlassesLivePlan.cleanupCommand(token)
+                    + " && test ! -e " + path);
+
             String collision = shell("printf foreign > " + path + "; if "
                     + GlassesLivePlan.stageScriptCommands(script, token)[0]
                     + "; then echo overwritten; else cat " + path + "; fi");
@@ -59,8 +65,14 @@ public final class GlassesLiveStagingIntegrationTest {
                     + " ); then echo removed; else cat " + path + "; fi");
             require(cleanup.contains("foreign") && !cleanup.contains("removed"),
                     "unowned file was removed");
+            shell("rm -f " + path + "; printf protected > " + path + ".target; ln -s "
+                    + path + ".target " + path);
+            String symlink = shell("if ( " + GlassesLivePlan.cleanupCommand(token)
+                    + " ); then echo removed; else cat " + path + "; fi");
+            require(symlink.contains("protected") && !symlink.contains("removed"),
+                    "symlink or its target was removed");
         } finally {
-            shell("rm -f " + path);
+            shell("rm -f " + path + " " + path + ".target");
         }
     }
 }
