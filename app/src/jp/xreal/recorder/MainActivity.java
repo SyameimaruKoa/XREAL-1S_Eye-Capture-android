@@ -702,10 +702,16 @@ public class MainActivity extends Activity {
         preferences.edit().putInt("video_route", route).apply();
         RecordService.setStartPending(true);
         try {
+            android.content.ComponentName started;
             if (Build.VERSION.SDK_INT >= 26) {
-                startForegroundService(intent);
+                started = startForegroundService(intent);
             } else {
-                startService(intent);
+                started = startService(intent);
+            }
+            if (started == null) {
+                RecordService.setStartPending(false);
+                setStatus("録画サービスを開始できませんでした");
+                return;
             }
         } catch (RuntimeException e) {
             RecordService.setStartPending(false);
@@ -1063,6 +1069,7 @@ public class MainActivity extends Activity {
     private void pollStatus() {
         String s = RecordService.getStatus();
         boolean recording = RecordService.isRecording();
+        boolean recordingBusy = RecordService.isRecordingOrStarting();
         int audioPeak = recording ? RecordService.getAudioPeak() : 0;
         boolean keepScreen = recording && keepScreenCheck.isChecked();
         if (keepScreen) {
@@ -1120,27 +1127,27 @@ public class MainActivity extends Activity {
             lastStatus = s;
             statusView.setText(s);
         }
-        startButton.setEnabled(!recording && !glassesStatusPending
+        startButton.setEnabled(!recordingBusy && !glassesStatusPending
                 && !preferences.getBoolean("live_mode_uncertain", false)
                 && !preferences.getBoolean("glasses_recovery_required", false));
         stopButton.setEnabled(recording);
-        folderButton.setEnabled(!recording);
-        resetFolderButton.setEnabled(!recording);
-        diagnosticsCheck.setEnabled(!recording);
-        videoRouteView.setEnabled(!recording);
-        glassesStatusButton.setEnabled(!recording && !glassesStatusPending);
-        glassesLive60Button.setEnabled(!recording && !glassesStatusPending
+        folderButton.setEnabled(!recordingBusy);
+        resetFolderButton.setEnabled(!recordingBusy);
+        diagnosticsCheck.setEnabled(!recordingBusy);
+        videoRouteView.setEnabled(!recordingBusy);
+        glassesStatusButton.setEnabled(!recordingBusy && !glassesStatusPending);
+        glassesLive60Button.setEnabled(!recordingBusy && !glassesStatusPending
                 && !preferences.getBoolean("glasses_recovery_required", false));
-        glassesLive30Button.setEnabled(!recording && !glassesStatusPending
+        glassesLive30Button.setEnabled(!recordingBusy && !glassesStatusPending
                 && !preferences.getBoolean("glasses_recovery_required", false));
-        glasses60Button.setEnabled(!recording && !glassesStatusPending
+        glasses60Button.setEnabled(!recordingBusy && !glassesStatusPending
                 && !preferences.getBoolean("glasses_recovery_required", false));
-        glassesNormalButton.setEnabled(!recording && !glassesStatusPending
+        glassesNormalButton.setEnabled(!recordingBusy && !glassesStatusPending
                 && !preferences.getBoolean("glasses_recovery_required", false));
-        glassesRecoverButton.setEnabled(!recording && !glassesStatusPending
+        glassesRecoverButton.setEnabled(!recordingBusy && !glassesStatusPending
                 && preferences.getBoolean("glasses_recovery_required", false)
                 && preferences.getBoolean("glasses_owns_preparation", false));
-        enableButton.setEnabled(!recording && !glassesStatusPending);
+        enableButton.setEnabled(!recordingBusy && !glassesStatusPending);
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
