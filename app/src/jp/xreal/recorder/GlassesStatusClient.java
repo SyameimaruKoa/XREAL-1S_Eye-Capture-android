@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 
 /** Reads limited diagnostic state from the glasses over its USB network. */
 final class GlassesStatusClient {
+    private static final Object LIVE_COMMAND_LOCK = new Object();
     private static final int COMMAND = 0x700b;
     private static final byte[] STATUS_COMMAND = (
             "sha256sum /etc/services/pilot/run; "
@@ -100,6 +101,12 @@ final class GlassesStatusClient {
     }
 
     private String runLiveScript(String script, String token) throws IOException {
+        synchronized (LIVE_COMMAND_LOCK) {
+            return runLiveScriptLocked(script, token);
+        }
+    }
+
+    private String runLiveScriptLocked(String script, String token) throws IOException {
         GlassesLivePlan.cleanupCommand(token);
         String pending = preferences.getString("live_temp_token", "");
         if (!pending.isEmpty()) {
