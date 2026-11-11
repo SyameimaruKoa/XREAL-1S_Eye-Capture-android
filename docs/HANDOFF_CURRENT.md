@@ -1,6 +1,7 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-12 端末の現在の音声状態読取: Android audio dump はマイクミュート FromSwitch/FromRestrictions/FromApi/system がすべて false。Audio policy は USB-Audio XREAL 1S 入力、48kHz PCM32、複数のch maskを列挙。これは現在の状態・能力表示であり以前の録音時のミュート状態や独立マイク数を証明しない。変更・録音なし。
 - 2026-11-12 RAW音声の追加分析: .cache/wide30-225525.wav の左32bit全816000フレームを調べ、2〜15秒の13個の完全な1秒区間（2〜14秒目）は全サンプルが厳密にゼロ。全区間の非ゼロは28363サンプル、右は全数左と一致。全サンプルの下位16bitはゼロ、32bitが非ゼロなのに上位16bitがゼロになる例は0。したがってこの録音の長いゼロ区間はAACや32→16bit変換前のAudioRecord取得値にも存在する。ログは同録音で systemSilenced=false、USB-Audio XREAL経路を記録。周囲音未管理につき入力故障や無音環境のいずれも断定できない。元データ変更・実機操作なし。
 - 2026-11-12 v0.1.9 試験版公開: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.9 、ソース2953e0325f7ad01fe670fa740dff2e7f7508b654、APK SHA-256 c5a48b2316a1d3c6b77ba43b773eaadb37f18a3891fc437f942fbcbf05292a7c。GitHub asset digest と実機導入候補が一致。再起動不要60fps切替・短時間録画・30fps復帰、録画中の切替抑止を確認。音声低音量、スリープ外部画面、広角・長時間・ステレオの未解決をReleaseに明記。録画停止、30fps、Android HDMI ON、v0.1.9導入中。
 - v0.1.9 候補の実機検証: メイン画面から1600×1200/60に切替、録画・UI停止、1280×720/30復帰成功。VID_20261112_031730.mp4 はHEVC 1600×1200、16.923秒、約59.39fps・34.09Mbps、AAC 1ch。Android HDMI state ON、録画サービス停止。候補APK SHA-256 c5a48b2316a1d3c6b77ba43b773eaadb37f18a3891fc437f942fbc bf05292a7c（空白除く）、候補導入中。音声低音量警告あり、グラス実視認・音声内容・長時間は未確認。
