@@ -101,7 +101,7 @@ public class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private String lastStatus = "";
     private boolean receiverRegistered = false;
-    private boolean glassesStatusPending;
+    private static volatile boolean glassesStatusPending;
     private boolean recoveryShown;
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
