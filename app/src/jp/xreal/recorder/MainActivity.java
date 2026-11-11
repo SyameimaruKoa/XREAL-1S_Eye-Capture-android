@@ -674,7 +674,7 @@ public class MainActivity extends Activity {
             setStatus("録画前に本体の状態を確認してください");
             return;
         }
-        if (RecordService.isRecording()) {
+        if (RecordService.isRecordingOrStarting()) {
             setStatus("すでに録画中です");
             return;
         }
@@ -700,10 +700,17 @@ public class MainActivity extends Activity {
                 .putExtra(RecordService.EXTRA_DIAGNOSTICS, diagnosticsCheck.isChecked())
                 .putExtra(RecordService.EXTRA_VIDEO_ROUTE, route);
         preferences.edit().putInt("video_route", route).apply();
-        if (Build.VERSION.SDK_INT >= 26) {
-            startForegroundService(intent);
-        } else {
-            startService(intent);
+        RecordService.setStartPending(true);
+        try {
+            if (Build.VERSION.SDK_INT >= 26) {
+                startForegroundService(intent);
+            } else {
+                startService(intent);
+            }
+        } catch (RuntimeException e) {
+            RecordService.setStartPending(false);
+            setStatus("録画開始に失敗しました: " + e.getMessage());
+            return;
         }
         setStatus("録画を開始しています...");
     }
@@ -743,7 +750,7 @@ public class MainActivity extends Activity {
     }
 
     private void checkGlassesStatus() {
-        if (RecordService.isRecording() || glassesStatusPending) {
+        if (RecordService.isRecordingOrStarting() || glassesStatusPending) {
             setStatus("録画または本体の状態確認が進行中です");
             return;
         }
@@ -804,7 +811,7 @@ public class MainActivity extends Activity {
     }
 
     private void switchLiveMode(boolean sixtyFps) {
-        if (RecordService.isRecording() || glassesStatusPending
+        if (RecordService.isRecordingOrStarting() || glassesStatusPending
                 || preferences.getBoolean("glasses_recovery_required", false)) {
             setStatus("録画または本体の状態を確認してください");
             return;
@@ -854,7 +861,7 @@ public class MainActivity extends Activity {
     }
 
     private void prepareGlasses60() {
-        if (RecordService.isRecording() || glassesStatusPending) {
+        if (RecordService.isRecordingOrStarting() || glassesStatusPending) {
             setStatus("録画または本体の操作が進行中です");
             return;
         }
@@ -932,7 +939,7 @@ public class MainActivity extends Activity {
     }
 
     private void restoreGlassesNormal() {
-        if (RecordService.isRecording() || glassesStatusPending
+        if (RecordService.isRecordingOrStarting() || glassesStatusPending
                 || preferences.getBoolean("glasses_recovery_required", false)) {
             setStatus("録画または本体の状態を確認してください");
             return;
@@ -995,7 +1002,7 @@ public class MainActivity extends Activity {
     }
 
     private void recoverGlassesPreparation() {
-        if (RecordService.isRecording() || glassesStatusPending
+        if (RecordService.isRecordingOrStarting() || glassesStatusPending
                 || !preferences.getBoolean("glasses_recovery_required", false)
                 || !preferences.getBoolean("glasses_owns_preparation", false)) {
             setStatus("このアプリが作成した未完了の準備を確認できません");

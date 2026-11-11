@@ -51,6 +51,7 @@ public final class RecordService extends Service {
 
     private static volatile String status = "待機中";
     private static volatile boolean recording;
+    private static volatile boolean startPending;
     private static volatile long videoFrames;
     private static volatile long videoBytes;
     private static volatile long firstVideoNs;
@@ -111,6 +112,14 @@ public final class RecordService extends Service {
         return recording;
     }
 
+    static boolean isRecordingOrStarting() {
+        return recording || startPending;
+    }
+
+    static void setStartPending(boolean pending) {
+        startPending = pending;
+    }
+
     static boolean isAudioExactZero() { return phoneExactZero; }
     static boolean isAudioQuiet() { return phoneQuiet; }
     static boolean hasAudioData() { return phoneAudioSeen; }
@@ -150,10 +159,12 @@ public final class RecordService extends Service {
         String action = intent == null ? null : intent.getAction();
         if (ACTION_START.equals(action)) {
             if (recording) {
+                startPending = false;
                 return START_NOT_STICKY;
             }
             device = intent.getParcelableExtra(EXTRA_DEVICE);
             if (device == null) {
+                startPending = false;
                 status = "エラー: USBデバイスがありません";
                 stopSelf();
                 return START_NOT_STICKY;
@@ -175,6 +186,7 @@ public final class RecordService extends Service {
                     startForeground(NOTIFICATION_ID, buildNotification());
                 }
             } catch (Throwable t) {
+                startPending = false;
                 status = "Foreground Service開始失敗: " + t;
                 Log.e(TAG, "startForeground failed", t);
                 stopSelf();
@@ -187,6 +199,7 @@ public final class RecordService extends Service {
             wakeLock.acquire();
 
             recording = true;
+            startPending = false;
             videoFrames = 0;
             videoBytes = 0;
             firstVideoNs = 0;
@@ -675,6 +688,7 @@ public final class RecordService extends Service {
             }
         }
         recording = false;
+        startPending = false;
         super.onDestroy();
     }
 
