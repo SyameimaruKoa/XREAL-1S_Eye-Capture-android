@@ -239,13 +239,11 @@ public class MainActivity extends Activity {
         glassesLive60Button.setText("TCP 1600×1200 / 60fps に切替（再起動なし）");
         styleButton(glassesLive60Button, Color.rgb(45, 45, 45));
         glassesLive60Button.setOnClickListener(v -> switchLiveMode(true));
-        deviceSettings.addView(glassesLive60Button);
 
         glassesLive30Button = new Button(this);
         glassesLive30Button.setText("TCP 1280×720 / 30fps に戻す（再起動なし）");
         styleButton(glassesLive30Button, Color.rgb(45, 45, 45));
         glassesLive30Button.setOnClickListener(v -> switchLiveMode(false));
-        deviceSettings.addView(glassesLive30Button);
 
         glasses60Button = new Button(this);
         glasses60Button.setText("TCP 60fps を準備（本体再起動）");
@@ -351,11 +349,19 @@ public class MainActivity extends Activity {
         root.addView(videoRouteView);
         TextView rateNote = new TextView(this);
         rateNote.setText("ビットレートは録画の実測例で、撮影内容によって変わります。\n"
-                + "TCP の解像度・fps は本体の状態で決まります。60fps は本体設定から準備できます。\n"
+                + "TCP の解像度・fps は下のボタンで切り替えられます。\n"
                 + "1600×1200/60fps は720p/30fpsより左右の画角が狭いことを確認しています。720p/60fps の画角は未確認です。");
         rateNote.setTextColor(Color.LTGRAY);
         rateNote.setTextSize(12);
         root.addView(rateNote);
+        TextView tcpModeLabel = new TextView(this);
+        tcpModeLabel.setText("TCP の解像度・フレームレート");
+        tcpModeLabel.setTextColor(Color.WHITE);
+        tcpModeLabel.setTextSize(14);
+        tcpModeLabel.setPadding(0, 24, 0, 8);
+        root.addView(tcpModeLabel);
+        root.addView(glassesLive60Button);
+        root.addView(glassesLive30Button);
         root.addView(deviceSettingsToggle);
         root.addView(deviceSettings);
         root.addView(keepScreenCheck);
