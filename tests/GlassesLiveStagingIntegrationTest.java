@@ -71,8 +71,38 @@ public final class GlassesLiveStagingIntegrationTest {
                     + " ); then echo removed; else cat " + path + "; fi");
             require(symlink.contains("protected") && !symlink.contains("removed"),
                     "symlink or its target was removed");
+
+            String state = path + ".state";
+            String phase = path + ".phase";
+            String mock = "printf '\\000\\005\\000\\000\\320\\002\\000\\000\\036\\000\\000\\000' > "
+                    + state + "; "
+                    + "pidof() { echo 123; }; "
+                    + "readlink() { echo /usrdata/pilot/bin/pilot; }; "
+                    + "sha256sum() { cat >/dev/null; }; "
+                    + "awk() { case \"$*\" in *maps*) echo 10000000-10001000;; *) echo 42;; esac; }; "
+                    + "dd() { case \"$*\" in "
+                    + "*of=*) if [ ! -e " + phase + " ]; then "
+                    + "printf '\\100\\006\\000\\000\\320\\002\\000\\000\\036\\000\\000\\000' > "
+                    + state + "; : > " + phase + "; cat >/dev/null; else cat > " + state + "; fi;; "
+                    + "*bs=8*) printf '\\310\\161\\264\\021\\000\\000\\000\\000';; "
+                    + "*) cat " + state + ";; esac; }; ";
+            String rollback = shell(mock + "( " + GlassesLivePlan.command(true) + " ); "
+                    + "od -An -tu4 " + state);
+            require(rollback.contains(GlassesLivePlan.ROLLED_BACK), "partial write was not rolled back");
+            require(rollback.matches("(?s).*1280\\s+720\\s+30\\s*$"), "original values not restored");
+
+            shell("rm -f " + phase);
+            String changedProcess = mock.replace(
+                    "readlink() { echo /usrdata/pilot/bin/pilot; }; ",
+                    "readlink() { if [ -e " + phase + " ]; then echo /other; "
+                            + "else echo /usrdata/pilot/bin/pilot; fi; }; ");
+            String uncertain = shell(changedProcess + "( " + GlassesLivePlan.command(true) + " ); "
+                    + "od -An -tu4 " + state);
+            require(uncertain.contains(GlassesLivePlan.UNCERTAIN), "changed process was not rejected");
+            require(uncertain.matches("(?s).*1600\\s+720\\s+30\\s*$"),
+                    "rollback wrote to a process after identity changed");
         } finally {
-            shell("rm -f " + path + " " + path + ".target");
+            shell("rm -f " + path + " " + path + ".target " + path + ".state " + path + ".phase");
         }
     }
 }
