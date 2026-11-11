@@ -101,6 +101,24 @@ public final class GlassesLiveStagingIntegrationTest {
             require(uncertain.contains(GlassesLivePlan.UNCERTAIN), "changed process was not rejected");
             require(uncertain.matches("(?s).*1600\\s+720\\s+30\\s*$"),
                     "rollback wrote to a process after identity changed");
+
+            shell("rm -f " + phase);
+            String rollbackFails = mock.replace("else cat > " + state + "; fi;;",
+                    "else cat >/dev/null; fi;;");
+            String failedRecovery = shell(rollbackFails + "( " + GlassesLivePlan.command(true)
+                    + " ); od -An -tu4 " + state);
+            require(failedRecovery.contains(GlassesLivePlan.UNCERTAIN),
+                    "failed rollback must leave the result uncertain");
+            require(failedRecovery.matches("(?s).*1600\\s+720\\s+30\\s*$"),
+                    "test did not preserve the injected partial value");
+
+            shell("rm -f " + phase);
+            String unknownMode = mock.replace("*) cat " + state + ";; esac; }; ",
+                    "*) printf '\\347\\003\\000\\000\\320\\002\\000\\000\\036\\000\\000\\000';; esac; }; ");
+            String rejected = shell(unknownMode + "( " + GlassesLivePlan.command(true)
+                    + " ); if [ -e " + phase + " ]; then echo wrote; else echo no-write; fi");
+            require(rejected.contains("no-write") && !rejected.contains("xreal_live_mode_ok"),
+                    "unknown starting mode was not rejected");
         } finally {
             shell("rm -f " + path + " " + path + ".target " + path + ".state " + path + ".phase");
         }
