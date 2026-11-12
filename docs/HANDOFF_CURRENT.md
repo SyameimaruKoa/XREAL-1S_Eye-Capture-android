@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-12 第二画面調査（読取のみ）: Android 15/API 35 の実機 dumpsys display は内蔵 displayId=0 と XREAL HDMI displayId=6 とも displayGroupId=0、dumpsys power は displayGroupId=0 の user activity を表示。以前の手動 sleep で両画面がOFFになった観測と整合するが、これだけで通常アプリによる独立制御が不可能と断定しない。AOSP Android 15 の PowerManagerService は display group と power group を対応させる（https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android15-release/services/core/java/com/android/server/power/PowerManagerService.java）。端末固有の実装との差異は未検証。録画停止、設定変更・スマホroot・グラス操作なし。
+
 - 復旧確認完了: 公開v0.1.9で通常録画 VID_20261112_164748.mp4 を保存、1280×720 HEVC 約29.85fps・16.81Mbps、AAC 1ch。3秒目を抽出し実景を目視確認。録画停止、Android HDMIは再起動後state ON（グラス実視認は未確認）、経路eth0。録画中に音声低音量警告後、USB入力検出あり。広角GDC属性変更時のmedia_service停止とtranslation faultの関連は未確定、同変更を再試行しない。スマホSSHはrootだったため今後使用しない。
 
 - 経路復旧: 中断したSSH操作後、allow-lan-access=true、169.254.2.1への経路はeth0に戻った。SSHの実行IDを事後確認したところ想定と異なりMagisk rootだった。意図せずスマホroot経由で設定を操作した可能性があり、以後SSHによる操作は行わない。通常録画を再確認する。
