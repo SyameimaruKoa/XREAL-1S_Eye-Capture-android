@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-12 第二画面の権限制約調査: Android 15 AOSP DisplayManagerService の createVirtualDisplay ではOWN_DISPLAY_GROUP指定時、system UIDでも有効なvirtual deviceでもなければADD_TRUSTED_DISPLAY権限を確認（https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android15-release/services/core/java/com/android/server/display/DisplayManagerService.java）。AUTO_MIRRORでは同フラグを除去。これは仮想画面の作成に関するコードで、既存物理HDMIを別グループに移す方法や端末のOEM実装の可否を証明しない。公式PowerManager説明では手動電源ボタン時はSCREEN_BRIGHT/DIM_WAKE_LOCKが解除され、PARTIAL_WAKE_LOCKはCPU維持のみ（https://developer.android.com/reference/android/os/PowerManager）。既存の実機両画面OFF観測と整合。音声RAWのゼロ区間は既存記録を再確認したが新規音声試験なし。端末設定変更なし。
+
 - 2026-11-12 直近5分録画の音声比較: AACを48kHz signed 16bit PCMへデコードし、完全な1秒ごとに集計。30fps録画 VID_20261112_165256 は304秒中39秒が全サンプル0、75秒がピーク絶対値32以下、非ゼロ6422429サンプル。60fps録画 VID_20261112_170129 は305秒中66秒が全0、120秒がピーク32以下、非ゼロ4855347サンプル。1秒区間は固定区切りで連続時間の長さとは異なる。AAC復号後の値であり入力が完全ゼロだったことを直接示さず、周囲音・両録画の条件は未管理でモード差の因果も不明。ffmpeg終了0、元動画・端末変更なし。
 
 - 2026-11-12 USB音声記述子の実機再確認: 通常ADBで dumpsys usb dump-descriptors -dump-list を読取。XREAL 1S UAC1のMicrophone Input Terminal ID2は2ch config 0x3、USB Streaming Output Terminal ID4からInterface7のPCM形式へリンクし、2ch・32bit・48kHzを申告。これは機器の形式申告で独立音声の証拠ではなく、保存済み全24本の2ch WAVは左右完全一致。USB経路のどこで複製されたか未確定。対照としてユーザー指定の本体録画 logs/100XREAL/VID_0032.mp4 はAAC mono・48kHz（物理マイク数の証明ではない）。/proc/asoundは通常ADBでPermission denied、権限昇格せず。録画・設定変更なし。
