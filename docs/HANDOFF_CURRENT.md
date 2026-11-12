@@ -1,6 +1,10 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-12 ネットワーク経路確認結果: shellの169.254.2.1経路はwlan0だがeth0のConnectivityネットワーク存在下、公開v0.1.10はTCP映像を受信し VID_20261112_174547.mp4 をUI停止・358 AU・29.86fps・14.21Mbpsで保存。したがってshell routeのみでアプリ録画不能と判断しない。この録画では音声3秒ゼロ・低音量警告あり。音声内容・録画映像の全デコードは未検証。録画停止、Android HDMI ON、ネットワーク設定・root変更なし。
+
+- 2026-11-12 接続確認: ADBの ip route get 169.254.2.1 はwlan0、table52の169.254.2.0/24はthrow。eth0 169.254.2.10とConnectivity Ethernetネットワークは残りHDMI ON。アプリはNetwork.bindSocketを使うためshellのrouteだけでアプリ不達と断定できず、公開v0.1.10で短時間録画・停止を試す。スマホrootやネットワーク設定変更なし。
+
 - 2026-11-12 v0.1.10試験版公開: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.10 、対象commit 436aa740f48fa897aeddaca4ecbc1a02760cb667。GitHubアセット・候補・端末APK SHA256 aad88c4a281e8272845dabaaaee0bc2c3ce318c91d3e0f1a37ab0a31bd29430dで一致、pre-release。受信待機・保存中表示改善。候補で30/60短時間録画、再起動なし往復、映像全デコード・9 Java試験・署名一致を確認。音声ゼロ/低音量・スリープ外部画面・60fps間隔・広角・ステレオ・長時間等は未解決としてReleaseに明記。端末v0.1.10、録画停止、30fps、Android HDMI ON、第二画面オフ。
 
 - v0.1.10候補実機確認: APK SHA256 aad88c4a281e8272845dabaaaee0bc2c3ce318c91d3e0f1a37ab0a31bd29430d と端末base.apk一致、30fps短時間保存後に再起動不要60fps切替、VID_20261112_174303.mp4 をUI停止・保存し30fps復帰成功。映像1600×1200 約59.39fps・30.61Mbps AAC mono、全映像デコード終了0。Android HDMI ON、録画停止、候補APK導入中。9 Java試験・既存版署名一致。録画表示の受信待機と保存中は一時遅延版で検証済。これから未解決事項明記の試験Releaseを作成する。
