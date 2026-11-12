@@ -60,7 +60,7 @@ public final class RecordService extends Service {
     private PowerManager.WakeLock wakeLock;
     private Thread worker;
     private volatile boolean destroyed;
-    private volatile boolean stopRequested;
+    private static volatile boolean stopRequested;
     private volatile boolean audioSilenceDetected;
     private volatile boolean audioExactZero;
     private static volatile boolean phoneExactZero;
@@ -125,6 +125,7 @@ public final class RecordService extends Service {
     static boolean isAudioQuiet() { return phoneQuiet; }
     static boolean hasAudioData() { return phoneAudioSeen; }
     static boolean hasVideoData() { return videoFrames > 0; }
+    static boolean isStopping() { return recording && stopRequested; }
     static int getAudioPeak() { return phonePeak.getAndSet(0); }
     static long getElapsedSeconds() {
         return recording ? Math.max(0, (SystemClock.elapsedRealtime() - recordingStartedMs) / 1000) : 0;
@@ -204,10 +205,10 @@ public final class RecordService extends Service {
             videoBytes = 0;
             firstVideoNs = 0;
             lastVideoNs = 0;
+            stopRequested = false;
             recording = true;
             startPending = false;
             recordingStartedMs = SystemClock.elapsedRealtime();
-            stopRequested = false;
             audioSilenceDetected = false;
             audioExactZero = false;
             phoneExactZero = false;

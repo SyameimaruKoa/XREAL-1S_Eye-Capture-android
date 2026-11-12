@@ -1076,6 +1076,7 @@ public class MainActivity extends Activity {
         String s = RecordService.getStatus();
         boolean recording = RecordService.isRecording();
         boolean recordingBusy = RecordService.isRecordingOrStarting();
+        boolean stopping = RecordService.isStopping();
         int audioPeak = recording ? RecordService.getAudioPeak() : 0;
         boolean keepScreen = recording && keepScreenCheck.isChecked();
         if (keepScreen) {
@@ -1088,8 +1089,8 @@ public class MainActivity extends Activity {
                     : !RecordService.hasAudioData() ? "音声データを待機中"
                     : RecordService.isAudioExactZero() ? "録音用の音声が3秒間ゼロ"
                     : RecordService.isAudioQuiet() ? "音声が小さいか無音" : "音声入力あり";
-            boolean videoReceived = RecordService.hasVideoData();
-            SpannableString saverText = new SpannableString(videoReceived
+            boolean videoReceived = !stopping && RecordService.hasVideoData();
+            SpannableString saverText = new SpannableString(stopping ? "保存中" : videoReceived
                     ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
                             saverSeconds / 3600, (saverSeconds / 60) % 60, saverSeconds % 60)
                     : "映像を待機中");
@@ -1117,8 +1118,8 @@ public class MainActivity extends Activity {
         }
         recoveryShown = needsRecovery;
         long seconds = RecordService.getElapsedSeconds();
-        boolean videoReceived = recording && RecordService.hasVideoData();
-        recordingIndicator.setText(!recording ? "待機中" : videoReceived
+        boolean videoReceived = recording && !stopping && RecordService.hasVideoData();
+        recordingIndicator.setText(!recording ? "待機中" : stopping ? "保存中" : videoReceived
                 ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
                         seconds / 3600, (seconds / 60) % 60, seconds % 60) : "映像を待機中");
         recordingIndicator.setTextColor(videoReceived ? Color.rgb(255, 95, 95) : Color.WHITE);
@@ -1142,7 +1143,7 @@ public class MainActivity extends Activity {
         startButton.setEnabled(!recordingBusy && !glassesStatusPending
                 && !preferences.getBoolean("live_mode_uncertain", false)
                 && !preferences.getBoolean("glasses_recovery_required", false));
-        stopButton.setEnabled(recording);
+        stopButton.setEnabled(recording && !stopping);
         folderButton.setEnabled(!recordingBusy);
         resetFolderButton.setEnabled(!recordingBusy);
         diagnosticsCheck.setEnabled(!recordingBusy);
