@@ -646,7 +646,7 @@ public final class RecordService extends Service {
             }
         }
         long elapsed = Math.max(0, (SystemClock.elapsedRealtime() - recordingStartedMs) / 1000);
-        recordingPresentation.updateStatus(status, stopRequested, audioSilenceDetected, phoneAudioSeen,
+        recordingPresentation.updateStatus(status, stopRequested, hasVideoData(), audioSilenceDetected, phoneAudioSeen,
                 audioExactZero, audioPeak.getAndSet(0), elapsed,
                 getVideoRateSummary());
     }

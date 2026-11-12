@@ -87,7 +87,8 @@ final class RecordingPresentation extends Presentation {
         return view;
     }
 
-    void updateStatus(String state, boolean stopping, boolean silence, boolean audioSeen, boolean exactZero,
+    void updateStatus(String state, boolean stopping, boolean videoReceived, boolean silence,
+                      boolean audioSeen, boolean exactZero,
                       int audioPeak, long elapsedSeconds,
                       String rateSummary) {
         if (headline == null) {
@@ -101,7 +102,7 @@ final class RecordingPresentation extends Presentation {
         boolean audioFailed = state != null && state.startsWith("録画中: 音声停止");
         boolean error = !audioFailed && state != null && (state.contains("エラー") || state.contains("失敗")
                 || state.contains("停止:"));
-        boolean ready = state != null && state.startsWith("録画中");
+        boolean ready = videoReceived && state != null && state.startsWith("録画中");
         if (error) {
             headline.setText("録画エラー");
             headline.setTextColor(Color.rgb(255, 100, 100));
