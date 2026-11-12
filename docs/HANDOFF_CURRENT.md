@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-12 USB音声記述子の実機再確認: 通常ADBで dumpsys usb dump-descriptors -dump-list を読取。XREAL 1S UAC1のMicrophone Input Terminal ID2は2ch config 0x3、USB Streaming Output Terminal ID4からInterface7のPCM形式へリンクし、2ch・32bit・48kHzを申告。これは機器の形式申告で独立音声の証拠ではなく、保存済み全24本の2ch WAVは左右完全一致。USB経路のどこで複製されたか未確定。対照としてユーザー指定の本体録画 logs/100XREAL/VID_0032.mp4 はAAC mono・48kHz（物理マイク数の証明ではない）。/proc/asoundは通常ADBでPermission denied、権限昇格せず。録画・設定変更なし。
+
 - 2026-11-12 広角異常の行ずれ検査: wide-gdc-033859.mp4 と正常 after-recovery-164748.mp4 の各4秒目を8bit輝度raw化し、4行・4列ごとの内側画素で隣接行の平均絶対差を計算。広角は水平ずれ -64/-32/0/+32/+64px で68.165/66.601/61.029/66.897/69.404、正常は22.269/14.589/1.712/14.553/23.345。広角のこの1フレームでは±32pxずらすと隣接行が整合するという単純な仮説は支持されない。別シーン・1フレームの比較であり複雑なstride不整合・圧縮破損等は排除できない。PC解析のみ、元ファイル・端末設定変更なし。
 
 - 2026-11-12 広角異常映像SPS読取: .cache/wide-gdc-033859.mp4 はHEVC Main、4:2:0、8bit、SPS pic_width_in_luma_samples=2016・height=1512・conformance_window_flag=0。対照の正常 .cache/after-recovery-164748.mp4 は1280×720・同形式・window flag=0。広角SPSに2048幅からの表示切抜きは指定されていない。属性表の2048幅との関係やSPS値の正しさ、破損原因はこれだけでは不明。保存映像解析のみ、端末変更なし。
