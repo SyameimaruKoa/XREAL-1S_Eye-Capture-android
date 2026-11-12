@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-12 v0.1.10試験版公開: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.10 、対象commit 436aa740f48fa897aeddaca4ecbc1a02760cb667。GitHubアセット・候補・端末APK SHA256 aad88c4a281e8272845dabaaaee0bc2c3ce318c91d3e0f1a37ab0a31bd29430dで一致、pre-release。受信待機・保存中表示改善。候補で30/60短時間録画、再起動なし往復、映像全デコード・9 Java試験・署名一致を確認。音声ゼロ/低音量・スリープ外部画面・60fps間隔・広角・ステレオ・長時間等は未解決としてReleaseに明記。端末v0.1.10、録画停止、30fps、Android HDMI ON、第二画面オフ。
+
 - v0.1.10候補実機確認: APK SHA256 aad88c4a281e8272845dabaaaee0bc2c3ce318c91d3e0f1a37ab0a31bd29430d と端末base.apk一致、30fps短時間保存後に再起動不要60fps切替、VID_20261112_174303.mp4 をUI停止・保存し30fps復帰成功。映像1600×1200 約59.39fps・30.61Mbps AAC mono、全映像デコード終了0。Android HDMI ON、録画停止、候補APK導入中。9 Java試験・既存版署名一致。録画表示の受信待機と保存中は一時遅延版で検証済。これから未解決事項明記の試験Releaseを作成する。
 
 - v0.1.10候補実機確認中: 候補APK導入、30fps VID_20261112_174208.mp4 を374AU・29.85fps・15.50MbpsでUI停止保存。続けて再起動なし60fps設定成功表示、録画開始前。短時間録画・停止後必ず30fps復帰・HDMI確認する。
