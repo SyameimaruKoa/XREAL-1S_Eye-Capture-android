@@ -1,6 +1,14 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- UI試作後の端末状態: 公開v0.1.9 APKを再導入しbuild APKも同版に復元、録画停止。ソースの試作は保持、映像未受信時・画面保護での表示検証と第二画面との整合が未完。試作をReleaseしていない。
+
+- UI試作実機結果: 試作APK SHA256 1874fcaee2a7ee224ed28fb34af4d73212fb61c431c56464533ba98ef1e71aa8、録画時REC・通常停止・VID_20261112_172504.mp4保存、1280×720約29.85fps AAC monoを確認。映像受信前の待機分岐は短すぎて画面取得できず、画面保護・接続失敗・第二画面は未検証。録画停止、試作が端末に導入中、これから公開v0.1.9へ戻す。試作は未Release。
+
+- UI試作ビルド完了: MainActivityのRECは受信フレーム0の間は映像待機表示、最初の映像受信後にREC表示。両スマホ画面に適用、秒数は既存どおり。RecordServiceはrecording公開前にframe数をリセット。ビルド成功、実機はまだ公開v0.1.9、録画停止。これから試作を上書き導入し開始・REC・停止・保存を確認する。公開APKは .cache/v019-before-gdc.apk。
+
+- 2026-11-12 UI改善着手: Git 1511cf8、v0.1.9、録画停止・eth0。現状MainActivityはサービスrecording=true直後、映像受信前にもREC表示。実際の映像受信前は準備中とし、録画表示の誤認を減らす。試作のビルド・実機短時間録画・停止・外部表示を確認後にRelease要否を判断する。試験後は公開APKへ戻すか検証済版を明記。
+
 - 2026-11-12 物理第二画面調査: 接続中のHDMI DisplayDeviceInfoは state/committedState ON、表示フラグは ALLOWED_TO_BE_DEFAULT_DISPLAY・SECURE・SUPPORTS_PROTECTED_BUFFERS・PRESENTATION・TRUSTED で NEVER_BLANKは表示されない。AOSP DisplayDeviceInfoはNEVER_BLANKを電源管理で自動消灯しないための内部フラグと定義（https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/services/core/java/com/android/server/display/DisplayDeviceInfo.java）。端末の実装・通常アプリで既存物理画面へのフラグ設定可否は未検証。cmd display helpにenable/disableはあるが消灯中の独立維持や通常アプリ権限を示さない。端末設定変更なし。
 
 - 2026-11-12 第二画面の権限制約調査: Android 15 AOSP DisplayManagerService の createVirtualDisplay ではOWN_DISPLAY_GROUP指定時、system UIDでも有効なvirtual deviceでもなければADD_TRUSTED_DISPLAY権限を確認（https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android15-release/services/core/java/com/android/server/display/DisplayManagerService.java）。AUTO_MIRRORでは同フラグを除去。これは仮想画面の作成に関するコードで、既存物理HDMIを別グループに移す方法や端末のOEM実装の可否を証明しない。公式PowerManager説明では手動電源ボタン時はSCREEN_BRIGHT/DIM_WAKE_LOCKが解除され、PARTIAL_WAKE_LOCKはCPU維持のみ（https://developer.android.com/reference/android/os/PowerManager）。既存の実機両画面OFF観測と整合。音声RAWのゼロ区間は既存記録を再確認したが新規音声試験なし。端末設定変更なし。

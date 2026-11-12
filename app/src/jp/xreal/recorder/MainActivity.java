@@ -1088,11 +1088,15 @@ public class MainActivity extends Activity {
                     : !RecordService.hasAudioData() ? "音声データを待機中"
                     : RecordService.isAudioExactZero() ? "録音用の音声が3秒間ゼロ"
                     : RecordService.isAudioQuiet() ? "音声が小さいか無音" : "音声入力あり";
-            SpannableString saverText = new SpannableString(String.format(Locale.US,
-                    "● REC  %02d:%02d:%02d",
-                    saverSeconds / 3600, (saverSeconds / 60) % 60, saverSeconds % 60));
-            saverText.setSpan(new ForegroundColorSpan(Color.rgb(255, 95, 95)), 0, 5,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            boolean videoReceived = RecordService.hasVideoData();
+            SpannableString saverText = new SpannableString(videoReceived
+                    ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
+                            saverSeconds / 3600, (saverSeconds / 60) % 60, saverSeconds % 60)
+                    : "映像を待機中");
+            if (videoReceived) {
+                saverText.setSpan(new ForegroundColorSpan(Color.rgb(255, 95, 95)), 0, 5,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
             screenSaverStatus.setText(saverText);
             screenSaverRate.setText(RecordService.getVideoRateSummary().replace("受信平均 ", ""));
             screenSaverAudio.setText(audioState);
@@ -1113,9 +1117,11 @@ public class MainActivity extends Activity {
         }
         recoveryShown = needsRecovery;
         long seconds = RecordService.getElapsedSeconds();
-        recordingIndicator.setText(recording ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
-                seconds / 3600, (seconds / 60) % 60, seconds % 60) : "待機中");
-        recordingIndicator.setTextColor(recording ? Color.rgb(255, 95, 95) : Color.WHITE);
+        boolean videoReceived = recording && RecordService.hasVideoData();
+        recordingIndicator.setText(!recording ? "待機中" : videoReceived
+                ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
+                        seconds / 3600, (seconds / 60) % 60, seconds % 60) : "映像を待機中");
+        recordingIndicator.setTextColor(videoReceived ? Color.rgb(255, 95, 95) : Color.WHITE);
         phoneWaveform.setVisibility(recording ? View.VISIBLE : View.GONE);
         if (recording) {
             phoneWaveform.addPeak(audioPeak);

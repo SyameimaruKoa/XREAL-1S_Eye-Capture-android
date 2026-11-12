@@ -124,6 +124,7 @@ public final class RecordService extends Service {
     static boolean isAudioExactZero() { return phoneExactZero; }
     static boolean isAudioQuiet() { return phoneQuiet; }
     static boolean hasAudioData() { return phoneAudioSeen; }
+    static boolean hasVideoData() { return videoFrames > 0; }
     static int getAudioPeak() { return phonePeak.getAndSet(0); }
     static long getElapsedSeconds() {
         return recording ? Math.max(0, (SystemClock.elapsedRealtime() - recordingStartedMs) / 1000) : 0;
@@ -199,12 +200,12 @@ public final class RecordService extends Service {
             // Held only while recording and released on every service shutdown path.
             wakeLock.acquire();
 
-            recording = true;
-            startPending = false;
             videoFrames = 0;
             videoBytes = 0;
             firstVideoNs = 0;
             lastVideoNs = 0;
+            recording = true;
+            startPending = false;
             recordingStartedMs = SystemClock.elapsedRealtime();
             stopRequested = false;
             audioSilenceDetected = false;
