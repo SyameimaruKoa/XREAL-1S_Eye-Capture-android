@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-12 復旧録画DTS警告の切分け: VID_20261112_164748.mp4 の映像は time_base=1/90000、1329パケットのDTS非増加0、PTS=DTS、最小DTS差33.456ms。ffmpeg通常のnull出力では重複DTS警告が出たが、出力に -fps_mode passthrough -enc_time_base 1:90000 を指定して全映像デコードすると警告なし、映像stream copyのnull出力でも警告なし。前回警告は解析出力の時間単位変換に依存し、元映像のDTS重複を示さない。これは画質・長時間録画全般の保証ではない。実機状態変更なし。
+
 - 2026-11-12 復旧後録画の追加解析（PC上）: VID_20261112_164748.mp4 は映像パケット1329個、隣接PTS最大33.544ms、50ms超0・非増加0。約45秒の短時間試験であり長時間安定性を示さない。音声は -60dB・1秒以上の低音量区間が複数あり、最長約3.86秒、周囲音は管理しておらず故障や完全無音とは断定できない。ffmpeg映像のnull出力で重複DTS警告1件、元動画PTSは単調増加だが警告の由来は未確定、全フレーム完全正常とは断言しない。AAC単独デコードはエラーなし。端末設定変更なし。
 
 - 2026-11-12 第二画面調査（読取のみ）: Android 15/API 35 の実機 dumpsys display は内蔵 displayId=0 と XREAL HDMI displayId=6 とも displayGroupId=0、dumpsys power は displayGroupId=0 の user activity を表示。以前の手動 sleep で両画面がOFFになった観測と整合するが、これだけで通常アプリによる独立制御が不可能と断定しない。AOSP Android 15 の PowerManagerService は display group と power group を対応させる（https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android15-release/services/core/java/com/android/server/power/PowerManagerService.java）。端末固有の実装との差異は未検証。録画停止、設定変更・スマホroot・グラス操作なし。
