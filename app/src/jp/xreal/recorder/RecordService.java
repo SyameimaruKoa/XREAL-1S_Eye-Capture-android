@@ -127,9 +127,14 @@ public final class RecordService extends Service {
     static boolean hasVideoData() { return videoFrames > 0; }
     static boolean isStopping() { return recording && stopRequested; }
     static boolean isVideoStalled() {
+        if (!recording || stopRequested) {
+            return false;
+        }
         long last = lastVideoNs;
-        return recording && !stopRequested && videoFrames > 0 && last > 0
-                && SystemClock.elapsedRealtimeNanos() - last >= 3_000_000_000L;
+        if (videoFrames == 0 || last == 0) {
+            return SystemClock.elapsedRealtime() - recordingStartedMs >= 10_000L;
+        }
+        return SystemClock.elapsedRealtimeNanos() - last >= 3_000_000_000L;
     }
     static int getAudioPeak() { return phonePeak.getAndSet(0); }
     static long getElapsedSeconds() {
@@ -211,9 +216,9 @@ public final class RecordService extends Service {
             firstVideoNs = 0;
             lastVideoNs = 0;
             stopRequested = false;
+            recordingStartedMs = SystemClock.elapsedRealtime();
             recording = true;
             startPending = false;
-            recordingStartedMs = SystemClock.elapsedRealtime();
             audioSilenceDetected = false;
             audioExactZero = false;
             phoneExactZero = false;

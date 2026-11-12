@@ -1092,7 +1092,7 @@ public class MainActivity extends Activity {
                     : RecordService.isAudioQuiet() ? "音声が小さいか無音" : "音声入力あり";
             boolean videoReceived = !stopping && !videoStalled && RecordService.hasVideoData();
             SpannableString saverText = new SpannableString(stopping ? "保存中"
-                    : videoStalled ? "映像受信停止" : videoReceived
+                    : videoStalled ? (RecordService.hasVideoData() ? "映像受信停止" : "映像を受信できません") : videoReceived
                     ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
                             saverSeconds / 3600, (saverSeconds / 60) % 60, saverSeconds % 60)
                     : "映像を待機中");
@@ -1126,7 +1126,7 @@ public class MainActivity extends Activity {
         long seconds = RecordService.getElapsedSeconds();
         boolean videoReceived = recording && !stopping && !videoStalled && RecordService.hasVideoData();
         recordingIndicator.setText(!recording ? "待機中" : stopping ? "保存中"
-                : videoStalled ? "映像受信停止" : videoReceived
+                : videoStalled ? (RecordService.hasVideoData() ? "映像受信停止" : "映像を受信できません") : videoReceived
                 ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
                         seconds / 3600, (seconds / 60) % 60, seconds % 60) : "映像を待機中");
         recordingIndicator.setTextColor(videoReceived ? Color.rgb(255, 95, 95)
@@ -1142,7 +1142,8 @@ public class MainActivity extends Activity {
                 ? "音声入力が非常に小さい状態です" : "USBマイク · モノラル");
         // The service's idle text must not overwrite this Activity's USB/UVC status.
         if (videoStalled) {
-            statusView.setText("映像が3秒以上届いていません");
+            statusView.setText(RecordService.hasVideoData()
+                    ? "映像が3秒以上届いていません" : "開始から10秒以上、映像が届いていません");
             lastStatus = "";
         } else if (recording && s != null && s.startsWith("録画中")) {
             statusView.setText(s + "\n" + RecordService.getVideoRateSummary());

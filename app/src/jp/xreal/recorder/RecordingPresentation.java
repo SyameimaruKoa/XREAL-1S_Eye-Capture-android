@@ -110,7 +110,7 @@ final class RecordingPresentation extends Presentation {
             headline.setText("保存中");
             headline.setTextColor(Color.WHITE);
         } else if (videoStalled) {
-            headline.setText("映像受信停止");
+            headline.setText(videoReceived ? "映像受信停止" : "映像を受信できません");
             headline.setTextColor(Color.rgb(255, 185, 80));
         } else if (ready) {
             headline.setText("● REC");
