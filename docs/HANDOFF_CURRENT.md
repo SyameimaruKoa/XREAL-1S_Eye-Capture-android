@@ -1,6 +1,23 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 復旧確認完了: 公開v0.1.9で通常録画 VID_20261112_164748.mp4 を保存、1280×720 HEVC 約29.85fps・16.81Mbps、AAC 1ch。3秒目を抽出し実景を目視確認。録画停止、Android HDMIは再起動後state ON（グラス実視認は未確認）、経路eth0。録画中に音声低音量警告後、USB入力検出あり。広角GDC属性変更時のmedia_service停止とtranslation faultの関連は未確定、同変更を再試行しない。スマホSSHはrootだったため今後使用しない。
+
+- 経路復旧: 中断したSSH操作後、allow-lan-access=true、169.254.2.1への経路はeth0に戻った。SSHの実行IDを事後確認したところ想定と異なりMagisk rootだった。意図せずスマホroot経由で設定を操作した可能性があり、以後SSHによる操作は行わない。通常録画を再確認する。
+
+- 復旧録画は169.254.2.1:52995への接続がTailscale IPからタイムアウトし停止。ip route getもtailscale0を示す。前回ユーザーが実施したallow-lan-access false→trueをSSHの通常ユーザーで試みる。失敗時は権限を上げない。
+
+- 復旧検証開始前: 試作コード取消、SHA一致の公開v0.1.9 APK導入とbuild APK復元、USB許可済み。録画停止・Android HDMI ON。これから通常TCPを短時間録画して停止・実映像を確認する。
+
+- 2026-11-12 復旧作業: グラス再起動後、ADB再接続済み、eth0 169.254.2.10、Android HDMI state ON、録画サービス停止。table 52 に169.254.2.0/24の例外は見えない。試作コードを取消、公開v0.1.9 APKへ戻し通常録画を検証予定。画面ロックはユーザーが無効化。
+
+- カメラ復旧: 既存runitの sv once は新プロセスを一瞬生成したが5秒後には消失、media_service PID302はzombieのまま。pilot既定1280/720/30は読戻し済み、録画停止。前回実績のグラス本体再起動でカメラサービスを復旧する。スマホは再起動しない。グラスのメモリ上の一時変更は再起動で失われる。再起動後は30秒以上待ち、通常録画・Android HDMI表示・USBネットワークを確認し、表示が消えていれば再接続が必要になる可能性がある。中継session8502・転送21080・一時dex。
+- media_service停止の確認: PID302はState Z・PPid1、従って属性を書き換えたheapは既に消滅、旧アドレスへrestoreしない。dmesgは試験時 stream_control0 のtranslation faultを記録したが根本原因・フラグとの因果は未確定。/etc/services/media_service は down marker付き・runは media_service -d 0、sv status down。pilot既定値1280/720/30復元済み。正常カメラサービス復旧のため、既存runit設定を変更せず sv once でサービスを一度起動し、プロセス・映像・DPを確認する。起動スクリプト書換え・スマホrootなし。中継session8502・転送21080・一時dex。
+- 広角GDC有効化試験異常・復旧中: PID302 heap属性0→1後、pilot 2016/1512/30で録画開始したところ映像5秒無受信、VID_20261112_034600.mp4 はAU0。media_service PID302は [media_service] と表示され/proc/302/mem 読取不可、プロセス終了・ゾンビの可能性が高い。pilot PID526は生存し、既定値をガード付きで1280/720/30へ復元・読戻し成功。PID302のheapは終了に伴い消滅している可能性があり、同アドレスへのrestoreを行わずプロセス・サービス状態を確認する。中継session8502、転送21080、一時dex、試作APK導入中。スマホroot・起動スクリプト変更なし。
+- 広角GDC試験: PID302のGDC属性1に加え、PID526のpilot既定値を2016/1512/30へガード付き設定・読戻し。録画開始前。中継session8502・転送21080・一時dex、試作APK。次に短時間録画中にflag/pointerを読み、停止後 camera_wide_30_pid526_internal.py restore と gdc_flag_pid302_internal.py restore で両方を復旧する。
+- 広角GDC試験進行中: ガード付き .cache/gdc_flag_pid302_internal.py apply がmedia_service PID302属性nodeキー41のフラグを0→1にし、読戻し1。録画停止、pilot通常値はまだ未変更。中断時は同PID・node・元値を検証して gdc_flag_pid302_internal.py restore で0へ戻す。中継session8502・転送21080・一時dex、2016許容試作APK導入中。次にpilotのガード付き広角設定・短時間録画を行い、停止後に両restoreを実行する。
+- 広角GDC有効化の試験準備: media_service PID302・libcamera_service base 0x7fab872000・実行ファイルとhash一致、起動識別 /proc/302/stat field22=100。実行中の属性mapをread-only追跡し、キー41(0x29)、raw=128、fps=1、形式=2、寸法欄2048×1512のノードがheap 4442832、GDCフラグ byte 4442894=0を確認。Stream::init_viは開始前に同フラグを読むため、既存の pilot 幅設定と併せ、このbyteを一時1にして補正オブジェクト生成と実映像を試す。ガード付き .cache/gdc_flag_pid302_internal.py apply/restore と .cache/camera_wide_30_pid526_internal.py apply/restore、試験専用APK 2016許容。まずビルド・導入してから各PID・値を再確認し、一時変更前後を追記する。異常時は録画を止め、PID・元値確認のうえ両方を復元し、危険な再書込みを避ける。公開v0.1.9は .cache/v019-before-gdc.apk、終了時復元。スマホroot・本体起動設定変更なし。read-only中継session66298停止、転送dex除去済み。
+- GDC生成条件の静的追跡: Stream::init_vi の 0x26528〜0x2652c は Stream+0x471 が非ゼロのときのみ 0x268dc 側のEisProcessor生成処理へ分岐。従って広角録画開始後にフラグだけ変えても補正用オブジェクトが生成される根拠はない。これから実機のmedia_service上で属性テーブルをread-only特定できるか調べる。書込み・録画・スマホroot・グラス再起動は行わず、使用する一時中継は終了後除去。
 - 広角試験後の復旧確認: 公開v0.1.9に戻した端末で通常録画 VID_20261112_034054.mp4 をUI停止・保存、アプリ表示507AU・29.85fps・15.48Mbps。3秒目フレーム .cache/after-gdc-034054.png に実景を目視。Android HDMI state ON、録画サービス停止、通常1280/720/30。試験用コード・中継は除去、build APKもv0.1.9へ復元。
 - 広角GDC試験映像: VID_20261112_033859.mp4 は2016×1512・498 frames・16.851秒・約29.55fps・152.92Mbps。4秒目画像は画面全体が原色の線で実景を識別できない。広角flag=0・processor pointer=0は確認したが、それが異常の原因か、有効化で修復できるかは未確認。通常値1280/720/30に復元、公開v0.1.9 APKを再導入済み。次に通常設定で短時間録画・保存・実景を確認する。
 - 広角GDC実行時確認: 2016×1512/30の試作録画中、media_service PID302の同一RGB instanceで type=41(0x29)、Stream+0x471=0、+0x458 processor pointer=0 をread-only確認。対照1600/60はtype44、flag1、pointer非ゼロ、720/30はtype42、flag0、pointer0。静的テーブルと一致し、この広角試験時にGDC処理を有効化できるオブジェクトはなかった。録画 VID_20261112_033859.mp4 をUI停止、アプリ表示498AU・29.58fps・153.36Mbps。映像内容はこれから確認。PID526ガード付きで通常1280/720/30へ復元・読戻し、中継session51452停止、転送dex除去、2016許容コードを取り消し公開v0.1.9 APK再導入、build APKも戻した。
