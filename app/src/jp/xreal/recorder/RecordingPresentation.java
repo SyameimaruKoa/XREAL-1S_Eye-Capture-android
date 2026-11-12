@@ -87,7 +87,7 @@ final class RecordingPresentation extends Presentation {
         return view;
     }
 
-    void updateStatus(String state, boolean stopping, boolean videoReceived, boolean silence,
+    void updateStatus(String state, boolean stopping, boolean videoReceived, boolean videoStalled, boolean silence,
                       boolean audioSeen, boolean exactZero,
                       int audioPeak, long elapsedSeconds,
                       String rateSummary) {
@@ -109,6 +109,9 @@ final class RecordingPresentation extends Presentation {
         } else if (stopping) {
             headline.setText("保存中");
             headline.setTextColor(Color.WHITE);
+        } else if (videoStalled) {
+            headline.setText("映像受信停止");
+            headline.setTextColor(Color.rgb(255, 185, 80));
         } else if (ready) {
             headline.setText("● REC");
             headline.setTextColor(Color.rgb(255, 95, 95));
@@ -120,7 +123,7 @@ final class RecordingPresentation extends Presentation {
         long minutes = (elapsedSeconds / 60) % 60;
         long seconds = elapsedSeconds % 60;
         elapsed.setText(String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds));
-        rate.setText(ready ? rateSummary : "");
+        rate.setText(ready && !videoStalled ? rateSummary : "");
         waveform.addPeak(audioPeak);
         if (audioFailed) {
             audio.setText("音声停止・映像のみ録画中");

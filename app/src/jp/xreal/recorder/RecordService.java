@@ -126,6 +126,11 @@ public final class RecordService extends Service {
     static boolean hasAudioData() { return phoneAudioSeen; }
     static boolean hasVideoData() { return videoFrames > 0; }
     static boolean isStopping() { return recording && stopRequested; }
+    static boolean isVideoStalled() {
+        long last = lastVideoNs;
+        return recording && !stopRequested && videoFrames > 0 && last > 0
+                && SystemClock.elapsedRealtimeNanos() - last >= 3_000_000_000L;
+    }
     static int getAudioPeak() { return phonePeak.getAndSet(0); }
     static long getElapsedSeconds() {
         return recording ? Math.max(0, (SystemClock.elapsedRealtime() - recordingStartedMs) / 1000) : 0;
@@ -647,7 +652,8 @@ public final class RecordService extends Service {
             }
         }
         long elapsed = Math.max(0, (SystemClock.elapsedRealtime() - recordingStartedMs) / 1000);
-        recordingPresentation.updateStatus(status, stopRequested, hasVideoData(), audioSilenceDetected, phoneAudioSeen,
+        recordingPresentation.updateStatus(status, stopRequested, hasVideoData(), isVideoStalled(),
+                audioSilenceDetected, phoneAudioSeen,
                 audioExactZero, audioPeak.getAndSet(0), elapsed,
                 getVideoRateSummary());
     }

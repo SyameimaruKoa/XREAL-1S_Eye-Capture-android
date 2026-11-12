@@ -1077,6 +1077,7 @@ public class MainActivity extends Activity {
         boolean recording = RecordService.isRecording();
         boolean recordingBusy = RecordService.isRecordingOrStarting();
         boolean stopping = RecordService.isStopping();
+        boolean videoStalled = RecordService.isVideoStalled();
         int audioPeak = recording ? RecordService.getAudioPeak() : 0;
         boolean keepScreen = recording && keepScreenCheck.isChecked();
         if (keepScreen) {
@@ -1089,17 +1090,22 @@ public class MainActivity extends Activity {
                     : !RecordService.hasAudioData() ? "音声データを待機中"
                     : RecordService.isAudioExactZero() ? "録音用の音声が3秒間ゼロ"
                     : RecordService.isAudioQuiet() ? "音声が小さいか無音" : "音声入力あり";
-            boolean videoReceived = !stopping && RecordService.hasVideoData();
-            SpannableString saverText = new SpannableString(stopping ? "保存中" : videoReceived
+            boolean videoReceived = !stopping && !videoStalled && RecordService.hasVideoData();
+            SpannableString saverText = new SpannableString(stopping ? "保存中"
+                    : videoStalled ? "映像受信停止" : videoReceived
                     ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
                             saverSeconds / 3600, (saverSeconds / 60) % 60, saverSeconds % 60)
                     : "映像を待機中");
             if (videoReceived) {
                 saverText.setSpan(new ForegroundColorSpan(Color.rgb(255, 95, 95)), 0, 5,
                         Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            } else if (videoStalled) {
+                saverText.setSpan(new ForegroundColorSpan(Color.rgb(255, 185, 80)), 0,
+                        saverText.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
             screenSaverStatus.setText(saverText);
-            screenSaverRate.setText(RecordService.getVideoRateSummary().replace("受信平均 ", ""));
+            screenSaverRate.setText(videoStalled ? "" :
+                    RecordService.getVideoRateSummary().replace("受信平均 ", ""));
             screenSaverAudio.setText(audioState);
             screenSaverWaveform.addPeak(audioPeak);
             int position = (int) ((saverSeconds / 60) % 4);
@@ -1118,11 +1124,13 @@ public class MainActivity extends Activity {
         }
         recoveryShown = needsRecovery;
         long seconds = RecordService.getElapsedSeconds();
-        boolean videoReceived = recording && !stopping && RecordService.hasVideoData();
-        recordingIndicator.setText(!recording ? "待機中" : stopping ? "保存中" : videoReceived
+        boolean videoReceived = recording && !stopping && !videoStalled && RecordService.hasVideoData();
+        recordingIndicator.setText(!recording ? "待機中" : stopping ? "保存中"
+                : videoStalled ? "映像受信停止" : videoReceived
                 ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
                         seconds / 3600, (seconds / 60) % 60, seconds % 60) : "映像を待機中");
-        recordingIndicator.setTextColor(videoReceived ? Color.rgb(255, 95, 95) : Color.WHITE);
+        recordingIndicator.setTextColor(videoReceived ? Color.rgb(255, 95, 95)
+                : videoStalled ? Color.rgb(255, 185, 80) : Color.WHITE);
         phoneWaveform.setVisibility(recording ? View.VISIBLE : View.GONE);
         if (recording) {
             phoneWaveform.addPeak(audioPeak);
@@ -1133,7 +1141,10 @@ public class MainActivity extends Activity {
                 ? "録音用の音声が3秒間ゼロです" : RecordService.isAudioQuiet()
                 ? "音声入力が非常に小さい状態です" : "USBマイク · モノラル");
         // The service's idle text must not overwrite this Activity's USB/UVC status.
-        if (recording && s != null && s.startsWith("録画中")) {
+        if (videoStalled) {
+            statusView.setText("映像が3秒以上届いていません");
+            lastStatus = "";
+        } else if (recording && s != null && s.startsWith("録画中")) {
             statusView.setText(s + "\n" + RecordService.getVideoRateSummary());
             lastStatus = s;
         } else if (s != null && !"待機中".equals(s) && !s.equals(lastStatus)) {
