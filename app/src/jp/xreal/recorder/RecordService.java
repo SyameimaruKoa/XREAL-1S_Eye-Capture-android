@@ -494,9 +494,7 @@ public final class RecordService extends Service {
 
             audio.stop();
             videoSource.stop();
-            if (audio.isFailed()) {
-                muxer.startVideoOnly();
-            }
+            muxer.startVideoOnly();
             finalWriter.finish();
 
             String result = String.format(Locale.US,
@@ -542,7 +540,7 @@ public final class RecordService extends Service {
             }
             if (writer != null) {
                 try {
-                    if (muxer != null && audio != null && audio.isFailed()) {
+                    if (muxer != null) {
                         muxer.startVideoOnly();
                     }
                     writer.finish();
@@ -550,9 +548,7 @@ public final class RecordService extends Service {
                 }
             } else if (muxer != null) {
                 try {
-                    if (audio != null && audio.isFailed()) {
-                        muxer.startVideoOnly();
-                    }
+                    muxer.startVideoOnly();
                     muxer.finish();
                 } catch (Throwable ignored) {
                 }
