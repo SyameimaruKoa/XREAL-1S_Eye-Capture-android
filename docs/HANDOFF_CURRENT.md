@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-13: ユーザーがスマートフォンの画面ロックを無効化。PCからの確認では Tailscale の対象端末はオフライン、ADB は端末一覧に現れず、再接続を試行中。実機の録画・USB 状態は未確認。Wi-Fi と Tailscale の接続確認をユーザーに依頼済み。ソース・端末の設定変更なし。
+
 - 2026-11-13 広角GDC初期化の静的追跡: 実機一致libcamera_service.so の0x268dc以降はfind_stream_attrの結果を使い、get_wh_by_snstype・get_binning_by_snstypeを呼んでからEisProcessorのコンストラクターとinitを呼ぶ。ELFシンボルとPLTの対応では両取得関数はそれぞれ未定義外部シンボル artosyn_get_wh_by_snstype・artosyn_get_binning_by_snstypeへ分岐する。手元のlibcamera_service.so単体から返却寸法・binning値は判定できず、前回GDC有効化での停止原因とも断定しない。実機オフライン・PC上の読取解析のみ、変更なし。
 
 - 2026-11-13 映像進捗警告の境界テスト: 端末オフライン中、時間判定を VideoProgressWatchdog に分離。初回10秒・受信後3秒の直前と到達時、受信再開、待機中・停止中の警告抑止を追加テストし成功。既存9件と合わせ10 Java試験成功・ビルド成功。動作条件は変更していないがリファクタ後の実機確認は未実施。候補 .cache/watchdog-tested.apk、build APKは公開v0.1.10へ復元、未Release。スマホは前回確認時Tailscale offline。
