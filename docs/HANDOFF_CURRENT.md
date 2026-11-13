@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-13 接続復帰後の読取: ADB接続、録画サービスなし、表示state ONを確認。Android connectivityでは現在 Wi-Fi が default、XREALの eth0/eth1 は INTERNET capability がある一方 VALIDATED ではなくローカル経路のみ。直近logcatにも両Ethernetの validation failed がある。これは復帰後の観測で障害発生時の経路や原因の証明にはならない。ネットワーク設定・録画状態の変更なし。引き続き障害時の記録を調べ、安定した通信を優先。
+
 - 2026-11-13 接続復帰と通信障害: ユーザーからイーサネットがインターネット経路として認識され Wi-Fi 側の通信が無効になり、一旦イーサネットをオフにすると復旧したとの報告。ADB 再接続成功、現時点で Android の default は検証済み Wi-Fi、Ethernet サービスは enabled で eth0/eth1 は各169.254ローカル経路・INTERNET capabilityを持つ（現在の値で障害時の default は未確認）。録画サービスなし。アプリはXREAL用ソケット単位の Network.bindSocket を使用。引継書と検索範囲で明示的なAndroid Ethernet設定変更の記録は見つからないが、操作の網羅的監査や原因特定は未完。ユーザーの接続設定を変更せず、再発防止の調査を優先。
 
 - 2026-11-13 広角補正の追加観察点: 抽出 libEIS.so の文字列には EISGDCInputInit の output_img_size、sensor_pix_size、input_binning、input_in_sensor、dst_FOV_degree、mesh_point_distance、calibration 読込失敗のログ文言がある。保存済み logs と .cache 内の log/txt/json（20 MB 以下）では該当寸法ログを確認できなかった。次回実機復帰時に既存ログを read-only で確認し、通常60fpsの初期化値と広角時の記録を比較する手掛かりとする。広角GDC有効化は過去にサービス停止しており再試行しない。スマホは Tailscale offline、ADB 一覧空。
