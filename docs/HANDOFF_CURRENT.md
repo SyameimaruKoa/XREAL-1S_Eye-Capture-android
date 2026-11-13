@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-13 VPNバイパス仕様の確認: Android公式は VPN側が VpnService.Builder.allowBypass() を使う場合にアプリがNetwork.bindSocket等でVPNを迂回できると説明し、VPN構築後には変更できないとしている（https://developer.android.com/develop/connectivity/vpn）。現行アプリは既にNetwork.bindSocket使用。今回のTailscale VPNがallowBypassを有効にしたか、経路例外欠落だけが原因かは未確認で、この仕様だけで原因を断定しない。ユーザーに既存LAN設定再適用を依頼中。設定変更なし。
+
 - 2026-11-13 接続エラー表示の試作: TCP接続IOExceptionを、原因例外を保ちながら「XREALに接続できません。接続状態とVPNのローカルネットワーク設定を確認してください」に置換。現在のVPN経路異常状態で試作APKを導入し録画開始、5秒timeout後に説明と待機画面を確認、サービス不在後v0.1.10復元・build APK復元。元例外はRecordServiceのLog.eに残る。VPN経路復帰後の正常録画は未検証、未Release。ユーザーへのLAN設定切替依頼は回答待ち。
 
 - 2026-11-13 TCP接続失敗の表示改善着手: 実機では接続失敗時にIPとSocketTimeoutExceptionだけが表示され、対処を判断しにくい。TcpSourceの接続IOExceptionを原因を保持したままXREAL接続状態とVPNローカルネットワーク設定の確認を案内する文言で包む。ビルドと現在の実機失敗状態で表示・録画開始抑止を検証し、後で経路復帰後の正常録画も確認する。VPN設定は変更しない。
