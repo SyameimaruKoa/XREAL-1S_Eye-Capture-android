@@ -130,7 +130,7 @@ final class TcpSource implements VideoSource {
             return socket;
         } catch (IOException e) {
             try { socket.close(); } catch (IOException ignored) { }
-            throw e;
+            throw new IOException("XREALに接続できません。接続状態とVPNのローカルネットワーク設定を確認してください", e);
         }
     }
 

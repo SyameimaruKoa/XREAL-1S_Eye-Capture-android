@@ -1,6 +1,10 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-13 接続エラー表示の試作: TCP接続IOExceptionを、原因例外を保ちながら「XREALに接続できません。接続状態とVPNのローカルネットワーク設定を確認してください」に置換。現在のVPN経路異常状態で試作APKを導入し録画開始、5秒timeout後に説明と待機画面を確認、サービス不在後v0.1.10復元・build APK復元。元例外はRecordServiceのLog.eに残る。VPN経路復帰後の正常録画は未検証、未Release。ユーザーへのLAN設定切替依頼は回答待ち。
+
+- 2026-11-13 TCP接続失敗の表示改善着手: 実機では接続失敗時にIPとSocketTimeoutExceptionだけが表示され、対処を判断しにくい。TcpSourceの接続IOExceptionを原因を保持したままXREAL接続状態とVPNローカルネットワーク設定の確認を案内する文言で包む。ビルドと現在の実機失敗状態で表示・録画開始抑止を検証し、後で経路復帰後の正常録画も確認する。VPN設定は変更しない。
+
 - 2026-11-13 VPN経路追加照合: shellの route get で 0x6e/0x1006e は tailscale0、0x1002006e はeth0 table1050、0x0800006eはeth0を返した。現行 ip ruleのpriority 13001のmaskによる差と整合するが、実際のアプリsocket mark・アプリ権限で設定できる手段は確認していない。任意mark設定やrootは試していない。従来実績のあるLANアクセス設定false→trueをユーザーに依頼済み。設定変更なし、録画停止。
 
 - 2026-11-13 VPN経路の読取: table 52 は default tailscale0、127.0.0.0/8 とWi-Fiサブネットへのthrowだけで XREAL 169.254.2.0/24 のthrowはない。Android Ethernet netId 110 のtable 1050には169.254.2.0/24→eth0があるが、通常shellで netId相当のmark 0x6e/0x1006eを指定した route get は両方 tailscale0を返す。直近のアプリ接続timeoutもTailscale送信元で、早いVPN ruleが候補。ただし shellの模擬markと実ソケットは完全同一と限らず、VPN設定や原因は未確定。録画サービスなし、Wi-Fi default、設定変更なし。
