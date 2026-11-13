@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-13 本体イメージの照合: 不完全イメージから抽出した libcamera_service.so は、以前実機と照合済みのコピーとSHA256 0513947206120f311265f94e691e6a3dc199be7cab9fe4877d54e6142ba3720fで一致した。ただし同イメージ内の libstream_xreal.so の実機一致を証明するものではなく、センサー寸法関数の実機照合は引き続き未実施。録画停止・端末設定変更なし。GitはTcpSourceをmodified表示するが git diffは空、hash-objectとHEAD blobはcf2d1cfc88a9e9d49ff9bbcdca31921cdccadd13で一致。試験遅延コードなし。
+
 - 2026-11-13 v0.1.11試験版公開: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.11 、ソース 872376c53e59c7850636d987baaf3ae79900c3f4、asset xreal-recorder.apk SHA256 63fb505f10a002c1645e26075747163a5434a6dfacf1d2bfff95936471971326 が実機検証候補と一致。初回Release作成は短縮commit指定で失敗しフルhashで成功。未解決・試験範囲をRelease本文に記載。スマホはv0.1.10・録画停止、30fps設定成功表示。全体goalは継続。
 
 - 2026-11-13 v0.1.11試験版の公開準備: 候補APK SHA256 63fb505f10a002c1645e26075747163a5434a6dfacf1d2bfff95936471971326、署名一致・30/60短時間録画と停止、人工停止の警告と復帰を確認。60fps試験MP4のPTSは1019 frames・非増加0・最大50.511ms・25ms超2件。実切断、手動スリープ外部画面、音声ゼロ、広角、60fps長時間、画面保護の描画欠けは未解決。アプリソースとversionが一致する commit 872376c を対象に制限を明記したprereleaseを作成し、公開アセットのハッシュを照合する。端末はv0.1.10・録画停止・30fps設定成功表示。
