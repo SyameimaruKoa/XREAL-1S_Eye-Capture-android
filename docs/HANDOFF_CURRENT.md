@@ -1,6 +1,10 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-13 波形更新停止の対照試験は無効: 試験版導入後の録画開始は 169.254.2.1:52995 への接続が Tailscale アドレスから5秒でtimeoutし、保護画面に到達せず6画像は待機画面。Androidの通常shell経路も tailscale0 table52、eth0のConnectivity networkは存在。比較結果は得られていない。録画開始失敗後にSTOP intentを送った結果のServiceRecordが残っている時点で公開APKへの再導入を開始したが、その後サービス不在。実録画は開始されておらず、点灯OFFを画像確認、試験ソース差分なし、buildと端末は公開v0.1.10。ネットワーク設定変更なし。再開前に録画経路とVPN設定を確認する。
+
+- 2026-11-13 保護画面描画の対照試験準備: PC側ADB serverが再起動し再接続済み。録画停止を再確認し、試験版のみ1200フレーム後12秒待機し、保護画面の波形更新を一時停止して連続screencapで文字欠けを比較。波形は製品機能であり一時停止は試験後必ず除去。終了時は録画停止・点灯OFF・試験差分除去・公開v0.1.10復元。設定とグラスモードは変更しない。
+
 - 2026-11-13 描画仮説の照合: 手元Android SDK 37の View.setTranslationX/Y と AOSP main の実装は、設定値が現在値と同じ場合は描画更新を行わない条件を持つ（https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/view/View.java）。したがって単にアプリ側で同値設定を省く試作は、この実装では挙動を変えないため実施しない。実機はAndroid 15/OEM実装であり一致は未確認、文字欠けの原因は未解決。端末変更なし。
 
 - 2026-11-13 保護画面画像の追加目視: 前回6枚のうち screen02.png では警告・音声・案内が見えるが、screen05.png では波形は残り、保護画面の文字3項目が全て見えない。screen04は音声のみ表示。いずれも標準screencapで、発生原因・実画面への影響は未確定。表示対象はLinearLayout内の独立したTextViewとWaveformViewであり、アプリコード上の文字個別の明示的visibility切替は確認できなかった。録画・設定変更なし。
