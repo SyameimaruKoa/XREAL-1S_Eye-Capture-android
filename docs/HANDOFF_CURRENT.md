@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-13 接続復帰と通信障害: ユーザーからイーサネットがインターネット経路として認識され Wi-Fi 側の通信が無効になり、一旦イーサネットをオフにすると復旧したとの報告。ADB 再接続成功、現時点で Android の default は検証済み Wi-Fi、Ethernet サービスは enabled で eth0/eth1 は各169.254ローカル経路・INTERNET capabilityを持つ（現在の値で障害時の default は未確認）。録画サービスなし。アプリはXREAL用ソケット単位の Network.bindSocket を使用。引継書と検索範囲で明示的なAndroid Ethernet設定変更の記録は見つからないが、操作の網羅的監査や原因特定は未完。ユーザーの接続設定を変更せず、再発防止の調査を優先。
+
 - 2026-11-13 広角補正の追加観察点: 抽出 libEIS.so の文字列には EISGDCInputInit の output_img_size、sensor_pix_size、input_binning、input_in_sensor、dst_FOV_degree、mesh_point_distance、calibration 読込失敗のログ文言がある。保存済み logs と .cache 内の log/txt/json（20 MB 以下）では該当寸法ログを確認できなかった。次回実機復帰時に既存ログを read-only で確認し、通常60fpsの初期化値と広角時の記録を比較する手掛かりとする。広角GDC有効化は過去にサービス停止しており再試行しない。スマホは Tailscale offline、ADB 一覧空。
 
 - 2026-11-13 広角入力寸法の静的解析: 不完全なイメージから抽出した lib/libstream_xreal.so（SHA256 1e3d0d2e54e4c579a7e34aae7a9c1907499d0574f62545f172f5ed6d395dde2d）の動的シンボルに artosyn_get_wh_by_snstype (0x7278) と artosyn_get_binning_by_snstype (0x71d8) の定義を発見。逆アセンブルではセンサー種別 0x80 と 0x87 の双方が寸法 2016×1512・binning 2 を返す。これは関数単体の結果で、出力画角・GDC異常の原因・安全性は証明しない。抽出元には末尾欠損警告があり、実機同一性は未照合。次回接続時に本体ライブラリの SHA256 を比較してから採用する。スマホは引き続きオフライン。
