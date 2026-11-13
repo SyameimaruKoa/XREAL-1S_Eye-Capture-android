@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-13 公式Eye仕様の照合: XREAL公式仕様は2016×1512を写真解像度として記載し、通常動画は1600×1200（30/60fps）と記載（https://tutorials.xreal.com/docs/accessories/eye/spec/）。これは今回の2016動画が原理的に不可能という証明ではないが、写真仕様の解像度を動画の動作保証と扱わない根拠。公式Eye仕様ページには独立ステレオ取得の記述を確認できず、USB 2ch記述子と既存左右一致の実測は変更なし。端末変更なし・録画経路の復帰待ち。
+
 - 2026-11-13 Tailscale分割経路の適用可否: 公式Android Tailscaleはアプリ単位除外を持つ（https://tailscale.com/docs/features/client/android-app-split-tunneling）が、実機の通常ADB package一覧にはTailscaleアプリが見当たらず、psではtailscaledがrootで動作。これだけで全構成は断定できないがAndroidアプリ設定を使える根拠はなく、スマホroot禁止のため当該デーモンへ権限昇格して設定変更しない。既存LAN設定再適用はユーザー回答待ち。設定変更なし。
 
 - 2026-11-13 VPNバイパス仕様の確認: Android公式は VPN側が VpnService.Builder.allowBypass() を使う場合にアプリがNetwork.bindSocket等でVPNを迂回できると説明し、VPN構築後には変更できないとしている（https://developer.android.com/develop/connectivity/vpn）。現行アプリは既にNetwork.bindSocket使用。今回のTailscale VPNがallowBypassを有効にしたか、経路例外欠落だけが原因かは未確認で、この仕様だけで原因を断定しない。ユーザーに既存LAN設定再適用を依頼中。設定変更なし。
