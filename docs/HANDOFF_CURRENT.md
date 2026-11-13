@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-13 VPN経路追加照合: shellの route get で 0x6e/0x1006e は tailscale0、0x1002006e はeth0 table1050、0x0800006eはeth0を返した。現行 ip ruleのpriority 13001のmaskによる差と整合するが、実際のアプリsocket mark・アプリ権限で設定できる手段は確認していない。任意mark設定やrootは試していない。従来実績のあるLANアクセス設定false→trueをユーザーに依頼済み。設定変更なし、録画停止。
+
 - 2026-11-13 VPN経路の読取: table 52 は default tailscale0、127.0.0.0/8 とWi-Fiサブネットへのthrowだけで XREAL 169.254.2.0/24 のthrowはない。Android Ethernet netId 110 のtable 1050には169.254.2.0/24→eth0があるが、通常shellで netId相当のmark 0x6e/0x1006eを指定した route get は両方 tailscale0を返す。直近のアプリ接続timeoutもTailscale送信元で、早いVPN ruleが候補。ただし shellの模擬markと実ソケットは完全同一と限らず、VPN設定や原因は未確定。録画サービスなし、Wi-Fi default、設定変更なし。
 
 - 2026-11-13 波形更新停止の対照試験は無効: 試験版導入後の録画開始は 169.254.2.1:52995 への接続が Tailscale アドレスから5秒でtimeoutし、保護画面に到達せず6画像は待機画面。Androidの通常shell経路も tailscale0 table52、eth0のConnectivity networkは存在。比較結果は得られていない。録画開始失敗後にSTOP intentを送った結果のServiceRecordが残っている時点で公開APKへの再導入を開始したが、その後サービス不在。実録画は開始されておらず、点灯OFFを画像確認、試験ソース差分なし、buildと端末は公開v0.1.10。ネットワーク設定変更なし。再開前に録画経路とVPN設定を確認する。
