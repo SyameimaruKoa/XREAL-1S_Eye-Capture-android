@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-13 描画仮説の照合: 手元Android SDK 37の View.setTranslationX/Y と AOSP main の実装は、設定値が現在値と同じ場合は描画更新を行わない条件を持つ（https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/view/View.java）。したがって単にアプリ側で同値設定を省く試作は、この実装では挙動を変えないため実施しない。実機はAndroid 15/OEM実装であり一致は未確認、文字欠けの原因は未解決。端末変更なし。
+
 - 2026-11-13 保護画面画像の追加目視: 前回6枚のうち screen02.png では警告・音声・案内が見えるが、screen05.png では波形は残り、保護画面の文字3項目が全て見えない。screen04は音声のみ表示。いずれも標準screencapで、発生原因・実画面への影響は未確定。表示対象はLinearLayout内の独立したTextViewとWaveformViewであり、アプリコード上の文字個別の明示的visibility切替は確認できなかった。録画・設定変更なし。
 
 - 2026-11-13 保護画面の連続原寸画像: 1200フレーム後12秒待機版の録画中に Android標準screencapを6枚連続取得。screen00では停止警告・音声状態・案内が揃い、screen04では音声・波形は残る一方、上段の状態と下段のタップ案内が同時に表示されていない。原寸の標準取得でも以前と同様の欠けを確認したが、実画面の表示とSurfaceFlinger取得のどちらで生じたか、各画像の受信復帰タイミングは未確定。複数display警告がPNG前に混入したためPNG署名より前のテキストのみ除去して保存。録画サービス停止、点灯OFF、遅延コード除去・端末とbuild APKはv0.1.10復元。画像 .cache/saver-burst/。
