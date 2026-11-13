@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-14 画面画像の記録訂正: .cache/saver-burst/screen00.png は音声と波形のみ、screen01.png は上部の性能オーバーレイのみ、screen02.png は警告・音声・波形・案内あり、screen03.png は波形のみ、screen04.png と screen05.png は双方とも警告・音声・波形・案内あり。screen04とscreen05はSHA256 F7383C760719A32A6E555FF65ABA5A1CB43487B044EFAC0991C5C66D73578F72で完全一致。下方の「screen04は音声のみ」「screen05は波形のみ」等の画像番号の記録は誤り。保存画像では欠落が存在するが、実画面のちらつきかキャプチャの問題か未確定。端末設定・ソース変更なし。
+
 - 2026-11-14 保存情報を実ファイルと照合: 実機の VID_20261114_000744.json は Documents/XREAL/100XREAL にあり、対応する MP4 名、USB 製品名、映像サイズ1280×720、341フレーム、受信平均29.85fps・15.97Mbps、AAC monoを記録。レートの基準は受信時刻と明記され、MP4全体のffprobe値15.92Mbpsとは計算範囲が異なる。純正と完全に同じメタデータ形式かは未確認。録画・設定変更なし。
 
 - 2026-11-14 v0.1.12試験版公開: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.12 、対象ソース55c96ece42013f8341e5846afc18b55538157233。公開 xreal-recorder.apk SHA256 b15a91d70c75e7da7e74969ec657418145ee2e8d9058fd1265bb99cb835e52f1は実機で録画確認した候補と一致。端末に同候補導入済み、録画サービス停止。接続タイムアウト案内は同変更の別version試作で実機確認。VPN経路の修正、実切断、手動スリープ、広角、独立ステレオ、描画欠け、60fps変動は未解決としてRelease本文に記載。目標は継続。
