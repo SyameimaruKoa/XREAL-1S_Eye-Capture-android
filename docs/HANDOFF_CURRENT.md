@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-13 映像進捗警告の境界テスト: 端末オフライン中、時間判定を VideoProgressWatchdog に分離。初回10秒・受信後3秒の直前と到達時、受信再開、待機中・停止中の警告抑止を追加テストし成功。既存9件と合わせ10 Java試験成功・ビルド成功。動作条件は変更していないがリファクタ後の実機確認は未実施。候補 .cache/watchdog-tested.apk、build APKは公開v0.1.10へ復元、未Release。スマホは前回確認時Tailscale offline。
+
 - 2026-11-13 端末オフライン中の回帰確認: Git a907ea4の試作ソースを一時遅延なしでビルドし、既存Java 9件が終了0（音声・通信・復旧・切替計画・TCP読取/時刻・マイク選択・映像書込み）。この試験は警告UI・実機を検証しない。試作APK .cache/stall-regression.apk SHA256 a8c26c440d75d6c76656c12f61d2fe6e6c29e783d74173814476388a744a375a、未Release。build APKは公開v0.1.10に戻した。スマホはTailscaleオフライン、ユーザー回答待ち。
 
 - 通信途絶追加確認: PC側tailscale statusの対象スマホはOnline=false。ADB TCP 5555再接続もtimeout。ユーザーに電源・ネットワーク・Tailscale確認を依頼中。導入失敗前は録画停止・v0.1.10、現在の端末状態は不明。ローカル試験待機は除去済み、build APKは公開v0.1.10。
