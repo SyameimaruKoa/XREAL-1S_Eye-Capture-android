@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-13 オフライン解析: 不完全な .cache/mcu-userapp0.img から libsns_imx681.so、libmpp_service.so、libmpi_vin.so、libhal_vin.so を抽出し、media_service・libEIS.so と併せて動的シンボルを検索したが、artosyn_get_wh_by_snstype / artosyn_get_binning_by_snstype の定義は見つからなかった。抽出時にアーカイブ末尾欠損の警告があり、実機ファイルとのハッシュ一致は未検証。該当関数の提供元・返却値は引き続き不明。スマホは Tailscale offline、ADB 端末一覧は空。接続確認依頼への回答待ち。
+
 - 2026-11-13: ユーザーがスマートフォンの画面ロックを無効化。PCからの確認では Tailscale の対象端末はオフライン、ADB は端末一覧に現れず、再接続を試行中。実機の録画・USB 状態は未確認。Wi-Fi と Tailscale の接続確認をユーザーに依頼済み。ソース・端末の設定変更なし。
 
 - 2026-11-13 広角GDC初期化の静的追跡: 実機一致libcamera_service.so の0x268dc以降はfind_stream_attrの結果を使い、get_wh_by_snstype・get_binning_by_snstypeを呼んでからEisProcessorのコンストラクターとinitを呼ぶ。ELFシンボルとPLTの対応では両取得関数はそれぞれ未定義外部シンボル artosyn_get_wh_by_snstype・artosyn_get_binning_by_snstypeへ分岐する。手元のlibcamera_service.so単体から返却寸法・binning値は判定できず、前回GDC有効化での停止原因とも断定しない。実機オフライン・PC上の読取解析のみ、変更なし。
