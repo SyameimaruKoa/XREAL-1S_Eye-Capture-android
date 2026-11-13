@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-13 広角補正の追加観察点: 抽出 libEIS.so の文字列には EISGDCInputInit の output_img_size、sensor_pix_size、input_binning、input_in_sensor、dst_FOV_degree、mesh_point_distance、calibration 読込失敗のログ文言がある。保存済み logs と .cache 内の log/txt/json（20 MB 以下）では該当寸法ログを確認できなかった。次回実機復帰時に既存ログを read-only で確認し、通常60fpsの初期化値と広角時の記録を比較する手掛かりとする。広角GDC有効化は過去にサービス停止しており再試行しない。スマホは Tailscale offline、ADB 一覧空。
+
 - 2026-11-13 広角入力寸法の静的解析: 不完全なイメージから抽出した lib/libstream_xreal.so（SHA256 1e3d0d2e54e4c579a7e34aae7a9c1907499d0574f62545f172f5ed6d395dde2d）の動的シンボルに artosyn_get_wh_by_snstype (0x7278) と artosyn_get_binning_by_snstype (0x71d8) の定義を発見。逆アセンブルではセンサー種別 0x80 と 0x87 の双方が寸法 2016×1512・binning 2 を返す。これは関数単体の結果で、出力画角・GDC異常の原因・安全性は証明しない。抽出元には末尾欠損警告があり、実機同一性は未照合。次回接続時に本体ライブラリの SHA256 を比較してから採用する。スマホは引き続きオフライン。
 
 - 2026-11-13 オフライン解析: 不完全な .cache/mcu-userapp0.img から libsns_imx681.so、libmpp_service.so、libmpi_vin.so、libhal_vin.so を抽出し、media_service・libEIS.so と併せて動的シンボルを検索したが、artosyn_get_wh_by_snstype / artosyn_get_binning_by_snstype の定義は見つからなかった。抽出時にアーカイブ末尾欠損の警告があり、実機ファイルとのハッシュ一致は未検証。該当関数の提供元・返却値は引き続き不明。スマホは Tailscale offline、ADB 端末一覧は空。接続確認依頼への回答待ち。
