@@ -13,9 +13,10 @@ public final class TcpReadProgressTest {
             client.setSoTimeout(40);
             Thread sender = new Thread(() -> {
                 try {
-                    peer.getOutputStream().write(new byte[]{1, 2});
-                    Thread.sleep(80);
-                    peer.getOutputStream().write(new byte[]{3, 4});
+                    for (int value = 1; value <= 4; value++) {
+                        Thread.sleep(80);
+                        peer.getOutputStream().write(value);
+                    }
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
