@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-14 v0.1.14通常録画の音声をPC解析: .cache/v0114-normal.mp4 のAACはffmpeg volumedetect平均 -53.1 dBFS・最大 -17.5 dBFS。48kHz 16bitへ復号した完全な116個の1秒区間のうち、全サンプル0が7区間、ピーク絶対値32以下が30区間。録画時の周囲音は未管理で、AAC復号・16bit量子化後の値のため録音入力の厳密なゼロやマイク不良の証明ではない。旧RAW WAVでは32bit値の下位16bitは全て0、上位16bitへの変換だけでその録音の非ゼロ成分が消えた証拠はなかった。元動画・端末設定変更なし。
+
 - 2026-11-14 第二画面電源状態の現況: ADB読取で内蔵displayId 0とXREAL外部displayId 7はいずれもdisplayGroupId 0、双方state ON。既存実機試験では手動スリープ時に双方OFF・録画継続。Android 15 AOSPのPowerManagerServiceではdisplay groupとpower groupを対応させるが、OEM差・別端末の構成・アプリに可能な回避策は未確定。今回スリープ・設定変更・スマホrootは行っていない。ロック画面の動作は画面ロックが無効であり別途検証できていない。
 
 - 2026-11-14 v0.1.14試験版公開: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.14 、対象28b965928c493b862ef10396ebf772ce1fa041ba。xreal-recorder.apkを公開後にダウンロードしSHA256 7a51f0eda5bec2238a16aa7571b7d87d8e2b1b6bfc488c2c8b88887f7154b96dが実機候補と一致。通常116秒録画・全映像復号、別試験APKで6.5秒擬似受信停止後継続・全映像復号を確認。実切断・自動再接続、停止中の映像欠落・音声同期、スリープ第二画面、広角、独立ステレオ、長時間全般は未解決または未検証。端末v0.1.14・録画停止。
