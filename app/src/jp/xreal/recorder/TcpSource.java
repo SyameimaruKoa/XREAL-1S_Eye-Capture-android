@@ -32,8 +32,6 @@ final class TcpSource implements VideoSource {
     private static final String HOST = "169.254.2.1";
     private static final int MAX_MESSAGE = 8 * 1024 * 1024;
     private static final int FRAME_HEADER = 97;
-    /** Maximum distance between the camera clock and the receive clock before re-anchoring. */
-    private static final long MAX_CLOCK_DRIFT_NS = 100_000_000L;
     /** Smallest allowed step so that a stale timestamp cannot repeat a presentation time. */
     private static final long MIN_PTS_STEP_NS = 1_000_000L;
     private final Context context;
@@ -72,6 +70,7 @@ final class TcpSource implements VideoSource {
     private long clockForcedSteps;
     private long clockEstimatedDuplicates;
     private final TcpTimestampRecovery timestampRecovery = new TcpTimestampRecovery();
+    private final TcpDriftGate driftGate = new TcpDriftGate();
 
     private static final class Reply {
         final int command;
@@ -302,11 +301,11 @@ final class TcpSource implements VideoSource {
      * same clock as the audio track. The camera clock is used for frame timing and anchored to
      * the first frame's receive time. A repeated timestamp can be estimated from recent cadence;
      * this is an estimate, not a recovered sensor timestamp. If
-     * the two clocks ever separate by more than {@link #MAX_CLOCK_DRIFT_NS} the anchor moves so
-     * that audio stays in sync instead of accumulating drift.
+     * the two clocks remain separated, the anchor eventually moves toward the receive clock.
      */
     private long presentationNs(long candidateNs, long arrivalNs) {
         if (candidateNs <= candidateLastNs) {
+            driftGate.reset();
             clockRejected++;
             if (candidateNs == candidateLastNs && timestampRecovery.canEstimate()) {
                 clockEstimatedDuplicates++;
@@ -316,7 +315,7 @@ final class TcpSource implements VideoSource {
         }
         timestampRecovery.observeStep(candidateNs - candidateLastNs);
         long drift = cameraPtsAnchorNs + (candidateNs - candidateFirstNs) - arrivalNs;
-        if (drift > MAX_CLOCK_DRIFT_NS || drift < -MAX_CLOCK_DRIFT_NS) {
+        if (driftGate.shouldReanchor(drift, arrivalNs)) {
             cameraPtsAnchorNs -= drift;
             clockReanchors++;
         }
