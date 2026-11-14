@@ -343,7 +343,7 @@ final class TcpSource implements VideoSource {
     }
 
     private byte[] readExact(InputStream input, int length, boolean requireVideoProgress) throws IOException {
-        return TcpReadProgress.read(input, length, requireVideoProgress ? 5000 : 0,
+        return TcpReadProgress.read(input, length, requireVideoProgress ? 30000 : 0,
                 () -> running);
     }
 

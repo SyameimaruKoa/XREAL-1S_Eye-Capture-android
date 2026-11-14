@@ -38,6 +38,26 @@ public final class TcpReadProgressTest {
                 }
             }
         }
+        try (ServerSocket server = new ServerSocket(0);
+             Socket client = new Socket("127.0.0.1", server.getLocalPort());
+             Socket peer = server.accept()) {
+            client.setSoTimeout(250);
+            Thread sender = new Thread(() -> {
+                try {
+                    peer.getOutputStream().write(1);
+                    Thread.sleep(6000);
+                    peer.getOutputStream().write(2);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            sender.start();
+            byte[] received = TcpReadProgress.read(client.getInputStream(), 2, 30000, () -> true);
+            sender.join();
+            if (!Arrays.equals(received, new byte[]{1, 2})) {
+                throw new AssertionError("Video did not resume after a six-second pause");
+            }
+        }
         System.out.println("TcpReadProgressTest passed");
     }
 }
