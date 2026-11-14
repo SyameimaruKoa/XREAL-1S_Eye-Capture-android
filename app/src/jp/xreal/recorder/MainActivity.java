@@ -850,7 +850,8 @@ public class MainActivity extends Activity {
         String label = "TCP の画質・フレームレートを選択";
         if (confirmedLiveMode != null) {
             String[] parts = confirmedLiveMode.split(" ");
-            label += "\n前回確認: " + parts[0] + "×" + parts[1] + " / " + parts[2] + "fps";
+            label += "\n本体設定（前回確認）: " + parts[0] + "×" + parts[1]
+                    + " / " + parts[2] + "fps";
         }
         glassesLiveModeButton.setText(label);
     }
