@@ -1,6 +1,10 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-14 v0.1.13試験版公開: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.13 、対象 bfe93582e4cb8060ee2a350b2875502878eab15d。xreal-recorder.apkを公開後にダウンロードしSHA256 7814eab5f37701ff065f1928123f8ad91f8fd059fa4adc88087c37a7dd6f56adが実機候補と一致。音声開始前の人工例外で映像のみ64フレーム保存と全復号、通常約85秒の映像・AAC保存と映像全復号を確認。実切断・広角・スリープ第二画面・独立ステレオ・長時間などは未解決または未検証としてReleaseに記載。録画停止、端末v0.1.13。
+
+- 2026-11-14 ユーザーがネットワーク設定を調整し、同じLAN経路問題の再発時はスマホで `su -c 'sh /data/adb/modules/ts-lan-route/system/bin/ts-lan-route apply'` を実行するよう明示指示。以前のスマホroot禁止に対するこの復旧コマンド限定の許可と扱い、他のroot操作を許可されたとは扱わない。ADB再接続成功、端末v0.1.13・録画サービス不在、shellのXREAL宛経路はeth0。復旧コマンドは現在実行していない。v0.1.13試験Releaseを検証結果と未解決事項を記載して公開する。
+
 - 2026-11-14 接続喪失で中断: 公開前の現状確認でADB serverが起動し、sc-52b.bass-uaru.ts.net:5555 は device not found。原因・現在の端末状態は未確認。ユーザー指示により再接続・追加確認・Release公開をせず直ちに停止。直前の正常録画試験終了時は録画サービス不在・端末v0.1.13候補。v0.1.13 Releaseは未作成（gh確認）。Git bfe9358はorigin/masterへpush済み。候補APK .cache/v0113-candidate.apk SHA256 7814eab5f37701ff065f1928123f8ad91f8fd059fa4adc88087c37a7dd6f56ad。
 
 - 2026-11-14 v0.1.13候補の正常録画: APK SHA256 7814eab5f37701ff065f1928123f8ad91f8fd059fa4adc88087c37a7dd6f56ad導入、TCP録画 VID_20261114_002154.mp4 をUI停止・サービス不在。PCコピーはHEVC 1280×720・2535 frames・84.931秒・16.94Mbps、AAC mono 85.547秒・128kbps。映像全体を時間単位1/1000000秒でffmpeg復号しエラーなし。通常のnull出力では時刻丸めに伴う非増加DTS警告2件、上述の高精度時間単位では警告なし。音声低音量警告が出ており音声品質は未確認。APK署名証明書はv0.1.12と一致。端末は候補、接続問題なし。
