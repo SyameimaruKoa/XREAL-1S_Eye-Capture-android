@@ -105,23 +105,30 @@ final class VideoWriter {
     }
 
     boolean finish() {
+        return finish(null);
+    }
+
+    boolean finish(Runnable onDelayed) {
         synchronized (lock) {
             closing = true;
             lock.notifyAll();
         }
-        try {
-            thread.join(JOIN_TIMEOUT_MS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            if (error.isEmpty()) {
-                error = "Interrupted while waiting for video output";
+        boolean interrupted = false;
+        boolean reportedDelay = false;
+        while (thread.isAlive()) {
+            try {
+                thread.join(JOIN_TIMEOUT_MS);
+            } catch (InterruptedException e) {
+                interrupted = true;
+                continue;
+            }
+            if (thread.isAlive() && !reportedDelay && onDelayed != null) {
+                reportedDelay = true;
+                onDelayed.run();
             }
         }
-        if (thread.isAlive()) {
-            if (error.isEmpty()) {
-                error = "Video output did not stop within 10 seconds";
-            }
-            return false;
+        if (interrupted) {
+            Thread.currentThread().interrupt();
         }
         return true;
     }

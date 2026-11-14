@@ -56,6 +56,27 @@ public class VideoWriterTest {
         for (int i = 0; i < 100 && !failure.isFailed(); i++) Thread.sleep(10);
         require(failure.isFailed() && failure.getError().contains("injected"), "failure not reported");
         require(failure.finish(), "failure finalize");
+        final CountDownLatch slowEntered = new CountDownLatch(1);
+        final CountDownLatch slowRelease = new CountDownLatch(1);
+        final AtomicInteger delayReports = new AtomicInteger();
+        final AtomicInteger slowFinalized = new AtomicInteger();
+        VideoWriter slow = new VideoWriter(new VideoWriter.Output() {
+            public void write(byte[] data, long pts, boolean key, int index) throws Exception {
+                slowEntered.countDown();
+                slowRelease.await();
+            }
+            public void finish() { slowFinalized.incrementAndGet(); }
+        });
+        slow.enqueue(new byte[]{1}, 0, false, 0);
+        require(slowEntered.await(2, TimeUnit.SECONDS), "slow writer did not start");
+        require(slow.finish(new Runnable() {
+            public void run() {
+                delayReports.incrementAndGet();
+                slowRelease.countDown();
+            }
+        }), "slow finish");
+        require(delayReports.get() == 1 && slowFinalized.get() == 1 && !slow.isFailed(),
+                "slow output should finish without a false error");
         System.out.println("VideoWriter tests passed");
     }
 }

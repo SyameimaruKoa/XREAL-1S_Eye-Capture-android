@@ -495,7 +495,7 @@ public final class RecordService extends Service {
             audio.stop();
             videoSource.stop();
             muxer.startVideoOnly();
-            finalWriter.finish();
+            finishWriter(finalWriter);
 
             String result = String.format(Locale.US,
                     "%s / %s\nAU=%d audioFrames=%d%s",
@@ -543,7 +543,7 @@ public final class RecordService extends Service {
                     if (muxer != null) {
                         muxer.startVideoOnly();
                     }
-                    writer.finish();
+                    finishWriter(writer);
                 } catch (Throwable ignored) {
                 }
             } else if (muxer != null) {
@@ -583,6 +583,23 @@ public final class RecordService extends Service {
                 recording = false;
             }
         }
+    }
+
+    private void finishWriter(VideoWriter writer) {
+        writer.finish(new Runnable() {
+            @Override
+            public void run() {
+                status = "保存処理に時間がかかっています。完了までお待ちください";
+                Log.w(TAG, "Video output is still finalizing");
+                try {
+                    NotificationManager manager = (NotificationManager)
+                            getSystemService(Context.NOTIFICATION_SERVICE);
+                    manager.notify(NOTIFICATION_ID, buildNotification());
+                } catch (RuntimeException e) {
+                    Log.w(TAG, "Could not update saving notification", e);
+                }
+            }
+        });
     }
 
     private Notification buildNotification() {
