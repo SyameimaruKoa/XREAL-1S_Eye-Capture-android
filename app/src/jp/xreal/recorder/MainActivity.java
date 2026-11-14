@@ -72,9 +72,7 @@ public class MainActivity extends Activity {
     private Button enableButton;
     private Button glassesStatusButton;
     private Button glasses60Button;
-    private Button glassesLive60Button;
-    private Button glassesLive30Button;
-    private Button glassesLive1600p30Button;
+    private Button glassesLiveModeButton;
     private Button glassesNormalButton;
     private Button glassesRecoverButton;
     private Button deviceSettingsToggle;
@@ -236,20 +234,10 @@ public class MainActivity extends Activity {
         });
         deviceSettings.addView(glassesStatusButton);
 
-        glassesLive60Button = new Button(this);
-        glassesLive60Button.setText("TCP 1600×1200 / 60fps に切替（再起動なし）");
-        styleButton(glassesLive60Button, Color.rgb(45, 45, 45));
-        glassesLive60Button.setOnClickListener(v -> switchLiveMode("1600 1200 60"));
-
-        glassesLive1600p30Button = new Button(this);
-        glassesLive1600p30Button.setText("TCP 1600×1200 / 30fps · 約15.7 Mbps");
-        styleButton(glassesLive1600p30Button, Color.rgb(45, 45, 45));
-        glassesLive1600p30Button.setOnClickListener(v -> switchLiveMode("1600 1200 30"));
-
-        glassesLive30Button = new Button(this);
-        glassesLive30Button.setText("TCP 1280×720 / 30fps に戻す（再起動なし）");
-        styleButton(glassesLive30Button, Color.rgb(45, 45, 45));
-        glassesLive30Button.setOnClickListener(v -> switchLiveMode("1280 720 30"));
+        glassesLiveModeButton = new Button(this);
+        glassesLiveModeButton.setText("TCP の画質・フレームレートを選択");
+        styleButton(glassesLiveModeButton, Color.rgb(45, 45, 45));
+        glassesLiveModeButton.setOnClickListener(v -> showLiveModePicker());
 
         glasses60Button = new Button(this);
         glasses60Button.setText("TCP 60fps を準備（本体再起動）");
@@ -366,9 +354,7 @@ public class MainActivity extends Activity {
         tcpModeLabel.setTextSize(14);
         tcpModeLabel.setPadding(0, 24, 0, 8);
         root.addView(tcpModeLabel);
-        root.addView(glassesLive60Button);
-        root.addView(glassesLive1600p30Button);
-        root.addView(glassesLive30Button);
+        root.addView(glassesLiveModeButton);
         root.addView(deviceSettingsToggle);
         root.addView(deviceSettings);
         root.addView(keepScreenCheck);
@@ -830,6 +816,20 @@ public class MainActivity extends Activity {
         return java.util.UUID.randomUUID().toString().replace("-", "");
     }
 
+    private void showLiveModePicker() {
+        String[] labels = {
+                "1600×1200 / 60fps · 約34 Mbps",
+                "1280×720 / 30fps · 約17 Mbps（左右が広い）",
+                "1600×1200 / 30fps · 約15.7 Mbps"
+        };
+        String[] modes = {"1600 1200 60", "1280 720 30", "1600 1200 30"};
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("TCP の画質を選択（再起動なし）")
+                .setItems(labels, (dialog, which) -> switchLiveMode(modes[which]))
+                .setNegativeButton("キャンセル", null)
+                .show();
+    }
+
     private void switchLiveMode(String target) {
         if (RecordService.isRecordingOrStarting() || glassesStatusPending
                 || preferences.getBoolean("glasses_recovery_required", false)) {
@@ -1169,11 +1169,7 @@ public class MainActivity extends Activity {
         diagnosticsCheck.setEnabled(!recordingBusy);
         videoRouteView.setEnabled(!recordingBusy);
         glassesStatusButton.setEnabled(!recordingBusy && !glassesStatusPending);
-        glassesLive60Button.setEnabled(!recordingBusy && !glassesStatusPending
-                && !preferences.getBoolean("glasses_recovery_required", false));
-        glassesLive1600p30Button.setEnabled(!recordingBusy && !glassesStatusPending
-                && !preferences.getBoolean("glasses_recovery_required", false));
-        glassesLive30Button.setEnabled(!recordingBusy && !glassesStatusPending
+        glassesLiveModeButton.setEnabled(!recordingBusy && !glassesStatusPending
                 && !preferences.getBoolean("glasses_recovery_required", false));
         glasses60Button.setEnabled(!recordingBusy && !glassesStatusPending
                 && !preferences.getBoolean("glasses_recovery_required", false));
