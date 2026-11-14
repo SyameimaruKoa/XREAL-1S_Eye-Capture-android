@@ -36,6 +36,26 @@ public final class GlassesLivePlanTest {
                 "mode query includes the firmware guard and reads values");
         require(!read.contains("of=/proc/") && !read.contains("conv=notrunc"),
                 "mode query must not write process memory");
+        String[] modes = {"1280 720 30", "1600 1200 30", "1600 1200 60"};
+        for (String from : modes) {
+            for (String to : modes) {
+                String script = GlassesLivePlan.command(from, to);
+                require(script.contains("[ \"$current\" = '" + from + "' ]"),
+                        "source mode must be guarded");
+                require(script.contains("[ \"$current\" = '" + to + "' ]"),
+                        "destination mode must be verified");
+                for (String stage : GlassesLivePlan.stageScriptCommands(script, token)) {
+                    require(stage.getBytes(StandardCharsets.US_ASCII).length < 500,
+                            "mode stage exceeds verified command length");
+                }
+            }
+        }
+        try {
+            GlassesLivePlan.command("1280 720 30", "1600 1200 30; reboot");
+            throw new AssertionError("unsupported mode accepted");
+        } catch (IllegalArgumentException expected) {
+            // Only explicitly supported modes may enter the shell command.
+        }
         try {
             GlassesLivePlan.stageCommands(true, "../invalid");
             throw new AssertionError("invalid path token accepted");

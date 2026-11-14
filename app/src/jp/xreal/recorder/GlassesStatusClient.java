@@ -83,7 +83,12 @@ final class GlassesStatusClient {
     }
 
     void setLiveMode(boolean sixtyFps, String token) throws IOException {
-        String result = runLiveScript(GlassesLivePlan.command(sixtyFps), token);
+        setLiveMode(sixtyFps ? "1280 720 30" : "1600 1200 60",
+                sixtyFps ? "1600 1200 60" : "1280 720 30", token);
+    }
+
+    void setLiveMode(String current, String target, String token) throws IOException {
+        String result = runLiveScript(GlassesLivePlan.command(current, target), token);
         if (!(GlassesLivePlan.SUCCESS + "\n").equals(result)) {
             if ((GlassesLivePlan.ROLLED_BACK + "\n").equals(result)) {
                 throw new IOException("切替に失敗し、元の設定に戻しました");
@@ -94,7 +99,8 @@ final class GlassesStatusClient {
 
     String readLiveMode(String token) throws IOException {
         String result = runLiveScript(GlassesLivePlan.readCommand(), token);
-        if ("1280 720 30\n".equals(result) || "1600 1200 60\n".equals(result)) {
+        if ("1280 720 30\n".equals(result) || "1600 1200 30\n".equals(result)
+                || "1600 1200 60\n".equals(result)) {
             return result.trim();
         }
         throw new IOException("対応する録画設定を確認できません");

@@ -74,6 +74,7 @@ public class MainActivity extends Activity {
     private Button glasses60Button;
     private Button glassesLive60Button;
     private Button glassesLive30Button;
+    private Button glassesLive1600p30Button;
     private Button glassesNormalButton;
     private Button glassesRecoverButton;
     private Button deviceSettingsToggle;
@@ -85,7 +86,7 @@ public class MainActivity extends Activity {
     private Button videoRouteView;
     private int selectedVideoRoute;
     private static final String[] VIDEO_ROUTES = {
-            "TCP HEVC 自動\n720p/30 約17 Mbps · 720p/60 約33 Mbps\n1600×1200/60 約34 Mbps",
+            "TCP HEVC 自動\n720p/30 約17 Mbps · 720p/60 約33 Mbps\n1600×1200/30 約15.7 Mbps · 60 約34 Mbps",
             "UVC HEVC\n2048×1512 / 60 fps · 約2.03 Mbps",
             "UVC MJPEG（試験中）\n1920×1080 / 30 fps · 約21.16 Mbps",
             "UVC MJPEG（試験中）\n1920×1080 / 60 fps · 約39.16 Mbps"
@@ -238,12 +239,17 @@ public class MainActivity extends Activity {
         glassesLive60Button = new Button(this);
         glassesLive60Button.setText("TCP 1600×1200 / 60fps に切替（再起動なし）");
         styleButton(glassesLive60Button, Color.rgb(45, 45, 45));
-        glassesLive60Button.setOnClickListener(v -> switchLiveMode(true));
+        glassesLive60Button.setOnClickListener(v -> switchLiveMode("1600 1200 60"));
+
+        glassesLive1600p30Button = new Button(this);
+        glassesLive1600p30Button.setText("TCP 1600×1200 / 30fps · 約15.7 Mbps");
+        styleButton(glassesLive1600p30Button, Color.rgb(45, 45, 45));
+        glassesLive1600p30Button.setOnClickListener(v -> switchLiveMode("1600 1200 30"));
 
         glassesLive30Button = new Button(this);
         glassesLive30Button.setText("TCP 1280×720 / 30fps に戻す（再起動なし）");
         styleButton(glassesLive30Button, Color.rgb(45, 45, 45));
-        glassesLive30Button.setOnClickListener(v -> switchLiveMode(false));
+        glassesLive30Button.setOnClickListener(v -> switchLiveMode("1280 720 30"));
 
         glasses60Button = new Button(this);
         glasses60Button.setText("TCP 60fps を準備（本体再起動）");
@@ -361,6 +367,7 @@ public class MainActivity extends Activity {
         tcpModeLabel.setPadding(0, 24, 0, 8);
         root.addView(tcpModeLabel);
         root.addView(glassesLive60Button);
+        root.addView(glassesLive1600p30Button);
         root.addView(glassesLive30Button);
         root.addView(deviceSettingsToggle);
         root.addView(deviceSettings);
@@ -789,8 +796,9 @@ public class MainActivity extends Activity {
                     try {
                         String live = new GlassesStatusClient(getApplicationContext()).readLiveMode(liveToken());
                         liveConfirmed = true;
-                        result += "\n現在の TCP 設定: "
-                                + ("1600 1200 60".equals(live) ? "1600×1200 / 60fps" : "1280×720 / 30fps");
+                        String[] parts = live.split(" ");
+                        result += "\n現在の TCP 設定: " + parts[0] + "×" + parts[1]
+                                + " / " + parts[2] + "fps";
                     } catch (Exception e) {
                         result += "\n現在の TCP 設定は確認できません";
                     }
@@ -822,7 +830,7 @@ public class MainActivity extends Activity {
         return java.util.UUID.randomUUID().toString().replace("-", "");
     }
 
-    private void switchLiveMode(boolean sixtyFps) {
+    private void switchLiveMode(String target) {
         if (RecordService.isRecordingOrStarting() || glassesStatusPending
                 || preferences.getBoolean("glasses_recovery_required", false)) {
             setStatus("録画または本体の状態を確認してください");
@@ -845,18 +853,18 @@ public class MainActivity extends Activity {
             boolean confirmed = false;
             try {
                 GlassesStatusClient client = new GlassesStatusClient(getApplicationContext());
-                String target = sixtyFps ? "1600 1200 60" : "1280 720 30";
                 String current = client.readLiveMode(liveToken());
                 if (!target.equals(current)) {
-                    client.setLiveMode(sixtyFps, liveToken());
+                    client.setLiveMode(current, target, liveToken());
                     current = client.readLiveMode(liveToken());
                 }
                 if (!target.equals(current)) {
                     throw new java.io.IOException("設定の確認に失敗しました");
                 }
                 confirmed = true;
-                message = sixtyFps ? "1600×1200 / 60fps に設定しました。次の録画から有効です"
-                        : "1280×720 / 30fps に設定しました。次の録画から有効です";
+                String[] parts = target.split(" ");
+                message = parts[0] + "×" + parts[1] + " / " + parts[2]
+                        + "fps に設定しました。次の録画から有効です";
             } catch (Exception e) {
                 message = "本体の録画設定を確認できません: " + e.getMessage();
             }
@@ -1162,6 +1170,8 @@ public class MainActivity extends Activity {
         videoRouteView.setEnabled(!recordingBusy);
         glassesStatusButton.setEnabled(!recordingBusy && !glassesStatusPending);
         glassesLive60Button.setEnabled(!recordingBusy && !glassesStatusPending
+                && !preferences.getBoolean("glasses_recovery_required", false));
+        glassesLive1600p30Button.setEnabled(!recordingBusy && !glassesStatusPending
                 && !preferences.getBoolean("glasses_recovery_required", false));
         glassesLive30Button.setEnabled(!recordingBusy && !glassesStatusPending
                 && !preferences.getBoolean("glasses_recovery_required", false));

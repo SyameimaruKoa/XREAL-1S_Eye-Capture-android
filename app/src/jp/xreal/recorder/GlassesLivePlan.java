@@ -96,14 +96,26 @@ final class GlassesLivePlan {
     }
 
     static String command(boolean sixtyFps) {
-        String expected = sixtyFps ? "1280 720 30" : "1600 1200 60";
-        String desired = sixtyFps ? "1600 1200 60" : "1280 720 30";
-        String bytes = sixtyFps
-                ? "\\100\\006\\000\\000\\260\\004\\000\\000\\074\\000\\000\\000"
-                : "\\000\\005\\000\\000\\320\\002\\000\\000\\036\\000\\000\\000";
-        String originalBytes = sixtyFps
-                ? "\\000\\005\\000\\000\\320\\002\\000\\000\\036\\000\\000\\000"
-                : "\\100\\006\\000\\000\\260\\004\\000\\000\\074\\000\\000\\000";
+        return command(sixtyFps ? "1280 720 30" : "1600 1200 60",
+                sixtyFps ? "1600 1200 60" : "1280 720 30");
+    }
+
+    private static String modeBytes(String mode) {
+        if ("1280 720 30".equals(mode)) {
+            return "\\000\\005\\000\\000\\320\\002\\000\\000\\036\\000\\000\\000";
+        }
+        if ("1600 1200 30".equals(mode)) {
+            return "\\100\\006\\000\\000\\260\\004\\000\\000\\036\\000\\000\\000";
+        }
+        if ("1600 1200 60".equals(mode)) {
+            return "\\100\\006\\000\\000\\260\\004\\000\\000\\074\\000\\000\\000";
+        }
+        throw new IllegalArgumentException("Unsupported live mode");
+    }
+
+    static String command(String expected, String desired) {
+        String bytes = modeBytes(desired);
+        String originalBytes = modeBytes(expected);
         return "set -- $(pidof pilot); [ $# -eq 1 ] || exit 1; p=$1; "
                 + "[ \"$(readlink /proc/$p/exe)\" = /usrdata/pilot/bin/pilot ] || exit 1; "
                 + "started=$(awk '{print $22}' /proc/$p/stat); [ -n \"$started\" ] || exit 1; "
