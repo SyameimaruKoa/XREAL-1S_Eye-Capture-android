@@ -73,6 +73,7 @@ public class MainActivity extends Activity {
     private Button glassesStatusButton;
     private Button glasses60Button;
     private Button glassesLiveModeButton;
+    private String confirmedLiveMode;
     private Button glassesNormalButton;
     private Button glassesRecoverButton;
     private Button deviceSettingsToggle;
@@ -236,6 +237,7 @@ public class MainActivity extends Activity {
 
         glassesLiveModeButton = new Button(this);
         glassesLiveModeButton.setText("TCP の画質・フレームレートを選択");
+        glassesLiveModeButton.setSingleLine(false);
         styleButton(glassesLiveModeButton, Color.rgb(45, 45, 45));
         glassesLiveModeButton.setOnClickListener(v -> showLiveModePicker());
 
@@ -565,6 +567,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
+        updateConfirmedLiveMode(null);
         if (!receiverRegistered) {
             IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
             if (Build.VERSION.SDK_INT >= 33) {
@@ -581,6 +584,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
+        updateConfirmedLiveMode(null);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setScreenSaverVisible(false);
         handler.removeCallbacksAndMessages(null);
@@ -627,8 +631,12 @@ public class MainActivity extends Activity {
         }
         if (found == null) {
             device = null;
+            updateConfirmedLiveMode(null);
             setStatus("XREAL 1S (3318:043e) が見つかりません");
             return;
+        }
+        if (device != null && !device.getDeviceName().equals(found.getDeviceName())) {
+            updateConfirmedLiveMode(null);
         }
         device = found;
         if (!usbManager.hasPermission(found)) {
@@ -770,6 +778,7 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 String result;
+                String observedLiveMode = null;
                 boolean startupConfirmed = false;
                 boolean liveConfirmed = false;
                 try {
@@ -781,6 +790,7 @@ public class MainActivity extends Activity {
                     }
                     try {
                         String live = new GlassesStatusClient(getApplicationContext()).readLiveMode(liveToken());
+                        observedLiveMode = live;
                         liveConfirmed = true;
                         String[] parts = live.split(" ");
                         result += "\n現在の TCP 設定: " + parts[0] + "×" + parts[1]
@@ -794,6 +804,7 @@ public class MainActivity extends Activity {
                 final String message = result;
                 final boolean confirmed = startupConfirmed;
                 final boolean confirmedLive = liveConfirmed;
+                final String checkedLiveMode = observedLiveMode;
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
@@ -805,6 +816,7 @@ public class MainActivity extends Activity {
                         if (confirmedLive) {
                             preferences.edit().putBoolean("live_mode_uncertain", false).apply();
                         }
+                        updateConfirmedLiveMode(checkedLiveMode);
                         setStatus(message);
                     }
                 });
@@ -830,6 +842,19 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    private void updateConfirmedLiveMode(String mode) {
+        confirmedLiveMode = mode;
+        if (glassesLiveModeButton == null) {
+            return;
+        }
+        String label = "TCP の画質・フレームレートを選択";
+        if (confirmedLiveMode != null) {
+            String[] parts = confirmedLiveMode.split(" ");
+            label += "\n前回確認: " + parts[0] + "×" + parts[1] + " / " + parts[2] + "fps";
+        }
+        glassesLiveModeButton.setText(label);
+    }
+
     private void switchLiveMode(String target) {
         if (RecordService.isRecordingOrStarting() || glassesStatusPending
                 || preferences.getBoolean("glasses_recovery_required", false)) {
@@ -842,6 +867,7 @@ public class MainActivity extends Activity {
             return;
         }
         glassesStatusPending = true;
+        updateConfirmedLiveMode(null);
         if (!preferences.edit().putBoolean("live_mode_uncertain", true).commit()) {
             glassesStatusPending = false;
             setStatus("安全状態を保存できませんでした");
@@ -874,6 +900,7 @@ public class MainActivity extends Activity {
                 glassesStatusPending = false;
                 if (stateConfirmed) {
                     preferences.edit().putBoolean("live_mode_uncertain", false).apply();
+                    updateConfirmedLiveMode(target);
                 }
                 setStatus(result);
             });
