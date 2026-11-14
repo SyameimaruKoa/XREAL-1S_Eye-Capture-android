@@ -356,7 +356,7 @@ public class MainActivity extends Activity {
         TextView rateNote = new TextView(this);
         rateNote.setText("ビットレートは録画の実測例で、撮影内容によって変わります。\n"
                 + "TCP の解像度・fps は下のボタンで切り替えられます。\n"
-                + "1600×1200/60fps は720p/30fpsより左右の画角が狭いことを確認しています。720p/60fps の画角は未確認です。");
+                + "1600×1200/30fps・60fps は720p/30fpsより左右の画角が狭いことを確認しています。720p/60fps の画角は未確認です。");
         rateNote.setTextColor(Color.LTGRAY);
         rateNote.setTextSize(12);
         root.addView(rateNote);
