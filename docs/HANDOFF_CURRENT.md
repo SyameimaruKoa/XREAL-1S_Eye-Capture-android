@@ -1,6 +1,12 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-04、以下の開始予定・実行中の記録より優先）
+- 2026-11-15 実機driverの時刻検査: PC保存済み .cache/libnr_driver_device.so はSHA256 b3a27a8de7776d294cedd8f8b101be105691c0fe84c5f8ecd033a019a94c8386で実機記録と一致。0x709d88 は入力構造体+0x18の64bit値の前回差を 2×(1000000000 / fps) と比較し、超過時に SendFrameChecker の時刻差ログを生成する。0x70ba88 は入力ポインターを保持し、0x709d88へ渡した後、条件に応じ同ポインターを0x709ed8または0x70b330へ渡す。実機driverにもフレーム処理段階の時刻間隔チェックがあると確認。ただしTCP body offset24への対応、時刻の生成元・露光時刻との関係、60fps間隔乱れの原因は未確定。参照探索 session 25359 は正常終了。録画・設定変更なし。
+
+- 2026-11-15 読取調査: NetworkProbe は Aborted と表示され通信可否を判定できなかった。一時dexは削除済み。PCの .cache/libnr_driver_device.so が実機記録と同じ SHA256 b3a27a8de7776d294cedd8f8b101be105691c0fe84c5f8ecd033a019a94c8386 と判明したため、端末への追加読取を中止し保存済み実機driverを静的解析中。SendFrameChecker の文字列3件を確認、参照探索のPCプロセス session 25359 が実行中。端末設定・録画状態変更なし。
+
+- 2026-11-15 読取調査準備: 実機driverの時刻検査を確認する前に、既存の一時 NetworkProbe dex をスマホ /data/local/tmp/xreal_network_probe.dex に配置して eth0 の通信を確認する。終了後に dex を削除する。録画・設定変更はしない。
+
 - 2026-11-15 ユーザーがネットワーク設定済みと連絡。同じLAN経路障害が再発した場合はスマートフォンで `su -c 'sh /data/adb/modules/ts-lan-route/system/bin/ts-lan-route apply'` を実行する。このコマンド以外のスマートフォンroot操作は許可されていない。現在ADB接続中。shellの169.254.2.1宛経路はtailscale0だが、XREAL用ネットワークに明示的に接続するアプリの通信障害は未確認なので、これだけで障害と判断せず復旧コマンドも未実行。Ethernet eth0には169.254.2.10/24が存在。端末設定変更・録画開始なし。
 
 - 2026-11-15 TCP時刻候補の生成元の追加手掛かり: 公開 pilot-1.9.1 の libnr_driver.so SHA256 04a85eb4e8e34c303b57f06fa43775306f14e28bc178eb6ad566f7e734a537e4 を静的解析。0x7132c0は入力フレーム先頭ポインターを保持し、0x7115c0へ渡して+0x18の64bit値の連続差を読み、1000000000 / 設定fps の2倍と比較する。関連文字列は「SendFrameChecker, frame_id={}, time={},{}, delta={}」。同ポインターは0x712b68経由で0x2785メッセージ用構造体へ複製される。値が送信前からフレームに付随する時間候補である可能性を支持するが、ネットワークbody offset24への厳密な対応、生成箇所、露光時刻かどうか、実機driverとの一致は未検証。この公開driverのハッシュは実機で既に確認されたdriver b3a27a8d…と異なるため、現行機の挙動と断定しない。実機設定変更なし。
