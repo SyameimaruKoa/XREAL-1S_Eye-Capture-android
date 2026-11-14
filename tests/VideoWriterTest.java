@@ -77,6 +77,40 @@ public class VideoWriterTest {
         }), "slow finish");
         require(delayReports.get() == 1 && slowFinalized.get() == 1 && !slow.isFailed(),
                 "slow output should finish without a false error");
+        final CountDownLatch interruptedEntered = new CountDownLatch(1);
+        final CountDownLatch interruptedRelease = new CountDownLatch(1);
+        final CountDownLatch finishEntered = new CountDownLatch(1);
+        final AtomicInteger interruptedFinalized = new AtomicInteger();
+        final AtomicInteger interruptRestored = new AtomicInteger();
+        VideoWriter interruptedWriter = new VideoWriter(new VideoWriter.Output() {
+            public void write(byte[] data, long pts, boolean key, int index) throws Exception {
+                interruptedEntered.countDown();
+                interruptedRelease.await();
+            }
+            public void finish() { interruptedFinalized.incrementAndGet(); }
+        });
+        interruptedWriter.enqueue(new byte[]{1}, 0, false, 0);
+        require(interruptedEntered.await(2, TimeUnit.SECONDS), "interrupted writer did not start");
+        Thread finisher = new Thread(new Runnable() {
+            public void run() {
+                finishEntered.countDown();
+                interruptedWriter.finish();
+                if (Thread.currentThread().isInterrupted()) {
+                    interruptRestored.incrementAndGet();
+                }
+            }
+        });
+        finisher.start();
+        require(finishEntered.await(2, TimeUnit.SECONDS), "finisher did not start");
+        finisher.interrupt();
+        finisher.join(200);
+        require(finisher.isAlive() && interruptedFinalized.get() == 0,
+                "interrupt ended waiting before output finalized");
+        interruptedRelease.countDown();
+        finisher.join(2000);
+        require(!finisher.isAlive() && interruptedFinalized.get() == 1
+                && interruptRestored.get() == 1 && !interruptedWriter.isFailed(),
+                "interrupt was not restored after output finalized");
         System.out.println("VideoWriter tests passed");
     }
 }
