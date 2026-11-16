@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
@@ -73,6 +74,9 @@ public final class RecordService extends Service {
     private boolean diagnostics;
     private int videoRoute;
     private static volatile long recordingStartedMs;
+    private static volatile String thermalSummary = "";
+    private Thread telemetryThread;
+    private volatile boolean telemetryRunning;
     private DisplayManager displayManager;
     private RecordingPresentation recordingPresentation;
     private int presentationMode = -1;
@@ -467,6 +471,7 @@ public final class RecordService extends Service {
             finalAudioRef.set(finalAudio);
             audio.start();
             status = "録画中: " + mp4Name;
+            startTelemetry();
 
             boolean audioFailureHandled = false;
             while (!stopRequested && !videoSource.isFailed()
@@ -518,6 +523,7 @@ public final class RecordService extends Service {
                 status += "\n" + outputLabel + " / " + mp4Name;
             }
         } finally {
+            telemetryRunning = false;
             if (audio != null) {
                 try {
                     audio.stop();
@@ -659,7 +665,7 @@ public final class RecordService extends Service {
         recordingPresentation.updateStatus(status, stopRequested, hasVideoData(), isVideoStalled(),
                 audioSilenceDetected, phoneAudioSeen,
                 audioExactZero, audioPeak.getAndSet(0), elapsed,
-                getVideoRateSummary());
+                getVideoRateSummary(), thermalSummary);
     }
 
     private void dismissRecordingDisplay() {
@@ -672,6 +678,45 @@ public final class RecordService extends Service {
             recordingPresentation = null;
         }
         presentationMode = -1;
+    }
+
+    private void startTelemetry() {
+        if (telemetryThread != null && telemetryThread.isAlive()) {
+            return;
+        }
+        telemetryRunning = true;
+        telemetryThread = new Thread(() -> {
+            while (telemetryRunning) {
+                StringBuilder sb = new StringBuilder();
+                try {
+                    GlassesTelemetryClient.Snapshot snap = new GlassesTelemetryClient(this).read();
+                    if (snap.temperatureC != null) {
+                        sb.append(String.format(Locale.US, "グラス %.1f℃", snap.temperatureC));
+                    }
+                } catch (Exception ignored) {
+                }
+                try {
+                    Intent battery = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+                    if (battery != null) {
+                        int tenths = battery.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, Integer.MIN_VALUE);
+                        if (tenths != Integer.MIN_VALUE) {
+                            if (sb.length() > 0) sb.append("\n");
+                            sb.append(String.format(Locale.US, "スマホ %.1f℃", tenths / 10.0f));
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+                thermalSummary = sb.toString();
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }, "xreal-telemetry");
+        telemetryThread.setDaemon(true);
+        telemetryThread.start();
     }
 
     private void releaseWakeLock() {

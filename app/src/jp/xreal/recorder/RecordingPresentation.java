@@ -27,6 +27,7 @@ final class RecordingPresentation extends Presentation {
     private TextView elapsed;
     private TextView audio;
     private TextView rate;
+    private TextView thermals;
     private LinearLayout content;
     private WaveformView waveform;
     private final boolean sideMode;
@@ -65,6 +66,7 @@ final class RecordingPresentation extends Presentation {
         elapsed = label(sideMode ? 100 : 34, Color.WHITE, true);
         audio = label(sideMode ? 56 : 20, Color.LTGRAY, false);
         rate = label(sideMode ? 56 : 20, Color.LTGRAY, false);
+        thermals = label(sideMode ? 48 : 17, Color.rgb(150, 200, 255), false);
         int contentWidth = sideMode ? 1320 : 420;
         int waveformHeight = sideMode ? 220 : 64;
         root.addView(headline, new LinearLayout.LayoutParams(contentWidth, -2));
@@ -73,6 +75,7 @@ final class RecordingPresentation extends Presentation {
         waveform = new WaveformView(getContext());
         root.addView(waveform, new LinearLayout.LayoutParams(contentWidth, waveformHeight));
         root.addView(audio, new LinearLayout.LayoutParams(contentWidth, -2));
+        root.addView(thermals, new LinearLayout.LayoutParams(contentWidth, -2));
         setContentView(root);
     }
 
@@ -90,7 +93,7 @@ final class RecordingPresentation extends Presentation {
     void updateStatus(String state, boolean stopping, boolean videoReceived, boolean videoStalled, boolean silence,
                       boolean audioSeen, boolean exactZero,
                       int audioPeak, long elapsedSeconds,
-                      String rateSummary) {
+                      String rateSummary, String thermalSummary) {
         if (headline == null) {
             return;
         }
@@ -146,6 +149,7 @@ final class RecordingPresentation extends Presentation {
         } else {
             audio.setText("");
         }
+        thermals.setText(thermalSummary == null ? "" : thermalSummary);
     }
 
     static final class WaveformView extends View {

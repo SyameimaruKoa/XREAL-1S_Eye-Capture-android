@@ -23,6 +23,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.BatteryManager;
 import android.os.SystemClock;
 import android.text.SpannableString;
 import android.text.Spanned;
@@ -82,6 +83,10 @@ public class MainActivity extends Activity {
     private Button resetFolderButton;
     private CheckBox diagnosticsCheck;
     private TextView destinationView;
+    private TextView telemetryView;
+    private volatile String telemetryText = "グラス情報: 取得待ち";
+    private Thread telemetryThread;
+    private volatile boolean telemetryRunning;
     private Button videoRouteView;
     private int selectedVideoRoute;
     private static final String[] VIDEO_ROUTES = {
@@ -409,6 +414,13 @@ public class MainActivity extends Activity {
         });
         root.addView(diagnosticsCheck);
 
+        telemetryView = new TextView(this);
+        telemetryView.setTextColor(Color.rgb(170, 200, 255));
+        telemetryView.setTextSize(13);
+        telemetryView.setPadding(0, 16, 0, 8);
+        telemetryView.setText(telemetryText);
+        root.addView(telemetryView);
+
         TextView help = new TextView(this);
         help.setText("\n使い方:\n"
                 + "1. XREAL 1SをUSB-Cで接続\n"
@@ -577,11 +589,13 @@ public class MainActivity extends Activity {
         }
         findDevice();
         pollStatus();
+        startTelemetry();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
+        telemetryRunning = false;
         updateConfirmedLiveMode(null);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setScreenSaverVisible(false);
@@ -1169,6 +1183,9 @@ public class MainActivity extends Activity {
         if (recording) {
             phoneWaveform.addPeak(audioPeak);
         }
+        if (telemetryView != null) {
+            telemetryView.setText(telemetryText);
+        }
         audioIndicator.setText(!recording ? "" : s != null && s.startsWith("録画中: 音声停止")
                 ? "音声停止・映像のみ録画中" : !RecordService.hasAudioData()
                 ? "音声データを待機中" : RecordService.isAudioExactZero()
@@ -1211,6 +1228,69 @@ public class MainActivity extends Activity {
                 pollStatus();
             }
         }, 500);
+    }
+
+    private void startTelemetry() {
+        if (telemetryThread != null && telemetryThread.isAlive()) {
+            return;
+        }
+        telemetryRunning = true;
+        telemetryThread = new Thread(() -> {
+            while (telemetryRunning) {
+                StringBuilder sb = new StringBuilder();
+                try {
+                    GlassesTelemetryClient.Snapshot snap = new GlassesTelemetryClient(this).read();
+                    if (snap.temperatureC != null) {
+                        sb.append(String.format(Locale.US, "グラス温度 %.1f℃", snap.temperatureC));
+                    }
+                    if (snap.wearingState != null) {
+                        String worn = snap.wearingState == 2 ? "装着" : snap.wearingState == 1 ? "非装着" : "状態" + snap.wearingState;
+                        if (sb.length() > 0) sb.append(" / ");
+                        sb.append("装着状態: ").append(worn);
+                    }
+                    if (snap.bootCount != null) {
+                        if (sb.length() > 0) sb.append(" / ");
+                        sb.append("起動回数 ").append(snap.bootCount);
+                    }
+                    if (snap.firmwareVersion != null) {
+                        if (sb.length() > 0) sb.append("\n");
+                        sb.append("FW ").append(snap.firmwareVersion);
+                    }
+                } catch (Exception e) {
+                    sb.append("グラス情報: 取得できません (").append(e.getMessage()).append(")");
+                }
+                String phoneTemp = readPhoneBatteryTemperature();
+                if (phoneTemp != null) {
+                    if (sb.length() > 0) sb.append("\n");
+                    sb.append(phoneTemp);
+                }
+                telemetryText = sb.length() > 0 ? sb.toString() : "グラス情報: 取得待ち";
+                try {
+                    Thread.sleep(4000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }, "xreal-telemetry");
+        telemetryThread.setDaemon(true);
+        telemetryThread.start();
+    }
+
+    private String readPhoneBatteryTemperature() {
+        try {
+            Intent battery = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            if (battery == null) {
+                return null;
+            }
+            int tenths = battery.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Integer.MIN_VALUE);
+            if (tenths == Integer.MIN_VALUE) {
+                return null;
+            }
+            return String.format(Locale.US, "スマホ温度 %.1f℃", tenths / 10.0f);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void setStatus(String s) {

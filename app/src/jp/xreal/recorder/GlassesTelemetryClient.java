@@ -99,7 +99,8 @@ final class GlassesTelemetryClient {
         byte[] packet = new byte[10 + body.length];
         ByteBuffer buffer = ByteBuffer.wrap(packet).order(ByteOrder.BIG_ENDIAN);
         buffer.putShort((short) messageId);
-        buffer.putInt(body.length);
+        // The length field counts the transaction id plus the body.
+        buffer.putInt(4 + body.length);
         buffer.putInt(TXID + sequence);
         buffer.put(body);
         output.write(packet);
@@ -110,10 +111,14 @@ final class GlassesTelemetryClient {
         ByteBuffer h = ByteBuffer.wrap(header).order(ByteOrder.BIG_ENDIAN);
         int responseId = Short.toUnsignedInt(h.getShort());
         int length = h.getInt();
-        if (responseId != messageId || length < 0 || length > 4096) {
+        if (responseId != messageId || length < 4 || length > 4096) {
             throw new IOException("予期しないテレメトリ応答: id=" + responseId + " len=" + length);
         }
-        return readExact(input, length);
+        byte[] payloadWithTxid = readExact(input, length);
+        // Skip the echoed 4-byte transaction id; the rest is the protobuf body.
+        byte[] responseBody = new byte[payloadWithTxid.length - 4];
+        System.arraycopy(payloadWithTxid, 4, responseBody, 0, responseBody.length);
+        return responseBody;
     }
 
     private static byte[] readExact(InputStream input, int length) throws IOException {
