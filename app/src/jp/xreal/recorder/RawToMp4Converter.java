@@ -9,7 +9,6 @@ import android.util.Log;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +20,8 @@ import java.util.List;
  * calls this converter on normal stop (or on the next launch after a crash).
  * HEVC access units are split on Annex-B start codes; VPS/SPS/PPS NALs form the
  * csd-0 codec config, and the remaining NALs become video samples. AAC frames
- * have their 7-byte ADTS header stripped before being written as audio samples.</p>
+ * are stored with a 4-byte length prefix (platform encoder does not emit ADTS)
+ * and written as raw AAC samples with a synthesized AudioSpecificConfig.</p>
  */
 final class RawToMp4Converter {
     private static final String TAG = "XrealConvert";
@@ -60,6 +60,11 @@ final class RawToMp4Converter {
             if (!aacFrames.isEmpty()) {
                 MediaFormat audioFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, 48000, 1);
                 audioFormat.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
+                // Build AudioSpecificConfig from the encoder's fixed settings:
+                // AAC LC (5b 00010), 48 kHz index 3 (4b 0011), mono (4b 0001),
+                // padded to 16 bits -> 0x11 0x88.
+                byte[] asc = new byte[]{0x11, (byte) 0x88};
+                audioFormat.setByteBuffer("csd-0", ByteBuffer.wrap(asc));
                 audioTrack = muxer.addTrack(audioFormat);
             }
             muxer.start();
@@ -115,40 +120,43 @@ final class RawToMp4Converter {
     /** Split Annex-B stream into NAL units; collect parameter sets for csd. */
     private static List<Au> readAccessUnits(File file) throws IOException {
         List<Au> result = new ArrayList<>();
-        try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-            long len = raf.length();
-            byte[] buf = new byte[(int) Math.min(len, 16L * 1024 * 1024)];
-            raf.seek(0);
-            int n = raf.read(buf);
-            if (n <= 0) {
-                return result;
-            }
-            List<int[]> starts = new ArrayList<>(); // {offset, codeLength}
-            int i = 0;
-            while (i + 3 <= n) {
-                if (buf[i] == 0 && buf[i + 1] == 0 && buf[i + 2] == 1) {
-                    starts.add(new int[]{i, 3});
-                    i += 3;
-                } else if (i + 4 <= n && buf[i] == 0 && buf[i + 1] == 0
-                        && buf[i + 2] == 0 && buf[i + 3] == 1) {
-                    starts.add(new int[]{i, 4});
-                    i += 4;
-                } else {
-                    i++;
+        final int CHUNK = 64 * 1024;
+        try (java.io.BufferedInputStream in =
+                     new java.io.BufferedInputStream(new java.io.FileInputStream(file), CHUNK)) {
+            java.io.ByteArrayOutputStream nal = new java.io.ByteArrayOutputStream(CHUNK);
+            byte[] buf = new byte[CHUNK];
+            int zeros = 0;
+            int n;
+            while ((n = in.read(buf)) >= 0) {
+                for (int i = 0; i < n; i++) {
+                    int b = buf[i] & 0xff;
+                    if (b == 0) {
+                        zeros++;
+                        continue;
+                    }
+                    if (b == 1 && zeros >= 2) {
+                        // start code found (2 or 3 zero bytes before the 1)
+                        if (nal.size() > 0) {
+                            byte[] data = nal.toByteArray();
+                            int type = (data[0] >> 1) & 0x3f;
+                            result.add(new Au(data, type));
+                            nal.reset();
+                        }
+                        zeros = 0;
+                        continue;
+                    }
+                    // ordinary data byte: flush accumulated zeros then the byte
+                    for (int z = 0; z < zeros; z++) {
+                        nal.write(0);
+                    }
+                    zeros = 0;
+                    nal.write(b);
                 }
             }
-            for (int k = 0; k < starts.size(); k++) {
-                int offset = starts.get(k)[0] + starts.get(k)[1];
-                int end = (k + 1 < starts.size()) ? starts.get(k + 1)[0] : n;
-                if (end <= offset) {
-                    continue;
-                }
-                byte[] nal = new byte[end - offset];
-                System.arraycopy(buf, offset, nal, 0, nal.length);
-                if (nal.length > 0) {
-                    int type = (nal[0] >> 1) & 0x3f;
-                    result.add(new Au(nal, type));
-                }
+            if (nal.size() > 0) {
+                byte[] data = nal.toByteArray();
+                int type = (data[0] >> 1) & 0x3f;
+                result.add(new Au(data, type));
             }
         }
         return result;
@@ -169,22 +177,19 @@ final class RawToMp4Converter {
         return out.size() > 0 ? out.toByteArray() : null;
     }
 
+    /** Parse our sidecar format: 4-byte big-endian length followed by raw AAC frames. */
     private static List<AdtsFrame> parseAdts(byte[] data) {
         List<AdtsFrame> result = new ArrayList<>();
         int i = 0;
-        while (i + 7 <= data.length) {
-            if ((data[i] & 0xff) != 0xff || (data[i + 1] & 0xf0) != 0xf0) {
-                i++;
-                continue;
+        while (i + 4 <= data.length) {
+            int len = ((data[i] & 0xff) << 24) | ((data[i + 1] & 0xff) << 16)
+                    | ((data[i + 2] & 0xff) << 8) | (data[i + 3] & 0xff);
+            i += 4;
+            if (len <= 0 || len > 100000 || i + len > data.length) {
+                break;
             }
-            int len = ((data[i + 3] & 0x03) << 11) | ((data[i + 4] & 0xff) << 3)
-                    | ((data[i + 5] & 0xe0) >> 5);
-            if (len < 7 || i + len > data.length) {
-                i++;
-                continue;
-            }
-            byte[] frame = new byte[len - 7];
-            System.arraycopy(data, i + 7, frame, 0, frame.length);
+            byte[] frame = new byte[len];
+            System.arraycopy(data, i, frame, 0, len);
             result.add(new AdtsFrame(frame));
             i += len;
         }

@@ -15,6 +15,7 @@ import android.util.Log;
 import java.util.ArrayList;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -46,6 +47,7 @@ public final class AudioSource {
     private final long t0Ns;
     private final RecordingMuxer muxer;
     private final File wavFile;
+    private final File adtsFile;
     private final Listener listener;
 
     private AudioRecord record;
@@ -61,13 +63,20 @@ public final class AudioSource {
     private volatile long encodedSamples;
     private volatile long firstEncodedPtsUs = -1;
     private volatile long lastEncodedPtsUs = -1;
+    private FileOutputStream adtsOut;
 
     public AudioSource(Context context, long t0Ns, RecordingMuxer muxer,
                        File wavFile, Listener listener) {
+        this(context, t0Ns, muxer, wavFile, null, listener);
+    }
+
+    public AudioSource(Context context, long t0Ns, RecordingMuxer muxer,
+                       File wavFile, File adtsFile, Listener listener) {
         this.context = context;
         this.t0Ns = t0Ns;
         this.muxer = muxer;
         this.wavFile = wavFile;
+        this.adtsFile = adtsFile;
         this.listener = listener;
     }
 
@@ -220,6 +229,9 @@ public final class AudioSource {
                 wav = new RandomAccessFile(wavFile, "rw");
                 writeWavHeader(wav);
             }
+            if (adtsFile != null) {
+                adtsOut = new FileOutputStream(adtsFile);
+            }
 
             while (running) {
                 pcm.clear();
@@ -338,6 +350,13 @@ public final class AudioSource {
             } catch (Throwable ignored) {
             }
             try {
+                if (adtsOut != null) {
+                    adtsOut.close();
+                    adtsOut = null;
+                }
+            } catch (Throwable ignored) {
+            }
+            try {
                 if (wav != null) {
                     patchWav(wav);
                 }
@@ -442,7 +461,9 @@ public final class AudioSource {
             int index = encoder.dequeueOutputBuffer(info, untilEos ? 10000 : 0);
             if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 emptyPolls = 0;
-                muxer.addAudioTrack(encoder.getOutputFormat());
+                if (muxer != null) {
+                    muxer.addAudioTrack(encoder.getOutputFormat());
+                }
             } else if (index >= 0) {
                 emptyPolls = 0;
                 try {
@@ -457,7 +478,21 @@ public final class AudioSource {
                         byte[] data = new byte[info.size];
                         output.position(info.offset);
                         output.get(data);
-                        muxer.writeAudio(data, info.presentationTimeUs);
+                        if (adtsOut != null) {
+                            try {
+                                // The platform AAC encoder here ignores KEY_IS_ADTS,
+                                // so store frames with our own 4-byte length prefix.
+                                adtsOut.write((data.length >>> 24) & 0xff);
+                                adtsOut.write((data.length >>> 16) & 0xff);
+                                adtsOut.write((data.length >>> 8) & 0xff);
+                                adtsOut.write(data.length & 0xff);
+                                adtsOut.write(data);
+                            } catch (IOException e) {
+                                throw new IllegalStateException("AAC sidecar write failed", e);
+                            }
+                        } else if (muxer != null) {
+                            muxer.writeAudio(data, info.presentationTimeUs);
+                        }
                         if (firstEncodedPtsUs < 0) {
                             firstEncodedPtsUs = info.presentationTimeUs;
                         }

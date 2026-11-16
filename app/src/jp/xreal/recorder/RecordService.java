@@ -47,6 +47,10 @@ public final class RecordService extends Service {
     public static final String EXTRA_VIDEO_ROUTE = "video_route";
     public static final int ROUTE_TCP_HEVC = 0;
     public static final int ROUTE_UVC_HEVC = 1;
+    public static final int SAVE_MODE_MP4 = 0;       // mode 1: convert while recording
+    public static final int SAVE_MODE_RAW = 1;       // mode 2: raw sidecars then convert
+    public static final String EXTRA_SAVE_MODE = "save_mode";
+    public static final String PREF_SAVE_MODE = "save_mode";
 
     private static volatile String status = "待機中";
     private static volatile boolean recording;
@@ -73,6 +77,7 @@ public final class RecordService extends Service {
     private String outputLabel;
     private boolean diagnostics;
     private int videoRoute;
+    private int saveMode = SAVE_MODE_MP4;
     private static volatile long recordingStartedMs;
     private static volatile String thermalSummary = "";
     private Thread telemetryThread;
@@ -196,6 +201,12 @@ public final class RecordService extends Service {
             }
             diagnostics = intent.getBooleanExtra(EXTRA_DIAGNOSTICS, false);
             videoRoute = intent.getIntExtra(EXTRA_VIDEO_ROUTE, ROUTE_TCP_HEVC);
+            int mode = intent.getIntExtra(EXTRA_SAVE_MODE, -1);
+            if (mode < 0) {
+                mode = getSharedPreferences("recording_options", MODE_PRIVATE)
+                        .getInt(PREF_SAVE_MODE, SAVE_MODE_MP4);
+            }
+            saveMode = (mode == SAVE_MODE_RAW) ? SAVE_MODE_RAW : SAVE_MODE_MP4;
             try {
                 if (Build.VERSION.SDK_INT >= 29) {
                     startForeground(NOTIFICATION_ID, buildNotification(),
@@ -266,6 +277,8 @@ public final class RecordService extends Service {
         String mp4Name = null;
         File hevcFile = null;
         File wavFile = null;
+        File adtsFile = null;
+        final boolean rawMode = saveMode == SAVE_MODE_RAW;
 
         try {
             File dir = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
@@ -276,9 +289,14 @@ public final class RecordService extends Service {
                 throw new IllegalStateException("cannot create output directory");
             }
             String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-            if (diagnostics) {
+            if (rawMode || diagnostics) {
                 hevcFile = new File(dir, "xreal_" + ts + ".hevc");
+            }
+            if (diagnostics) {
                 wavFile = new File(dir, "xreal_" + ts + ".wav");
+            }
+            if (rawMode) {
+                adtsFile = new File(dir, "xreal_" + ts + ".aac");
             }
 
             UsbManager um = (UsbManager) getSystemService(Context.USB_SERVICE);
@@ -287,9 +305,14 @@ public final class RecordService extends Service {
             videoSource.open();
 
             long captureTimeMs = System.currentTimeMillis();
-            output = RecordingOutput.create(this, outputTree, captureTimeMs);
-            mp4Name = output.getFilename();
-            muxer = output.openMuxer();
+            if (!rawMode) {
+                output = RecordingOutput.create(this, outputTree, captureTimeMs);
+                mp4Name = output.getFilename();
+                muxer = output.openMuxer();
+            } else {
+                mp4Name = hevcFile != null ? hevcFile.getName().replaceFirst("(?i)\\.hevc$", ".mp4")
+                        : "VID_" + ts + ".mp4";
+            }
             final JSONObject cameraInfo = new JSONObject();
             cameraInfo.put("schema_version", 1);
             cameraInfo.put("file", mp4Name);
@@ -331,7 +354,9 @@ public final class RecordService extends Service {
                         finalHevc.write(annexB);
                     }
                     long rawEndNs = SystemClock.elapsedRealtimeNanos();
-                    finalMuxer.writeVideo(annexB, ptsUs, keyFrame);
+                    if (finalMuxer != null) {
+                        finalMuxer.writeVideo(annexB, ptsUs, keyFrame);
+                    }
                     long muxEndNs = SystemClock.elapsedRealtimeNanos();
                     long rawMs = (rawEndNs - writeStartNs) / 1_000_000L;
                     long muxMs = (muxEndNs - rawEndNs) / 1_000_000L;
@@ -345,7 +370,9 @@ public final class RecordService extends Service {
                 @Override
                 public void finish() throws Exception {
                     try {
-                        finalMuxer.finish();
+                        if (finalMuxer != null) {
+                            finalMuxer.finish();
+                        }
                     } finally {
                         try {
                             if (finalHevc != null) {
@@ -387,9 +414,13 @@ public final class RecordService extends Service {
                                                 capturedAudio.getEncodedBytes() * 8_000_000.0 / audioSpanUs);
                                     }
                                 }
-                                finalOutput.writeMetadata(cameraInfo.toString(2));
+                                if (finalOutput != null) {
+                                    finalOutput.writeMetadata(cameraInfo.toString(2));
+                                }
                             } finally {
-                                finalOutput.complete();
+                                if (finalOutput != null) {
+                                    finalOutput.complete();
+                                }
                             }
                         }
                     }
@@ -405,12 +436,24 @@ public final class RecordService extends Service {
                         return;
                     }
                     csdSent[0] = true;
+                    // Raw-save mode needs the parameter sets in the HEVC sidecar;
+                    // the converter rebuilds csd-0 from them on stop.
+                    if (rawMode && finalHevc != null && csd != null) {
+                        try {
+                            finalHevc.write(csd);
+                            finalHevc.flush();
+                        } catch (Exception e) {
+                            Log.w(TAG, "could not write CSD to raw HEVC", e);
+                        }
+                    }
                     MediaFormat fmt = MediaFormat.createVideoFormat(
                             MediaFormat.MIMETYPE_VIDEO_HEVC,
                             finalVideo.getWidth(), finalVideo.getHeight());
                     fmt.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(csd));
                     fmt.setInteger(MediaFormat.KEY_FRAME_RATE, finalVideo.getFrameRate());
-                    finalMuxer.addVideoTrack(fmt);
+                    if (finalMuxer != null) {
+                        finalMuxer.addVideoTrack(fmt);
+                    }
                 }
 
                 @Override
@@ -444,7 +487,7 @@ public final class RecordService extends Service {
                 Thread.sleep(2000);
             }
 
-            final AudioSource finalAudio = new AudioSource(this, t0Ns, muxer, wavFile,
+            final AudioSource finalAudio = new AudioSource(this, t0Ns, muxer, wavFile, adtsFile,
                     new AudioSource.Listener() {
                         @Override
                         public void onError(String message) {
@@ -484,9 +527,11 @@ public final class RecordService extends Service {
 
             boolean audioFailureHandled = false;
             while (!stopRequested && !videoSource.isFailed()
-                    && !muxer.isFailed() && !finalWriter.isFailed()) {
+                    && (muxer == null || !muxer.isFailed()) && !finalWriter.isFailed()) {
                 if (audio.isFailed()) {
-                    muxer.startVideoOnly();
+                    if (muxer != null) {
+                        muxer.startVideoOnly();
+                    }
                     if (!audioFailureHandled) {
                         audioFailureHandled = true;
                         status = "録画中: 音声停止、映像のみ継続: " + audio.getError();
@@ -500,8 +545,36 @@ public final class RecordService extends Service {
 
             audio.stop();
             videoSource.stop();
-            muxer.startVideoOnly();
+            if (muxer != null) {
+                muxer.startVideoOnly();
+            }
             finishWriter(finalWriter);
+
+            String convertError = null;
+            if (rawMode) {
+                File mp4File = new File(dir, mp4Name);
+                try {
+                    int fps = videoSource.getFrameRate();
+                    if (fps <= 0) fps = 30;
+                    RawToMp4Converter.Result converted = RawToMp4Converter.convert(
+                            hevcFile, adtsFile, mp4File,
+                            videoSource.getWidth(), videoSource.getHeight(), fps);
+                    Log.i(TAG, "converted raw to mp4: au=" + converted.auCount
+                            + " audio=" + converted.audioFrames);
+                    if (hevcFile != null && hevcFile.exists() && !hevcFile.delete()) {
+                        Log.w(TAG, "could not delete raw hevc");
+                    }
+                    if (adtsFile != null && adtsFile.exists() && !adtsFile.delete()) {
+                        Log.w(TAG, "could not delete raw aac");
+                    }
+                    if (wavFile != null && wavFile.exists() && !wavFile.delete()) {
+                        Log.w(TAG, "could not delete wav");
+                    }
+                } catch (Throwable t) {
+                    convertError = t.getClass().getSimpleName() + ": " + t.getMessage();
+                    Log.e(TAG, "raw conversion failed", t);
+                }
+            }
 
             String result = String.format(Locale.US,
                     "%s / %s\nAU=%d audioFrames=%d%s",
@@ -514,12 +587,14 @@ public final class RecordService extends Service {
                 status = "音声停止: " + audio.getError() + "\n" + result;
             } else if (finalWriter.isFailed()) {
                 status = "映像出力エラー: " + finalWriter.getError() + "\n" + result;
-            } else if (muxer.isFailed()) {
+            } else if (muxer != null && muxer.isFailed()) {
                 status = "Muxerエラー: " + muxer.getError() + "\n" + result;
+            } else if (convertError != null) {
+                status = "変換エラー: " + convertError + "\n" + result;
             } else {
                 status = "保存完了: " + result;
             }
-            if (muxer.isFailed() && (videoSource.isFailed() || audio.isFailed())) {
+            if (muxer != null && muxer.isFailed() && (videoSource.isFailed() || audio.isFailed())) {
                 status += "\nMuxerエラー: " + muxer.getError();
             }
             if (audioSilenceEverDetected) {

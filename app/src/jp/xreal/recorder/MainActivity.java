@@ -27,6 +27,7 @@ import android.os.BatteryManager;
 import android.os.Environment;
 import android.os.StatFs;
 import android.os.SystemClock;
+import android.util.Log;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
@@ -46,6 +47,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import java.io.File;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
@@ -84,6 +86,12 @@ public class MainActivity extends Activity {
     private Button folderButton;
     private Button resetFolderButton;
     private CheckBox diagnosticsCheck;
+    private Button saveModeButton;
+    private int selectedSaveMode;
+    private static final String[] SAVE_MODES = {
+            "MP4 同時変換（標準）",
+            "生保存→停止時にMP4変換（保全）"
+    };
     private TextView destinationView;
     private TextView telemetryView;
     private volatile String telemetryText = "グラス情報: 取得待ち";
@@ -134,8 +142,54 @@ public class MainActivity extends Activity {
         outputTree = preferences.getString("output_tree", null);
         outputLabel = preferences.getString("output_label", DEFAULT_OUTPUT_LABEL);
         setContentView(buildUi());
+        recoverPendingRawRecordings();
         requestRuntimePermissions();
         findDevice();
+    }
+
+    /** Convert raw sidecars left by an interrupted mode-2 recording on next launch. */
+    private void recoverPendingRawRecordings() {
+        java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
+            File dir = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+            if (dir == null || !dir.exists()) {
+                return;
+            }
+            File[] files = dir.listFiles((d, name) -> name.toLowerCase().endsWith(".hevc")
+                    && name.startsWith("xreal_"));
+            if (files == null) {
+                return;
+            }
+            int recovered = 0;
+            int failed = 0;
+            for (File hevc : files) {
+                File mp4 = new File(dir, hevc.getName().replaceFirst("(?i)\\.hevc$", ".mp4"));
+                if (mp4.exists()) {
+                    continue; // already converted and published
+                }
+                File aac = new File(dir, hevc.getName().replaceFirst("(?i)\\.hevc$", ".aac"));
+                try {
+                    RawToMp4Converter.Result r = RawToMp4Converter.convert(
+                            hevc, aac.exists() ? aac : null, mp4, 1280, 720, 30);
+                    if (hevc.delete()) {
+                        recovered++;
+                    }
+                    if (aac.exists()) {
+                        aac.delete();
+                    }
+                    Log.i("XrealRecover", "recovered " + mp4.getName() + " au=" + r.auCount);
+                } catch (Exception e) {
+                    failed++;
+                    Log.w("XrealRecover", "failed " + hevc.getName() + ": " + e.getMessage());
+                }
+            }
+            final int fr = recovered;
+            final int ff = failed;
+            handler.post(() -> {
+                if (fr > 0 || ff > 0) {
+                    setStatus("未変換の録画を復旧: 成功" + fr + " / 失敗" + ff);
+                }
+            });
+        });
     }
 
     private View buildUi() {
@@ -415,6 +469,29 @@ public class MainActivity extends Activity {
             }
         });
         root.addView(diagnosticsCheck);
+
+        selectedSaveMode = preferences.getInt(RecordService.PREF_SAVE_MODE, RecordService.SAVE_MODE_MP4);
+        saveModeButton = new Button(this);
+        styleButton(saveModeButton, Color.rgb(45, 45, 45));
+        saveModeButton.setSingleLine(false);
+        saveModeButton.setText("保存モード: " + SAVE_MODES[selectedSaveMode] + "\nタップして変更");
+        saveModeButton.setOnClickListener(view -> {
+            if (RecordService.isRecordingOrStarting()) {
+                setStatus("録画中は保存モードを変更できません");
+                return;
+            }
+            new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("保存モードを選択")
+                    .setSingleChoiceItems(SAVE_MODES, selectedSaveMode, (choice, index) -> {
+                        selectedSaveMode = index;
+                        preferences.edit().putInt(RecordService.PREF_SAVE_MODE, index).commit();
+                        saveModeButton.setText("保存モード: " + SAVE_MODES[index] + "\nタップして変更");
+                        choice.dismiss();
+                    })
+                    .setNegativeButton("キャンセル", null)
+                    .show();
+        });
+        root.addView(saveModeButton);
 
         telemetryView = new TextView(this);
         telemetryView.setTextColor(Color.rgb(170, 200, 255));
@@ -719,7 +796,8 @@ public class MainActivity extends Activity {
                 .putExtra(RecordService.EXTRA_OUTPUT_TREE, outputTree)
                 .putExtra(RecordService.EXTRA_OUTPUT_LABEL, outputLabel)
                 .putExtra(RecordService.EXTRA_DIAGNOSTICS, diagnosticsCheck.isChecked())
-                .putExtra(RecordService.EXTRA_VIDEO_ROUTE, route);
+                .putExtra(RecordService.EXTRA_VIDEO_ROUTE, route)
+                .putExtra(RecordService.EXTRA_SAVE_MODE, selectedSaveMode);
         preferences.edit().putInt("video_route", route).apply();
         RecordService.setStartPending(true);
         try {
@@ -1212,6 +1290,7 @@ public class MainActivity extends Activity {
         folderButton.setEnabled(!recordingBusy);
         resetFolderButton.setEnabled(!recordingBusy);
         diagnosticsCheck.setEnabled(!recordingBusy);
+        saveModeButton.setEnabled(!recordingBusy);
         videoRouteView.setEnabled(!recordingBusy);
         glassesStatusButton.setEnabled(!recordingBusy && !glassesStatusPending);
         glassesLiveModeButton.setEnabled(!recordingBusy && !glassesStatusPending
