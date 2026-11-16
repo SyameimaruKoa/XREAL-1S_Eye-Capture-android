@@ -24,6 +24,8 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.BatteryManager;
+import android.os.Environment;
+import android.os.StatFs;
 import android.os.SystemClock;
 import android.text.SpannableString;
 import android.text.Spanned;
@@ -1264,6 +1266,11 @@ public class MainActivity extends Activity {
                     if (sb.length() > 0) sb.append("\n");
                     sb.append(phoneTemp);
                 }
+                String remaining = readRemainingRecordingTime();
+                if (remaining != null) {
+                    if (sb.length() > 0) sb.append("\n");
+                    sb.append(remaining);
+                }
                 telemetryText = sb.length() > 0 ? sb.toString() : "グラス情報: 取得待ち";
                 try {
                     Thread.sleep(4000);
@@ -1275,6 +1282,38 @@ public class MainActivity extends Activity {
         }, "xreal-telemetry");
         telemetryThread.setDaemon(true);
         telemetryThread.start();
+    }
+
+    private String readRemainingRecordingTime() {
+        try {
+            StatFs stat = new StatFs(Environment.getExternalStorageDirectory().getPath());
+            long available = stat.getAvailableBytes();
+            double bps = 0;
+            if (RecordService.isRecording()) {
+                bps = RecordService.getVideoBitrateBps();
+            }
+            if (bps <= 0) {
+                if (selectedVideoRoute == 1) {
+                    bps = 2_000_000; // UVC HEVC ~2 Mbps
+                } else if (confirmedLiveMode != null) {
+                    if (confirmedLiveMode.contains("1600")) {
+                        bps = confirmedLiveMode.endsWith("60") ? 34_000_000 : 15_700_000;
+                    } else {
+                        bps = confirmedLiveMode.endsWith("60") ? 33_000_000 : 17_000_000;
+                    }
+                } else {
+                    bps = 17_000_000; // TCP 720/30 default
+                }
+            }
+            double totalBps = bps + 128_000; // AAC audio
+            double seconds = available * 8.0 / totalBps;
+            long minutes = (long) (seconds / 60);
+            String mode = bps > 20_000_000 ? "60fps/34M" : bps > 10_000_000 ? "17M" : "2M";
+            return String.format(Locale.US, "録画可能 約%d分 (残り%.1fGB, %s)",
+                    minutes, available / 1_000_000_000.0, mode);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private String readPhoneBatteryTemperature() {

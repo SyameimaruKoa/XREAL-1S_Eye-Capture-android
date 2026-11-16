@@ -148,6 +148,15 @@ public final class RecordService extends Service {
                 (videoFrames - 1) / seconds, videoBytes * 8.0 / seconds / 1_000_000.0);
     }
 
+    /** Measured video bitrate in bits/s, or 0 while still measuring. */
+    public static double getVideoBitrateBps() {
+        long spanNs = lastVideoNs - firstVideoNs;
+        if (videoFrames < 2 || spanNs < 1_000_000_000L) {
+            return 0;
+        }
+        return videoBytes * 8.0 / (spanNs / 1_000_000_000.0);
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
