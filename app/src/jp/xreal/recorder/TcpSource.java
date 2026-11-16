@@ -124,6 +124,9 @@ final class TcpSource implements VideoSource {
         Socket socket = new Socket();
         try {
             network.bindSocket(socket);
+            // Larger receive buffer smooths bursty arrivals from the glasses
+            // over USB Ethernet at 60 fps (halved >25 ms PTS gaps in trials).
+            socket.setReceiveBufferSize(2 * 1024 * 1024);
             socket.connect(new InetSocketAddress(HOST, port), 5000);
             socket.setSoTimeout(1000);
             return socket;
