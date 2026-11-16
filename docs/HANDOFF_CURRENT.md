@@ -1,6 +1,18 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-17、以下の開始予定・実行中の記録より優先）
+- 2026-11-17 改善案の計画整理(実データ/コードに基づく評価): 別AI案7項目＋ユーザー案1項目を評価。
+  - [ユーザー案] グラス情報表示: 温度はTCP 52999のNRTemperatureGetValue(0x2789)で53.0℃取得可。FWバージョン・製品名・VID/PID・装着状態・ストレージ空き等も取得可(前項参照)。X1使用率はプロトコルにAPIがなく取得不可。adb-mcpのdescribe_uiで表示可能なため、取得した情報をRecordingPresentationオーバーレイとMainActivityに表示する実装は中工数で実現可。まずこれを実装する方針。
+  - [別AI-1] fMP4異常終了保全: 現在MuxerSinkはAndroid MediaMuxerの通常MP4でfinish()時にstop/release。MediaMuxerはfMP4を直接サポートせず、独自フラグメント出力/導入ライブラリが必要で大工数。異常終了時の保全という目的なら、既存の「10秒待機＋保存中通知」や .pending ファイル＋再起動時復旧といった軽量手段を先に検討するのが妥当。
+  - [別AI-2] メタデータfps整合: 実データでは60fps動画のJSON received_average_fps=59.393、MP4 avg_frame_rate=59.376、frames共に7908で僅差(0.017fps)且つ整合。requested_frames_per_second=nullはTCPで要求fpsを送らない設計。これは不具合というより計算方式の差で、定義明記程度の小工数。
+  - [別AI-3] 長時間AV同期: 制御録画で音声ビートと映像秒変化が+27ms一致を実証済み。600秒試験では時刻候補が実時間より約3秒長い記録があり長期ドリフトの懸念は残るが、現状の短時間では実用同期。計測・補正は中大工数。
+  - [別AI-4] USB切断復旧: 既にusbReceiver・glasses_recovery_required・自動復旧・UVC有効化ボタンを実装済み。ただし録画中のUSB切断→再接続で録画を継続する処理は未確認。テスト用root許可ありで切断試験可能。中工数。
+  - [別AI-5] メモリ/CPU/電力最適化: 現状未計測。まず実測してから対策を決める必要があり、計測自体が中工数。
+  - [別AI-6] 状態・診断表示改善: RecordingPresentationに経過時間・fps・ビットレート・音声状態・波形を表示済み。ユーザー案のグラス情報表示と統合して対応可。
+  - [別AI-7] Releaseビルド/自動テスト: build.ps1/build.sh既存、テストは手動javac実行(自動テストランナー無し)。GitHub Actions等は未整備。中工数。
+  - 優先順位(ユーザー回答「まず計画を整理」): 上記を記録。次はユーザー案(グラス情報表示)を実装し、その後別AI案を工数/効果の高い順(4→1→7→2→3→5等)に検討する想定。
+- 2026-11-17 グラス情報取得の実機確認: TCP 52999(eth0)読み取りAPIで多数の情報を取得できた。温度 NRTemperatureGetValue(10121/0x2789、リクエスト{1:varint})のレスポンス `22 05 15 00 00 54 42` をprotobufデコードすると field4→field2 fixed32=53.0(摂氏)。3回連続で53.0、varint0〜5は同じ値(センサーID無視で本体温度)。★重要: 当初0x2799(10137)を送って0xFFFE拒否になっていたが、正しくは0x2789(10121)で、計算ミスが原因だった(0xFFFEはxrctlのエコー表示で拒否ではない可能性)。他に取得可: FWバージョン1.9.1.20260820191100、製品名XREAL 1S、USB VID0x3318/PID0x043E、システムバージョンコード3522、ブート回数430、装着状態2、ストレージ空き1871249408bytes(約1.74GB)、スリープ時間レベル5、デバイスタイプ15。すべてprotobuf field4ネストのfield2。X1チップ使用率はプロトコル資料に該当APIがなく取得不可。グラス温度はスマホsysfs(/sys/class/thermal等はスマホ自身)ではなくこのTCP API経由で取得する。
+- 2026-11-17 新改善案を着手。別AI案7項目(fMP4保全/メタデータfps整合/長時間AV同期/USB切断復旧/メモリCPU電力最適化/状態・診断表示/Releaseビルドと自動テスト)＋ユーザー案(録画中画面・アプリにグラス情報/ステータス表示、グラス温度・X1使用率等が取得できれば)。テスト用root使用(USB接続断等)は許可。まず実機・コード・プロトコル資料から取得可能な情報と実現可能性を確認し、想像で断定しない。
 - 2026-11-17 MJPEG削除完了(v0.1.21/code22、SHA256 1e2971a91ca90f665d35c77d85a580d267e24bac5320e062324bd77b246e7ac3): RecordService/MainActivity/RecordingOutputからmjpeg分岐・定数・UI項目を削除し、MjpegSource.java・MatroskaMuxer.java・MatroskaWriter.javaをgit rm。ビルド成功・端末導入確認。UIルート選択は2項目(TCP HEVC自動/UVC HEVC)のみになった。既定TCP HEVC・720/30で録画成功(VID_20261117_011348.mp4・29.85fps/16.46Mbps)し、他機能への影響なしを確認。作業中、UVC有効化(HID設定変更)でUSB Ethernetルーティング(table52)が消えてTCP録画エラーが出たが、su -c 'sh /data/adb/modules/ts-lan-route/system/bin/ts-lan-route apply' で169.254.2.0/24 dev eth0等を復旧しping通ることを確認してから再録画した。
 - 2026-11-17 ユーザー指示でUVC MJPEGルート(30p/60p)を完全削除する。必要性を感じないとの判断。削除対象: RecordService(ROUTE_UVC_MJPEG_30/60定数・mjpeg分岐)、MainActivity(VIDEO_ROUTESのMJPEG2項目)、MjpegSource.java、MatroskaMuxer/MatroskaWriter.java(MKV出力)、RecordingOutput(mjpegパラメータ・openMatroskaMuxer)。削除後ビルド・実機導入・4ルート→2ルート(TCP HEVC自動/UVC HEVC)のUI確認・既定TCP HEVC/720/30復元が必要。
 - 2026-11-17 ②UVC経路の現状確認結果(v0.1.20): 4ルートすべてで録画・保存成功。UVC HEVC(VID_20261117_004959.mp4)は2048×1512/59.39fps/2.06Mbps・全デコードエラーなし。UVC MJPEG 30p(VID_20261117_005338.mkv)は1920×1080/29.85fps/18.91Mbps・MatroskaでDTS非単調警告多数(decodeはexit0)。UVC MJPEG 60p(VID_20261117_005719.mkv)は1920×1080/59.39fps/38.5Mbps(Windows試験の60p未達はアプリ経由では再現せず実測60fps)。音声はいずれもAAC1ch・「音声が3秒以上非常に小さい」警告表示あり(設計どおり)。UVC HEVC有効化は「UVCを有効化」ボタン+USB権限OKが必要で、xrctl直接setconfig(00019a55)は反映されずアプリボタン(00009a55、getconfigでuvc0=1に変化・/dev/video追加)で反映。作業後はルートをTCP HEVC自動・720/30へ戻す必要がある(現在はMJPEG60p選択中)。
