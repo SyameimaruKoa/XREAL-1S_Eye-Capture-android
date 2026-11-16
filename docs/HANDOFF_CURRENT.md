@@ -1,6 +1,7 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-17、以下の開始予定・実行中の記録より優先）
+- 2026-11-17 停止手順を源码から確認(撮影1度きりの保険): ACTION_STOP="jp.xreal.recorder.STOP" は BroadcastReceiver ではなく RecordService.onStartCommand で受け取る(startService経由)。したがって停止は `adb shell am startservice -a jp.xreal.recorder.STOP`(Android 9以降は `am start-foreground-service -a ...` またはアプリUIDのSTOP)が正しく、`am broadcast -a jp.xreal.recorder.STOP` は効かない(実機で未停止を確認)。UI停止ボタンは録画中に下へ移動(待機y=724→録画中y=804)するため、describe_uiの現在座標を使うこと。onDestroyでもstopRequested=trueになりwake lock解放・worker join(3s)で保存処理が走る設計。撮影時はUI停止を第一選択とし、効かない場合はstartservice STOPで保険。
 - 2026-11-17 B完了: 2MB受信バッファを製品ソース反映(app/src/.../TcpSource.java の connect() に setReceiveBufferSize(2MB)＋コメント)、versionCode21/versionName0.1.20へ更新。ビルド成功 .cache/v0120-candidate.apk SHA256 13aa667ac84c66d6ecc07081adad3a72b6626610bd2a540a0dadf1e1960dcc70、端末へ導入し version 0.1.20/code21 確認。UIで1280×720/30へ復帰・読戻し確認済み。録画停止・ServiceRecord0。X:割当と一時コピーは削除済み。
 - 2026-11-17 C(オーバークロック)を浅く確認: アプリの「TCPの画質・フレームレートを選択」には 1600×1200/60・1280×720/30・1600×1200/30 の3選択肢のみで 90/120fps の設定は無い。グラス側の最大出力fpsを変える手段は現状の非root UIになく、ユーザー指示で深追いしないためここで終了。60fps超は未確認のまま。今後は録画の安定感・アプリ完成度向上を優先。
 - 2026-11-16 ユーザー方針更新: B(2MB受信バッファを製品化)→C(オーバークロックは浅く確認、深追いしない)→その後は録画の安定感・アプリ完成度向上を優先。撮影チャンスは1度きりという前提。実機は現在まだ診断APK・1600/60で、作業後に公開v0.1.19・720/30復元が必要。
