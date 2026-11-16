@@ -86,9 +86,7 @@ public class MainActivity extends Activity {
     private int selectedVideoRoute;
     private static final String[] VIDEO_ROUTES = {
             "TCP HEVC 自動\n720p/30 約17 Mbps · 720p/60 約33 Mbps\n1600×1200/30 約15.7 Mbps · 60 約34 Mbps",
-            "UVC HEVC\n2048×1512 / 60 fps · 約2.03 Mbps",
-            "UVC MJPEG（試験中）\n1920×1080 / 30 fps · 約21.16 Mbps",
-            "UVC MJPEG（試験中）\n1920×1080 / 60 fps · 約39.16 Mbps"
+            "UVC HEVC\n2048×1512 / 60 fps · 約2.03 Mbps"
     };
     private static final String[] DISPLAY_MODES = {
             "固定表示（右上）",

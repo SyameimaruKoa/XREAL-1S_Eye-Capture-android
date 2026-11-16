@@ -46,8 +46,6 @@ public final class RecordService extends Service {
     public static final String EXTRA_VIDEO_ROUTE = "video_route";
     public static final int ROUTE_TCP_HEVC = 0;
     public static final int ROUTE_UVC_HEVC = 1;
-    public static final int ROUTE_UVC_MJPEG_30 = 2;
-    public static final int ROUTE_UVC_MJPEG_60 = 3;
 
     private static volatile String status = "待機中";
     private static volatile boolean recording;
@@ -257,8 +255,6 @@ public final class RecordService extends Service {
         File wavFile = null;
 
         try {
-            final boolean mjpeg = videoRoute == ROUTE_UVC_MJPEG_30
-                    || videoRoute == ROUTE_UVC_MJPEG_60;
             File dir = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
             if (dir == null) {
                 dir = getFilesDir();
@@ -268,20 +264,19 @@ public final class RecordService extends Service {
             }
             String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
             if (diagnostics) {
-                hevcFile = new File(dir, "xreal_" + ts + (mjpeg ? ".mjpeg" : ".hevc"));
+                hevcFile = new File(dir, "xreal_" + ts + ".hevc");
                 wavFile = new File(dir, "xreal_" + ts + ".wav");
             }
 
             UsbManager um = (UsbManager) getSystemService(Context.USB_SERVICE);
             videoSource = videoRoute == ROUTE_TCP_HEVC ? new TcpSource(this)
-                    : mjpeg ? new MjpegSource(um, device, videoRoute == ROUTE_UVC_MJPEG_60 ? 60 : 30)
                     : new UvcSource(um, device);
             videoSource.open();
 
             long captureTimeMs = System.currentTimeMillis();
-            output = RecordingOutput.create(this, outputTree, captureTimeMs, mjpeg);
+            output = RecordingOutput.create(this, outputTree, captureTimeMs);
             mp4Name = output.getFilename();
-            muxer = mjpeg ? output.openMatroskaMuxer() : output.openMuxer();
+            muxer = output.openMuxer();
             final JSONObject cameraInfo = new JSONObject();
             cameraInfo.put("schema_version", 1);
             cameraInfo.put("file", mp4Name);
@@ -292,8 +287,7 @@ public final class RecordService extends Service {
             cameraInfo.put("usb_vendor_id", device.getVendorId());
             cameraInfo.put("usb_product_id", device.getProductId());
             cameraInfo.put("video_source", videoRoute == ROUTE_TCP_HEVC
-                    ? "USB Ethernet HEVC passthrough" : mjpeg
-                    ? "USB UVC MJPEG passthrough" : "USB UVC HEVC passthrough");
+                    ? "USB Ethernet HEVC passthrough" : "USB UVC HEVC passthrough");
             if (videoRoute == ROUTE_TCP_HEVC) {
                 cameraInfo.put("requested_width", JSONObject.NULL);
                 cameraInfo.put("requested_height", JSONObject.NULL);
@@ -399,11 +393,9 @@ public final class RecordService extends Service {
                     }
                     csdSent[0] = true;
                     MediaFormat fmt = MediaFormat.createVideoFormat(
-                            mjpeg ? "video/mjpeg" : MediaFormat.MIMETYPE_VIDEO_HEVC,
+                            MediaFormat.MIMETYPE_VIDEO_HEVC,
                             finalVideo.getWidth(), finalVideo.getHeight());
-                    if (!mjpeg) {
-                        fmt.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(csd));
-                    }
+                    fmt.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(csd));
                     fmt.setInteger(MediaFormat.KEY_FRAME_RATE, finalVideo.getFrameRate());
                     finalMuxer.addVideoTrack(fmt);
                 }
@@ -413,7 +405,7 @@ public final class RecordService extends Service {
                     try {
                         long receivedNs = SystemClock.elapsedRealtimeNanos();
                         long ptsUs = Math.max(0L, (timestampNs - t0Ns) / 1000L);
-                        finalWriter.enqueue(annexB, ptsUs, mjpeg || UvcSource.isKeyFrame(annexB),
+                        finalWriter.enqueue(annexB, ptsUs, UvcSource.isKeyFrame(annexB),
                                 finalVideo.getAccessUnits());
                         if (videoFrames == 0) {
                             firstVideoNs = receivedNs;
@@ -617,8 +609,7 @@ public final class RecordService extends Service {
                         ? "音声停止・映像のみ録画中" : audioSilenceDetected
                         ? "音声が3秒以上非常に小さいか無音です"
                         : videoRoute == ROUTE_TCP_HEVC ? "録画中（TCP HEVC + USBマイク）"
-                        : videoRoute == ROUTE_UVC_HEVC ? "録画中（UVC HEVC + USBマイク）"
-                        : "録画中（UVC MJPEG + USBマイク）")
+                        : "録画中（UVC HEVC + USBマイク）")
                 .setSmallIcon(android.R.drawable.ic_menu_camera)
                 .setContentIntent(pi)
                 .setOngoing(true)

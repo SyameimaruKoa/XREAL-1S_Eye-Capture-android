@@ -36,12 +36,12 @@ final class RecordingOutput {
         this.tree = tree;
     }
 
-    static RecordingOutput create(Context context, Uri tree, long captureTimeMs, boolean mjpeg) throws IOException {
+    static RecordingOutput create(Context context, Uri tree, long captureTimeMs) throws IOException {
         ContentResolver resolver = context.getContentResolver();
         Uri uri;
         boolean pending = tree == null;
-        String extension = mjpeg ? "mkv" : "mp4";
-        String mimeType = mjpeg ? "video/x-matroska" : "video/mp4";
+        String extension = "mp4";
+        String mimeType = "video/mp4";
         String filename = nextFilename(resolver, tree, extension, captureTimeMs);
         if (tree != null) {
             Uri directory = DocumentsContract.buildDocumentUriUsingTree(tree,
@@ -106,7 +106,6 @@ final class RecordingOutput {
             while (cursor.moveToNext()) {
                 String name = cursor.getString(0);
                 if (name != null && (name.equalsIgnoreCase(base + ".mp4")
-                        || name.equalsIgnoreCase(base + ".mkv")
                         || name.equalsIgnoreCase(base + ".json"))) {
                     throw new IOException("Recording name already exists: " + base);
                 }
@@ -124,14 +123,6 @@ final class RecordingOutput {
         } finally {
             fd.close();
         }
-    }
-
-    RecordingMuxer openMatroskaMuxer() throws IOException {
-        OutputStream stream = resolver.openOutputStream(uri, "w");
-        if (stream == null) {
-            throw new IOException("Could not open Matroska output");
-        }
-        return new MatroskaMuxer(stream);
     }
 
     synchronized void complete() throws IOException {
