@@ -120,6 +120,8 @@ public class MainActivity extends Activity {
     private boolean receiverRegistered = false;
     private static volatile boolean glassesStatusPending;
     private boolean recoveryShown;
+    /** Continue UVC enablement right after the USB permission dialog is accepted. */
+    private boolean pendingUvcEnable;
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override
@@ -132,7 +134,12 @@ public class MainActivity extends Activity {
             if (granted && d != null) {
                 device = d;
                 setStatus("USB権限を許可しました: " + d.getProductName());
+                if (pendingUvcEnable) {
+                    pendingUvcEnable = false;
+                    enableUvc();
+                }
             } else {
+                pendingUvcEnable = false;
                 setStatus("USB権限が拒否されました");
             }
         }
@@ -776,6 +783,21 @@ public class MainActivity extends Activity {
         setStatus("録画を停止しています...");
     }
 
+    /** Ask for USB permission first, then enable UVC once it is granted. */
+    private void requestUvcEnable() {
+        findDevice();
+        if (device == null || usbManager == null) {
+            setStatus("XREAL 1S が見つかりません");
+            return;
+        }
+        if (!usbManager.hasPermission(device)) {
+            pendingUvcEnable = true;
+            setStatus("USB権限を許可してください（権限ダイアログを確認）");
+            return;
+        }
+        enableUvc();
+    }
+
     private void enableUvc() {
         findDevice();
         if (device == null || usbManager == null) {
@@ -879,10 +901,26 @@ public class MainActivity extends Activity {
                         return;
                     }
                     if (which == 2) {
-                        // UVC HEVC route (no live-mode switch needed)
+                        // UVC HEVC route: guide the user to enable UVC and grant USB permission.
                         selectedVideoRoute = RecordService.ROUTE_UVC_HEVC;
                         preferences.edit().putInt("video_route", selectedVideoRoute).apply();
                         updateQualityButton();
+                        findDevice();
+                        if (device == null || usbManager == null) {
+                            setStatus("XREAL 1S を接続してください");
+                        } else if (!usbManager.hasPermission(device)) {
+                            pendingUvcEnable = true;
+                            setStatus("USB権限を許可してください（権限ダイアログを確認）");
+                        } else if (!hasUvc(device)) {
+                            new MaterialAlertDialogBuilder(this)
+                                    .setTitle("UVC HEVC の準備")
+                                    .setMessage("UVCを有効化します。本体の再接続後、USB権限の許可を求められます。")
+                                    .setPositiveButton("UVCを有効化", (d, w) -> requestUvcEnable())
+                                    .setNegativeButton("キャンセル", null)
+                                    .show();
+                        } else {
+                            setStatus("UVC HEVC の準備完了");
+                        }
                     } else {
                         // TCP route: 0 = 720p/30, 1 = 1600p/60
                         String mode = which == 0 ? "1280 720 30" : "1600 1200 60";
