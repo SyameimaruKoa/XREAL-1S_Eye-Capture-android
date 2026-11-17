@@ -8,7 +8,9 @@ import androidx.media3.muxer.FragmentedMp4Muxer;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 
 /**
  * fMP4 muxer using the media3 library. Unlike MuxerSink (regular MP4, moov at
@@ -16,11 +18,28 @@ import java.util.Collections;
  * written remains playable if recording is interrupted.
  */
 final class FragmentedMp4Sink implements RecordingMuxer {
+    private static final class Sample {
+        final byte[] data;
+        final long ptsUs;
+        final boolean keyFrame;
+        Sample(byte[] data, long ptsUs, boolean keyFrame) {
+            this.data = data;
+            this.ptsUs = ptsUs;
+            this.keyFrame = keyFrame;
+        }
+    }
+
+    private final Object lock = new Object();
     private final java.nio.channels.WritableByteChannel channel;
     private final java.io.OutputStream stream;
     private final FragmentedMp4Muxer muxer;
+    private final List<Sample> pendingVideo = new ArrayList<>();
+    private final List<Sample> pendingAudio = new ArrayList<>();
     private int videoTrack = -1;
     private int audioTrack = -1;
+    private int videoSampleCount;
+    private int audioSampleCount;
+    private boolean tracksReady;
     private boolean failed;
     private String error = "";
 
@@ -48,6 +67,9 @@ final class FragmentedMp4Sink implements RecordingMuxer {
                 b.setInitializationData(Collections.singletonList(bytes));
             }
             videoTrack = muxer.addTrack(b.build());
+            android.util.Log.i("XrealFMp4", "video track added id=" + videoTrack
+                    + " mime=" + b.build().sampleMimeType);
+            flushPendingIfReady();
         } catch (Throwable t) {
             fail(t);
         }
@@ -67,8 +89,27 @@ final class FragmentedMp4Sink implements RecordingMuxer {
                 b.setInitializationData(Collections.singletonList(bytes));
             }
             audioTrack = muxer.addTrack(b.build());
+            android.util.Log.i("XrealFMp4", "audio track added id=" + audioTrack);
+            flushPendingIfReady();
         } catch (Throwable t) {
             fail(t);
+        }
+    }
+
+    private void flushPendingIfReady() {
+        synchronized (lock) {
+            if (tracksReady || videoTrack < 0 || audioTrack < 0) {
+                return;
+            }
+            tracksReady = true;
+            for (Sample s : pendingVideo) {
+                writeNow(videoTrack, s);
+            }
+            for (Sample s : pendingAudio) {
+                writeNow(audioTrack, s);
+            }
+            pendingVideo.clear();
+            pendingAudio.clear();
         }
     }
 
@@ -87,10 +128,24 @@ final class FragmentedMp4Sink implements RecordingMuxer {
         if (track < 0 || failed || data == null || data.length == 0) {
             return;
         }
+        synchronized (lock) {
+            if (!tracksReady) {
+                Sample s = new Sample(data, ptsUs, keyFrame);
+                if (track == videoTrack) pendingVideo.add(s);
+                else pendingAudio.add(s);
+                return;
+            }
+        }
+        writeNow(track, new Sample(data, ptsUs, keyFrame));
+    }
+
+    private void writeNow(int track, Sample s) {
         try {
-            BufferInfo info = new BufferInfo(ptsUs, data.length,
-                    keyFrame ? androidx.media3.common.C.BUFFER_FLAG_KEY_FRAME : 0);
-            muxer.writeSampleData(track, ByteBuffer.wrap(data), info);
+            BufferInfo info = new BufferInfo(s.ptsUs, s.data.length,
+                    s.keyFrame ? androidx.media3.common.C.BUFFER_FLAG_KEY_FRAME : 0);
+            muxer.writeSampleData(track, ByteBuffer.wrap(s.data), info);
+            if (track == videoTrack) videoSampleCount++;
+            if (track == audioTrack) audioSampleCount++;
         } catch (Throwable t) {
             fail(t);
         }
@@ -103,6 +158,8 @@ final class FragmentedMp4Sink implements RecordingMuxer {
 
     @Override
     public void finish() {
+        android.util.Log.i("XrealFMp4", "finish: videoSamples=" + videoSampleCount
+                + " audioSamples=" + audioSampleCount + " failed=" + failed);
         try {
             muxer.close();
         } catch (Throwable t) {

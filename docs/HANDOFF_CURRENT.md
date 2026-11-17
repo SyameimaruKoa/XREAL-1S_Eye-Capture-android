@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-17、以下の開始予定・実行中の記録より優先）
+- 2026-11-17 fMP4(モード3)が完成・実機検証済み: 根本原因は音声トラックが先に追加され最初のwriteSampleData時にmoovが書かれ映像トラックが欠落していたこと。FragmentedMp4Sinkにロック+pendingキューを追加し、両トラック(video/audio)が揃うまでサンプルを保持してからフラッシュするよう修正。検証結果: VID_20261117_140032.mp4 が HEVC1280x720 + AAC48kHz mono・デコードexit0・top-level boxes = ftyp1/moov1/moof4/mdat4(1秒ごと4フラグメントの真のfMP4)。★4モード全て完成: モード1(MP4同時変換)、モード2(生→停止時変換+異常時次回復旧)、モード3(fMP4断片化保全)、モード4(生オンリー)。APK 1.37MB(media3+Guava同梱、ユーザー許容)。デバッグログ(XrealFMp4)は残してある。
+- 2026-11-17 スマホ/XREAL復帰、fMP4(モード3)実機検証を再開: ADB再接続、ts-lan-route applyでtable52に169.254.2.0/24 dev eth0復旧・ping応答確認。端末はv0.1.21(38cc1e0のfMP4 Annex-B修正は未導入)。これから最新ビルドを導入し、モード3の録画→fMP4再生検証、その後設定を既定へ復元する。
 - 2026-11-17 PC作業(スマホ/XREAL不在): モード3(fMP4)の実機スタックトレースから media3 が Annex-B サンプルを期待(AnnexBToAvccConverterで内部変換)と特定。FragmentedMp4SinkをAnnex-Bのまま渡すよう修正、length-prefixed変換メソッド/未使用import削除、音声ASC(0x11 0x88)設定、ラベル「fMP4（断片化MP4・保全）」に更新。ビルド成功(APK1.37MB)、media3必要クラス(muxer/common/container/guava/annotation)全てDEX包含を静的確認、既存生HEVCのAnnex-B形式(VPS/SPS/PPS/IDR+P・4バイトstart code)もPC確認。★実機検証は不在のため未実施、次回接続時にfMP4録画→再生確認が必要。
 - 2026-11-17 モード4(生オンリー)が完成・実機検証済み: SAVE_MODE_RAW_ONLY(値3)を追加、録画時に拡張子を.hevc4/.aac4として保存し変換・復旧対象外にする。実機で .hevc4/.aac4 が保存され、再起動後に XrealRecover ログなし・生データが残ることを確認。
 - 2026-11-17 ユーザー指示でモード3(fMP4追加DL)・モード4(生オンリー)も続けて実装する。モード4はモード2の録画部分を流用し変換・削除をスキップするだけなので単純。モード3はfMP4対応ライブラリをAPK同梱せず追加ダウンロードする仕組みだが、Android標準MediaMuxerはfMP4非対応でダウンロード対象ライブラリの特定が必要。まずモード4を実装・検証し、モード3は設計を確認してから実装。
