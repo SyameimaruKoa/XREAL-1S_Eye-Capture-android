@@ -2,14 +2,12 @@ package jp.xreal.recorder;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.content.res.ColorStateList;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.hardware.usb.UsbDevice;
@@ -17,8 +15,6 @@ import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.StateListDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -28,6 +24,7 @@ import android.os.Environment;
 import android.os.StatFs;
 import android.os.SystemClock;
 import android.util.Log;
+import android.util.TypedValue;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
@@ -39,13 +36,15 @@ import android.view.MotionEvent;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
-import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.checkbox.MaterialCheckBox;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.io.File;
 import java.util.Locale;
@@ -65,8 +64,8 @@ public class MainActivity extends Activity {
     private TextView recordingIndicator;
     private TextView audioIndicator;
     private RecordingPresentation.WaveformView phoneWaveform;
-    private Button displayModeButton;
-    private CheckBox keepScreenCheck;
+    private MaterialButton displayModeButton;
+    private MaterialCheckBox keepScreenCheck;
     private FrameLayout screenSaver;
     private TextView screenSaverStatus;
     private TextView screenSaverRate;
@@ -74,21 +73,22 @@ public class MainActivity extends Activity {
     private LinearLayout screenSaverContent;
     private RecordingPresentation.WaveformView screenSaverWaveform;
     private long lastTouchMs = SystemClock.elapsedRealtime();
-    private Button startButton;
-    private Button stopButton;
-    private Button enableButton;
-    private Button glassesStatusButton;
-    private Button glasses60Button;
-    private Button glassesLiveModeButton;
-    private String confirmedLiveMode;
-    private Button glassesNormalButton;
-    private Button glassesRecoverButton;
-    private Button deviceSettingsToggle;
+    private MaterialButton startButton;
+    private MaterialButton stopButton;
+    private MaterialButton enableButton;
+    private MaterialButton glassesStatusButton;
+    private MaterialButton glasses60Button;
+    private MaterialButton glassesLiveModeButton;
+    private static final String DEFAULT_LIVE_MODE = "1600 1200 60";
+    private String confirmedLiveMode = DEFAULT_LIVE_MODE;
+    private MaterialButton glassesNormalButton;
+    private MaterialButton glassesRecoverButton;
+    private MaterialButton deviceSettingsToggle;
     private LinearLayout deviceSettings;
-    private Button folderButton;
-    private Button resetFolderButton;
-    private CheckBox diagnosticsCheck;
-    private Button saveModeButton;
+    private MaterialButton folderButton;
+    private MaterialButton resetFolderButton;
+    private MaterialCheckBox diagnosticsCheck;
+    private MaterialButton saveModeButton;
     private int selectedSaveMode;
     private static final String[] SAVE_MODES = {
             "MP4 同時変換（標準）",
@@ -228,158 +228,159 @@ public class MainActivity extends Activity {
         });
     }
 
+    private int dp(int value) {
+        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value,
+                getResources().getDisplayMetrics());
+    }
+
+    private int color(int attr, int fallback) {
+        return com.google.android.material.color.MaterialColors.getColor(this, attr, fallback);
+    }
+
+    private int surfaceColor() { return color(com.google.android.material.R.attr.colorSurface, Color.BLACK); }
+    private int surfaceContainerColor() { return color(com.google.android.material.R.attr.colorSurfaceContainer, Color.DKGRAY); }
+    private int onSurfaceColor() { return color(com.google.android.material.R.attr.colorOnSurface, Color.WHITE); }
+    private int onSurfaceVariantColor() { return color(com.google.android.material.R.attr.colorOnSurfaceVariant, Color.LTGRAY); }
+    private int primaryColor() { return color(com.google.android.material.R.attr.colorPrimary, Color.rgb(180, 200, 255)); }
+
+    private void applyTextAppearance(TextView view, int attr) {
+        TypedValue value = new TypedValue();
+        if (getTheme().resolveAttribute(attr, value, true)) {
+            view.setTextAppearance(value.resourceId);
+        }
+    }
+
+    private MaterialButton button(String text, boolean filled, View.OnClickListener listener) {
+        MaterialButton b = new MaterialButton(this, null,
+                filled ? com.google.android.material.R.attr.materialButtonStyle : com.google.android.material.R.attr.materialButtonOutlinedStyle);
+        b.setText(text);
+        b.setAllCaps(false);
+        b.setOnClickListener(listener);
+        return b;
+    }
+
+    private MaterialCheckBox checkBox(String text, boolean checked,
+                                      CompoundButton.OnCheckedChangeListener listener) {
+        MaterialCheckBox c = new MaterialCheckBox(this);
+        c.setText(text);
+        c.setChecked(checked);
+        c.setOnCheckedChangeListener(listener);
+        return c;
+    }
+
+    /** Add a Material 3 card to the root and return its vertical content box. */
+    private LinearLayout addCard(LinearLayout root, int topMargin) {
+        com.google.android.material.card.MaterialCardView card =
+                new com.google.android.material.card.MaterialCardView(this);
+        card.setCardBackgroundColor(surfaceContainerColor());
+        card.setStrokeWidth(0);
+        card.setRadius(dp(16));
+        card.setCardElevation(0);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(12), dp(12), dp(12), dp(12));
+        card.addView(box);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = topMargin;
+        root.addView(card, lp);
+        return box;
+    }
+
+    private void addRow(LinearLayout box, View view, int topMargin) {
+        box.addView(view, topMargin(topMargin));
+    }
+
+    private LinearLayout.LayoutParams topMargin(int topMargin) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = topMargin;
+        return lp;
+    }
+
     private View buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(48, 48, 48, 48);
-        root.setBackgroundColor(Color.BLACK);
+        int pad = dp(16);
+        root.setPadding(pad, pad, pad, pad);
+        root.setBackgroundColor(surfaceColor());
 
         TextView title = new TextView(this);
         title.setText("XREAL 1S + Eye Recorder");
-        title.setTextSize(22);
-        title.setTextColor(Color.WHITE);
-        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        applyTextAppearance(title, com.google.android.material.R.attr.textAppearanceHeadlineSmall);
+        title.setTextColor(onSurfaceColor());
         root.addView(title);
 
         telemetryView = new TextView(this);
-        telemetryView.setTextColor(Color.rgb(170, 200, 255));
-        telemetryView.setTextSize(13);
-        telemetryView.setPadding(0, 12, 0, 12);
+        applyTextAppearance(telemetryView, com.google.android.material.R.attr.textAppearanceBodyMedium);
+        telemetryView.setTextColor(primaryColor());
+        telemetryView.setPadding(0, dp(8), 0, dp(8));
         telemetryView.setText(telemetryText);
         root.addView(telemetryView);
 
         recordingIndicator = new TextView(this);
-        recordingIndicator.setTextSize(32);
+        applyTextAppearance(recordingIndicator, com.google.android.material.R.attr.textAppearanceHeadlineLarge);
         recordingIndicator.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        recordingIndicator.setTextColor(Color.rgb(255, 95, 95));
+        recordingIndicator.setTextColor(primaryColor());
         root.addView(recordingIndicator);
         phoneWaveform = new RecordingPresentation.WaveformView(this);
         root.addView(phoneWaveform, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 70));
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(24)));
         audioIndicator = new TextView(this);
-        audioIndicator.setTextColor(Color.LTGRAY);
-        audioIndicator.setTextSize(16);
+        applyTextAppearance(audioIndicator, com.google.android.material.R.attr.textAppearanceBodyMedium);
+        audioIndicator.setTextColor(onSurfaceVariantColor());
         root.addView(audioIndicator);
 
         statusView = new TextView(this);
-        statusView.setTextSize(14);
-        statusView.setTextColor(Color.WHITE);
+        applyTextAppearance(statusView, com.google.android.material.R.attr.textAppearanceBodyLarge);
+        statusView.setTextColor(onSurfaceVariantColor());
         statusView.setText("待機中");
-        statusView.setPadding(0, 0, 0, 24);
+        statusView.setPadding(0, 0, 0, dp(8));
 
-        startButton = new Button(this);
-        startButton.setText("録画開始");
-        styleButton(startButton, Color.rgb(145, 28, 36));
-        startButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                startRecording();
-            }
-        });
-        root.addView(startButton);
-
-        stopButton = new Button(this);
-        stopButton.setText("録画停止");
-        styleButton(stopButton, Color.rgb(65, 65, 65));
+        LinearLayout actions = addCard(root, dp(8));
+        startButton = button("録画開始", true, v -> startRecording());
+        addRow(actions, startButton, 0);
+        stopButton = button("録画停止", false, v -> stopRecording());
         stopButton.setEnabled(false);
-        stopButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                stopRecording();
-            }
+        addRow(actions, stopButton, dp(8));
+        addRow(actions, statusView, dp(8));
+
+        boolean showRecovery = preferences.getBoolean("glasses_recovery_required", false);
+        LinearLayout utilsCard = addCard(root, dp(8));
+        deviceSettingsToggle = button(showRecovery
+                ? "本体・UVC 設定を閉じる" : "本体・UVC 設定", false, v -> {
+            boolean open = deviceSettings.getVisibility() != View.VISIBLE;
+            deviceSettings.setVisibility(open ? View.VISIBLE : View.GONE);
+            deviceSettingsToggle.setText(open
+                    ? "本体・UVC 設定を閉じる" : "本体・UVC 設定");
         });
-        root.addView(stopButton);
-        root.addView(statusView);
+        addRow(utilsCard, deviceSettingsToggle, 0);
 
         deviceSettings = new LinearLayout(this);
         deviceSettings.setOrientation(LinearLayout.VERTICAL);
-        boolean showRecovery = preferences.getBoolean("glasses_recovery_required", false);
         deviceSettings.setVisibility(showRecovery ? View.VISIBLE : View.GONE);
-        deviceSettingsToggle = new Button(this);
-        deviceSettingsToggle.setText(showRecovery
-                ? "本体・60fps 設定を閉じる" : "本体・60fps 設定を開く");
-        styleButton(deviceSettingsToggle, Color.rgb(35, 35, 35));
-        deviceSettingsToggle.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                boolean open = deviceSettings.getVisibility() != View.VISIBLE;
-                deviceSettings.setVisibility(open ? View.VISIBLE : View.GONE);
-                deviceSettingsToggle.setText(open
-                        ? "本体・60fps 設定を閉じる" : "本体・60fps 設定を開く");
-            }
-        });
-        enableButton = new Button(this);
-        enableButton.setText("UVCを有効化（UVCが見えない場合）");
-        styleButton(enableButton, Color.rgb(45, 45, 45));
-        enableButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                enableUvc();
-            }
-        });
-        deviceSettings.addView(enableButton);
-
-        glassesStatusButton = new Button(this);
-        glassesStatusButton.setText("本体の状態を確認");
-        styleButton(glassesStatusButton, Color.rgb(45, 45, 45));
-        glassesStatusButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                checkGlassesStatus();
-            }
-        });
-        deviceSettings.addView(glassesStatusButton);
-
-        glassesLiveModeButton = new Button(this);
-        glassesLiveModeButton.setSingleLine(false);
-        styleButton(glassesLiveModeButton, Color.rgb(45, 45, 45));
-        glassesLiveModeButton.setOnClickListener(v -> showQualityPicker());
-
-        glasses60Button = new Button(this);
-        glasses60Button.setText("TCP 60fps を準備（本体再起動）");
-        styleButton(glasses60Button, Color.rgb(45, 45, 45));
-        glasses60Button.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                prepareGlasses60();
-            }
-        });
+        enableButton = button("UVCを有効化", false, v -> enableUvc());
+        addRow(deviceSettings, enableButton, 0);
+        glassesStatusButton = button("本体の状態を確認", false, v -> checkGlassesStatus());
+        addRow(deviceSettings, glassesStatusButton, dp(8));
+        glasses60Button = button("60fps に設定（再起動）", false, v -> prepareGlasses60());
+        addRow(deviceSettings, glasses60Button, dp(8));
         TextView glassesModeNote = new TextView(this);
-        glassesModeNote.setText("再起動します。画角が狭くなる点に注意。");
-        glassesModeNote.setTextColor(Color.LTGRAY);
-        glassesModeNote.setTextSize(12);
-        deviceSettings.addView(glassesModeNote);
-        deviceSettings.addView(glasses60Button);
+        glassesModeNote.setText("再起動します。画角が狭くなります。");
+        applyTextAppearance(glassesModeNote, com.google.android.material.R.attr.textAppearanceBodySmall);
+        glassesModeNote.setTextColor(onSurfaceVariantColor());
+        addRow(deviceSettings, glassesModeNote, dp(4));
+        glassesNormalButton = button("720p/30 に戻す（再起動）", false, v -> restoreGlassesNormal());
+        addRow(deviceSettings, glassesNormalButton, dp(8));
+        glassesRecoverButton = button("中断設定を復旧", false, v -> recoverGlassesPreparation());
+        addRow(deviceSettings, glassesRecoverButton, dp(8));
+        addRow(utilsCard, deviceSettings, dp(8));
 
-        glassesNormalButton = new Button(this);
-        glassesNormalButton.setText("TCP 通常設定に戻す（本体再起動）");
-        styleButton(glassesNormalButton, Color.rgb(45, 45, 45));
-        glassesNormalButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                restoreGlassesNormal();
-            }
-        });
-        deviceSettings.addView(glassesNormalButton);
-
-        glassesRecoverButton = new Button(this);
-        glassesRecoverButton.setText("中断した本体設定を復旧");
-        styleButton(glassesRecoverButton, Color.rgb(45, 45, 45));
-        glassesRecoverButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                recoverGlassesPreparation();
-            }
-        });
-        deviceSettings.addView(glassesRecoverButton);
-
-        displayModeButton = new Button(this);
-        styleButton(displayModeButton, Color.rgb(45, 45, 45));
-        displayModeButton.setText("XREAL 第二画面: "
-                + DISPLAY_MODES[RecordingPresentation.getDisplayMode(preferences)]);
-        displayModeButton.setOnClickListener(view -> {
+        LinearLayout viewCard = addCard(root, dp(8));
+        displayModeButton = button("XREAL 第二画面: "
+                + DISPLAY_MODES[RecordingPresentation.getDisplayMode(preferences)], false, view -> {
             int selected = RecordingPresentation.getDisplayMode(preferences);
-            AlertDialog dialog = new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+            new MaterialAlertDialogBuilder(this)
                     .setTitle("XREAL 第二画面")
                     .setSingleChoiceItems(DISPLAY_MODES, selected, (choice, index) -> {
                         preferences.edit().putInt(RecordingPresentation.MODE_PREFERENCE, index).apply();
@@ -387,127 +388,94 @@ public class MainActivity extends Activity {
                         choice.dismiss();
                     })
                     .setNegativeButton("キャンセル", null)
-                    .create();
-            dialog.show();
+                    .show();
         });
-        root.addView(displayModeButton);
+        addRow(viewCard, displayModeButton, 0);
+        glassesLiveModeButton = button("", false, v -> showQualityPicker());
+        glassesLiveModeButton.setSingleLine(false);
 
-        keepScreenCheck = new CheckBox(this);
-        keepScreenCheck.setText("録画中はスマホを点灯（30秒後に画面保護）");
-        keepScreenCheck.setTextColor(Color.WHITE);
-        keepScreenCheck.setButtonTintList(ColorStateList.valueOf(Color.LTGRAY));
-        keepScreenCheck.setChecked(preferences.getBoolean("keep_screen", true));
-        keepScreenCheck.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton button, boolean checked) {
-                preferences.edit().putBoolean("keep_screen", checked).apply();
-            }
-        });
         selectedVideoRoute = preferences.getInt("video_route", RecordService.ROUTE_TCP_HEVC);
         if (selectedVideoRoute < 0 || selectedVideoRoute >= VIDEO_ROUTES.length) {
             selectedVideoRoute = RecordService.ROUTE_TCP_HEVC;
         }
         updateQualityButton();
-        root.addView(glassesLiveModeButton);
-        root.addView(deviceSettingsToggle);
-        root.addView(deviceSettings);
-        root.addView(keepScreenCheck);
+        addRow(viewCard, glassesLiveModeButton, dp(8));
 
+        LinearLayout settingsCard = addCard(root, dp(8));
+        keepScreenCheck = checkBox("録画中はスマホを点灯", preferences.getBoolean("keep_screen", true),
+                (button, checked) -> preferences.edit().putBoolean("keep_screen", checked).apply());
+        addRow(settingsCard, keepScreenCheck, 0);
+        diagnosticsCheck = checkBox("診断用 HEVC・WAV を別保存",
+                preferences.getBoolean("diagnostics", false),
+                (button, checked) -> preferences.edit().putBoolean("diagnostics", checked).apply());
+        addRow(settingsCard, diagnosticsCheck, dp(4));
+
+        LinearLayout outputCard = addCard(root, dp(8));
         destinationView = new TextView(this);
-        destinationView.setTextColor(Color.WHITE);
-        destinationView.setTextSize(14);
-        destinationView.setPadding(0, 24, 0, 12);
+        applyTextAppearance(destinationView, com.google.android.material.R.attr.textAppearanceBodyLarge);
+        destinationView.setTextColor(onSurfaceColor());
         updateDestination();
-        root.addView(destinationView);
-
-        folderButton = new Button(this);
-        folderButton.setText("保存先を選ぶ");
-        styleButton(folderButton, Color.rgb(45, 45, 45));
-        folderButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                        | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-                startActivityForResult(intent, REQ_OUTPUT_FOLDER);
-            }
+        addRow(outputCard, destinationView, 0);
+        folderButton = button("保存先を選ぶ", false, v -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            startActivityForResult(intent, REQ_OUTPUT_FOLDER);
         });
-        root.addView(folderButton);
-
-        resetFolderButton = new Button(this);
-        resetFolderButton.setText("標準の保存先に戻す");
-        styleButton(resetFolderButton, Color.rgb(45, 45, 45));
-        resetFolderButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                outputTree = null;
-                outputLabel = DEFAULT_OUTPUT_LABEL;
-                preferences.edit().remove("output_tree").putString("output_label", outputLabel).apply();
-                updateDestination();
-            }
+        addRow(outputCard, folderButton, dp(8));
+        resetFolderButton = button("標準の保存先に戻す", false, v -> {
+            outputTree = null;
+            outputLabel = DEFAULT_OUTPUT_LABEL;
+            preferences.edit().remove("output_tree").putString("output_label", outputLabel).apply();
+            updateDestination();
         });
-        root.addView(resetFolderButton);
+        addRow(outputCard, resetFolderButton, dp(8));
 
-        diagnosticsCheck = new CheckBox(this);
-        diagnosticsCheck.setText("診断用 HEVC・WAV を別保存（容量を多く使用）");
-        diagnosticsCheck.setTextColor(Color.WHITE);
-        diagnosticsCheck.setButtonTintList(ColorStateList.valueOf(Color.LTGRAY));
-        diagnosticsCheck.setChecked(preferences.getBoolean("diagnostics", false));
-        diagnosticsCheck.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton button, boolean checked) {
-                preferences.edit().putBoolean("diagnostics", checked).apply();
-            }
-        });
-        root.addView(diagnosticsCheck);
-
-        int savedMode = preferences.getInt(RecordService.PREF_SAVE_MODE, RecordService.SAVE_MODE_MP4);
+        int savedMode = preferences.getInt(RecordService.PREF_SAVE_MODE, RecordService.SAVE_MODE_FMP4);
         selectedSaveMode = savedMode == RecordService.SAVE_MODE_RAW ? 1
                 : savedMode == RecordService.SAVE_MODE_RAW_ONLY ? 3
                 : savedMode == 2 ? 2 : 0;
-        saveModeButton = new Button(this);
-        styleButton(saveModeButton, Color.rgb(45, 45, 45));
-        saveModeButton.setSingleLine(false);
-        saveModeButton.setText("保存モード: " + SAVE_MODES[selectedSaveMode] + "\nタップして変更");
-        saveModeButton.setOnClickListener(view -> {
+        saveModeButton = button("保存モード: " + SAVE_MODES[selectedSaveMode], false, view -> {
             if (RecordService.isRecordingOrStarting()) {
                 setStatus("録画中は保存モードを変更できません");
                 return;
             }
-            new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                    .setTitle("保存モードを選択")
+            new MaterialAlertDialogBuilder(this)
+                    .setTitle("保存モード")
                     .setSingleChoiceItems(SAVE_MODES, selectedSaveMode, (choice, index) -> {
                         selectedSaveMode = index;
                         int modeConst = index == 1 ? RecordService.SAVE_MODE_RAW
                                 : index == 3 ? RecordService.SAVE_MODE_RAW_ONLY
                                 : index == 2 ? 2 : RecordService.SAVE_MODE_MP4;
                         preferences.edit().putInt(RecordService.PREF_SAVE_MODE, modeConst).commit();
-                        saveModeButton.setText("保存モード: " + SAVE_MODES[index] + "\nタップして変更");
+                        saveModeButton.setText("保存モード: " + SAVE_MODES[index]);
                         choice.dismiss();
                     })
                     .setNegativeButton("キャンセル", null)
                     .show();
         });
-        root.addView(saveModeButton);
+        saveModeButton.setSingleLine(false);
+        LinearLayout modeCard = addCard(root, dp(8));
+        addRow(modeCard, saveModeButton, 0);
 
         TextView help = new TextView(this);
         help.setText("接続して録画開始 → 停止");
-        help.setTextSize(12);
-        help.setTextColor(Color.rgb(170, 170, 170));
-        help.setPadding(0, 24, 0, 24);
+        applyTextAppearance(help, com.google.android.material.R.attr.textAppearanceBodySmall);
+        help.setTextColor(onSurfaceVariantColor());
+        help.setPadding(0, dp(16), 0, dp(8));
         root.addView(help);
 
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(Color.BLACK);
+        scroll.setBackgroundColor(surfaceColor());
         scroll.addView(root);
         scroll.setOnApplyWindowInsetsListener((view, insets) -> {
-            root.setPadding(48, 48 + insets.getSystemWindowInsetTop(),
-                    48, 48 + insets.getSystemWindowInsetBottom());
+            root.setPadding(pad, pad + insets.getSystemWindowInsetTop(),
+                    pad, pad + insets.getSystemWindowInsetBottom());
             return insets;
         });
         FrameLayout container = new FrameLayout(this);
-        container.setBackgroundColor(Color.BLACK);
+        container.setBackgroundColor(surfaceColor());
         container.addView(scroll);
         screenSaver = new FrameLayout(this);
         screenSaver.setBackgroundColor(Color.BLACK);
@@ -621,21 +589,6 @@ public class MainActivity extends Activity {
         } catch (RuntimeException e) {
             setStatus("保存先を設定できません: " + e.getMessage());
         }
-    }
-
-    private void styleButton(Button button, int enabledColor) {
-        GradientDrawable enabled = new GradientDrawable();
-        enabled.setColor(enabledColor);
-        enabled.setCornerRadius(16);
-        GradientDrawable disabled = new GradientDrawable();
-        disabled.setColor(Color.rgb(28, 28, 28));
-        disabled.setCornerRadius(16);
-        StateListDrawable states = new StateListDrawable();
-        states.addState(new int[]{-android.R.attr.state_enabled}, disabled);
-        states.addState(new int[]{}, enabled);
-        button.setBackground(states);
-        button.setTextColor(Color.WHITE);
-        button.setAllCaps(false);
     }
 
     @Override
@@ -918,7 +871,7 @@ public class MainActivity extends Activity {
     }
 
     private void showQualityPicker() {
-        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle("画質")
                 .setItems(VIDEO_ROUTES, (dialog, which) -> {
                     if (RecordService.isRecordingOrStarting() || glassesStatusPending) {
@@ -946,16 +899,19 @@ public class MainActivity extends Activity {
         if (glassesLiveModeButton == null) {
             return;
         }
-        String label = "画質: " + VIDEO_ROUTES[selectedVideoRoute];
-        if (confirmedLiveMode != null && selectedVideoRoute == RecordService.ROUTE_TCP_HEVC) {
-            String[] parts = confirmedLiveMode.split(" ");
-            label += "（確認済 " + parts[2] + "fps）";
+        String label;
+        if (selectedVideoRoute == RecordService.ROUTE_UVC_HEVC) {
+            label = "画質: UVC HEVC";
+        } else if (confirmedLiveMode != null && confirmedLiveMode.startsWith("1600")) {
+            label = "画質: 1600p/60（高レート）";
+        } else {
+            label = "画質: 720p/30（広い画角）";
         }
         glassesLiveModeButton.setText(label);
     }
 
     private void updateConfirmedLiveMode(String mode) {
-        confirmedLiveMode = mode;
+        confirmedLiveMode = mode != null ? mode : DEFAULT_LIVE_MODE;
         updateQualityButton();
     }
 
@@ -1259,7 +1215,7 @@ public class MainActivity extends Activity {
                 && preferences.getBoolean("glasses_recovery_required", false);
         if (needsRecovery && !recoveryShown) {
             deviceSettings.setVisibility(View.VISIBLE);
-            deviceSettingsToggle.setText("本体・60fps 設定を閉じる");
+            deviceSettingsToggle.setText("本体・UVC 設定を閉じる");
         }
         recoveryShown = needsRecovery;
         long seconds = RecordService.getElapsedSeconds();

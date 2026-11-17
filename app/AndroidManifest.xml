@@ -20,7 +20,7 @@
         android:debuggable="true"
         android:allowBackup="false"
         android:label="XREAL Recorder"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/Theme.Material3.DynamicColors.Dark.NoActionBar">
 
         <activity
             android:name=".MainActivity"

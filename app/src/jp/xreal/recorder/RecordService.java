@@ -216,7 +216,7 @@ public final class RecordService extends Service {
             int mode = intent.getIntExtra(EXTRA_SAVE_MODE, -1);
             if (mode < 0) {
                 mode = getSharedPreferences("recording_options", MODE_PRIVATE)
-                        .getInt(PREF_SAVE_MODE, SAVE_MODE_MP4);
+                        .getInt(PREF_SAVE_MODE, SAVE_MODE_FMP4);
             }
             saveMode = (mode == SAVE_MODE_RAW || mode == SAVE_MODE_RAW_ONLY
                     || mode == SAVE_MODE_FMP4) ? mode : SAVE_MODE_MP4;

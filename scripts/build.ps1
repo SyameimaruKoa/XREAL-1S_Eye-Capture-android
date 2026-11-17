@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 $sdk = $env:ANDROID_SDK_ROOT
@@ -12,31 +12,28 @@ $jdkBin = Join-Path $jdk "bin"
 $env:JAVA_HOME = $jdk
 $env:PATH = "$jdkBin;$env:PATH"
 
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
 $build = Join-Path $root "build"
 Remove-Item -Recurse -Force $build -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force (Join-Path $build "classes") | Out-Null
-New-Item -ItemType Directory -Force (Join-Path $build "dex") | Out-Null
+$dirs = @("classes", "dex", "libs", "res-compiled", "gen", "res-extracted")
+foreach ($d in $dirs) { New-Item -ItemType Directory -Force (Join-Path $build $d) | Out-Null }
 
-& (Join-Path $bt "aapt2.exe") link `
-    -o (Join-Path $build "base.apk") `
-    -I $platform `
-    --manifest (Join-Path $root "app\AndroidManifest.xml") `
-    --min-sdk-version 31 `
-    --target-sdk-version 35
-if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed" }
-
-$sources = Get-ChildItem (Join-Path $root "app\src") -Recurse -Filter *.java |
-    ForEach-Object { $_.FullName }
-
-# Media3 muxer (fMP4 mode) dependencies: fetched at build time, not checked in.
+# ---------------------------------------------------------------------------
+# Collect dependencies: media3 (fMP4) + Material Components / AndroidX (M3).
+# AARs contribute classes.jar (javac classpath + DEX) and res/ (aapt2 -R).
+# ---------------------------------------------------------------------------
 $mediaDir = Join-Path $root ".cache\media3-libs"
-$aars = @('media3-muxer', 'media3-common', 'media3-container')
+$m3Dir = Join-Path $root ".cache\m3-libs"
 $libJars = @()
-foreach ($name in $aars) {
+$resZips = @()
+$libPackages = @()
+
+# media3 muxer dependencies (fetched at build time, not checked in).
+foreach ($name in @('media3-muxer', 'media3-common', 'media3-container')) {
     $aar = Join-Path $mediaDir "$name.aar"
     $jar = Join-Path $build "libs\$name.jar"
     if (-not (Test-Path $aar)) { throw "Missing media3 library: $aar" }
-    New-Item -ItemType Directory -Force (Split-Path -Parent $jar) | Out-Null
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [System.IO.Compression.ZipFile]::OpenRead($aar)
     $entry = $zip.Entries | Where-Object { $_.FullName -eq 'classes.jar' }
@@ -45,18 +42,105 @@ foreach ($name in $aars) {
     $zip.Dispose()
     $libJars += $jar
 }
-$annotation = Join-Path $mediaDir "annotation.jar"
-if (Test-Path $annotation) { $libJars += $annotation }
-$guava = Join-Path $mediaDir "guava.jar"
-if (Test-Path $guava) { $libJars += $guava }
+foreach ($name in @('annotation', 'guava')) {
+    $jar = Join-Path $mediaDir "$name.jar"
+    if (Test-Path $jar) { $libJars += $jar }
+}
+
+# Material Components / AndroidX: newest artifact per group from SELECTED.txt.
+$selectedPath = Join-Path $m3Dir "SELECTED.txt"
+if (-not (Test-Path $selectedPath)) { throw "Missing $selectedPath" }
+foreach ($line in (Get-Content $selectedPath)) {
+    $line = $line.Trim()
+    if (-not $line) { continue }
+    $file = Join-Path $m3Dir $line
+    if (-not (Test-Path $file)) { throw "Missing Material dependency: $file" }
+
+    if ($line.EndsWith('.aar')) {
+        $name = $line -replace '\.aar$', ''
+        $jar = Join-Path $build "libs\$name.jar"
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($file)
+
+        # classes.jar -> javac classpath + DEX
+        $ce = $zip.Entries | Where-Object { $_.FullName -eq 'classes.jar' } | Select-Object -First 1
+        if ($null -ne $ce) {
+            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($ce, $jar, $true)
+            $libJars += $jar
+        }
+
+        # AndroidManifest.xml package -> --extra-packages for R.java generation
+        $me = $zip.Entries | Where-Object { $_.FullName -eq 'AndroidManifest.xml' } | Select-Object -First 1
+        if ($null -ne $me) {
+            $sr = New-Object System.IO.StreamReader($me.Open())
+            $mtext = $sr.ReadToEnd(); $sr.Dispose()
+            if ($mtext -match 'package="([^"]+)"') { $libPackages += $Matches[1] }
+        }
+
+        # res/ -> aapt2 compile. Skip pure-locale values-* folders: they add no
+        # resources we need and aapt2 compile --dir merges locale configs first.
+        $resDir = Join-Path $build "res-extracted\$name"
+        New-Item -ItemType Directory -Force $resDir | Out-Null
+        foreach ($e in $zip.Entries) {
+            if (-not $e.FullName.StartsWith('res/')) { continue }
+            if ($e.FullName.EndsWith('/')) { continue }
+            $rel = $e.FullName.Substring(4)
+            $first = $rel.Split('/')[0]
+            if ($first -match '^values-([a-z]{2,3}(-r[A-Z]{2})?|b\+)') { continue }
+            $dest = Join-Path $resDir ($rel -replace '/', '\')
+            $parent = Split-Path -Parent $dest
+            if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Force $parent | Out-Null }
+            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, $dest, $true)
+        }
+        $zip.Dispose()
+
+        $anyRes = Get-ChildItem $resDir -Recurse -File | Select-Object -First 1
+        if ($null -ne $anyRes) {
+            $zipOut = Join-Path $build "res-compiled\$name.zip"
+            & (Join-Path $bt "aapt2.exe") compile --dir $resDir -o $zipOut
+            if ($LASTEXITCODE -ne 0) { throw "aapt2 compile failed for $name" }
+            $resZips += $zipOut
+        }
+    } else {
+        # Plain jar (annotations, Kotlin stdlib helpers, etc.)
+        $libJars += $file
+    }
+}
+
+# ---------------------------------------------------------------------------
+# aapt2 link: merge app manifest + all AAR resources; generate R.java for the
+# app package and every library package (so precompiled library bytecode can
+# resolve its R fields at runtime with the final resource IDs).
+# ---------------------------------------------------------------------------
+$javaDir = Join-Path $build "gen"
+$aaptArgs = @(
+    "link", "-o", (Join-Path $build "base.apk"),
+    "-I", $platform,
+    "--manifest", (Join-Path $root "app\AndroidManifest.xml"),
+    "--min-sdk-version", "31", "--target-sdk-version", "35",
+    "--java", $javaDir, "--auto-add-overlay"
+)
+if ($libPackages.Count -gt 0) {
+    $aaptArgs += @("--extra-packages", (($libPackages | Select-Object -Unique) -join ':'))
+}
+foreach ($z in $resZips) { $aaptArgs += @("-R", $z) }
+& (Join-Path $bt "aapt2.exe") $aaptArgs
+if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed" }
+
+# ---------------------------------------------------------------------------
+# javac: app sources + generated R.java files.
+# ---------------------------------------------------------------------------
+$sources = @(Get-ChildItem (Join-Path $root "app\src") -Recurse -Filter *.java | ForEach-Object { $_.FullName })
+$sources += @(Get-ChildItem $javaDir -Recurse -Filter *.java | ForEach-Object { $_.FullName })
 $classpath = ($libJars + @($platform)) -join ';'
-& (Join-Path $jdkBin "javac.exe") --release 11 -cp $classpath -d (Join-Path $build "classes") $sources
+$javacArgs = @("--release", "11", "-cp", $classpath, "-d", (Join-Path $build "classes")) + $sources
+& (Join-Path $jdkBin "javac.exe") @javacArgs
 if ($LASTEXITCODE -ne 0) { throw "javac failed" }
 
-$classes = Get-ChildItem (Join-Path $build "classes") -Recurse -Filter *.class |
-    ForEach-Object { $_.FullName }
-# Include media3 classes in the output DEX so fMP4 muxer is available at runtime.
-# Use a response file: the full classpath exceeds Windows' command-line limit.
+# ---------------------------------------------------------------------------
+# d8: app classes + all library classes. Response file avoids Windows' command
+# line limit. --min-api 31 lets d8 emit multiple DEX files when needed.
+# ---------------------------------------------------------------------------
+$classes = @(Get-ChildItem (Join-Path $build "classes") -Recurse -Filter *.class | ForEach-Object { $_.FullName })
 $dexInputs = @($classes) + $libJars
 $argFile = Join-Path $build "d8-args.txt"
 $argLines = @("--lib", $platform, "--min-api", "31", "--output", (Join-Path $build "dex")) + $dexInputs
@@ -64,8 +148,11 @@ $argLines = @("--lib", $platform, "--min-api", "31", "--output", (Join-Path $bui
 & (Join-Path $bt "d8.bat") "@$argFile"
 if ($LASTEXITCODE -ne 0) { throw "d8 failed" }
 
-& (Join-Path $jdkBin "jar.exe") uf (Join-Path $build "base.apk") `
-    -C (Join-Path $build "dex") classes.dex
+# Add every generated dex file (classes.dex, classes2.dex, ...) to the APK.
+$dexFiles = @(Get-ChildItem (Join-Path $build "dex") -Filter 'classes*.dex' | Sort-Object Name)
+$jarArgs = @("uf", (Join-Path $build "base.apk"))
+foreach ($d in $dexFiles) { $jarArgs += @("-C", (Join-Path $build "dex"), $d.Name) }
+& (Join-Path $jdkBin "jar.exe") @jarArgs
 if ($LASTEXITCODE -ne 0) { throw "jar failed" }
 
 & (Join-Path $bt "zipalign.exe") -f 4 `
