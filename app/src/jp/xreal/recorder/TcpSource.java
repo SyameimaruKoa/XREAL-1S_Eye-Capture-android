@@ -42,6 +42,8 @@ final class TcpSource implements VideoSource {
     private Thread controlThread;
     private volatile boolean running;
     private volatile boolean failed;
+    private volatile boolean stalled;
+    private volatile int reconnectCount;
     private volatile String error = "";
     private volatile int accessUnits;
     private volatile int width = 1280;
@@ -178,9 +180,11 @@ final class TcpSource implements VideoSource {
                 }
             }
         } catch (Exception e) {
-            if (running) {
-                fail("TCP control read failed: " + e.getMessage());
-            }
+            // A dropped control socket is expected during a USB disconnect.
+            // Never fail here: the video thread owns reconnection and will
+            // re-open this socket. If reconnection ultimately fails, the video
+            // thread calls fail() with the real cause.
+            Log.w(TAG, "control read ended: " + e.getMessage());
         }
     }
 
@@ -208,9 +212,84 @@ final class TcpSource implements VideoSource {
         }
     }
 
+    /** Re-establish the USB link after a disconnect; returns false if it cannot. */
+    private boolean reconnect() {
+        closeSockets();
+        startSent = false;
+        long deadline = SystemClock.elapsedRealtime() + 60000;
+        int attempt = 0;
+        while (running && SystemClock.elapsedRealtime() < deadline) {
+            attempt++;
+            try {
+                ConnectivityManager manager = (ConnectivityManager)
+                        context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                Network network = null;
+                if (manager != null) {
+                    for (Network candidate : manager.getAllNetworks()) {
+                        LinkProperties props = manager.getLinkProperties(candidate);
+                        if (props == null) {
+                            continue;
+                        }
+                        for (LinkAddress addr : props.getLinkAddresses()) {
+                            if (addr.getAddress() instanceof Inet4Address
+                                    && "169.254.2.10".equals(addr.getAddress().getHostAddress())) {
+                                network = candidate;
+                                break;
+                            }
+                        }
+                        if (network != null) {
+                            break;
+                        }
+                    }
+                }
+                if (network != null) {
+                    video = connect(network, 52995);
+                    control = connect(network, 52999);
+                    controlThread = new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            readControl();
+                        }
+                    }, "xreal-tcp-control-" + (reconnectCount + 1));
+                    controlThread.start();
+                    transact(0x2781, 1);
+                    startSent = true;
+                    reconnectCount++;
+                    Log.i(TAG, "reconnected after disconnect (attempt=" + attempt
+                            + ", total=" + reconnectCount + ")");
+                    return true;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "reconnect attempt " + attempt + " failed: " + e.getMessage());
+            }
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /** Restart the presentation-time anchors after a link reset. */
+    private void resetTimingAnchors() {
+        accessUnits = 0;
+        candidateFirstNs = 0;
+        arrivalFirstNs = 0;
+        candidateLastNs = 0;
+        arrivalLastNs = 0;
+        cameraPtsAnchorNs = 0;
+        lastPtsNs = 0;
+        if (listener != null) {
+            listener.onStreamReset();
+        }
+    }
+
     private void readVideo() {
         boolean csdSent = false;
-        try {
+        while (running) {
+          try {
             InputStream input = video.getInputStream();
             while (running) {
                 byte[] header = readExact(input, 6, true);
@@ -292,10 +371,26 @@ final class TcpSource implements VideoSource {
                 listener.onAccessUnit(au, ptsNs);
                 accessUnits++;
             }
-        } catch (Exception e) {
-            if (running) {
-                fail("TCP video read failed: " + e.getMessage());
+          } catch (Exception e) {
+            if (!running) {
+                break;
             }
+            Log.w(TAG, "video read failed, attempting reconnect: " + e.getMessage());
+            stalled = true;
+            if (listener != null) {
+                listener.onStreamStalled(e.getMessage());
+            }
+            if (!reconnect()) {
+                fail("TCP video read failed: " + e.getMessage());
+                break;
+            }
+            resetTimingAnchors();
+            csdSent = false;
+            stalled = false;
+            if (listener != null) {
+                listener.onStreamResumed();
+            }
+          }
         }
     }
 
@@ -433,6 +528,8 @@ final class TcpSource implements VideoSource {
     }
 
     @Override public boolean isFailed() { return failed; }
+    @Override public boolean isStalled() { return stalled; }
+    int getReconnectCount() { return reconnectCount; }
     @Override public String getError() { return error; }
     @Override public int getAccessUnits() { return accessUnits; }
     @Override public int getWidth() { return width; }

@@ -56,9 +56,12 @@ if ($LASTEXITCODE -ne 0) { throw "javac failed" }
 $classes = Get-ChildItem (Join-Path $build "classes") -Recurse -Filter *.class |
     ForEach-Object { $_.FullName }
 # Include media3 classes in the output DEX so fMP4 muxer is available at runtime.
+# Use a response file: the full classpath exceeds Windows' command-line limit.
 $dexInputs = @($classes) + $libJars
-& (Join-Path $bt "d8.bat") --lib $platform --min-api 31 `
-    --output (Join-Path $build "dex") $dexInputs
+$argFile = Join-Path $build "d8-args.txt"
+$argLines = @("--lib", $platform, "--min-api", "31", "--output", (Join-Path $build "dex")) + $dexInputs
+[System.IO.File]::WriteAllLines($argFile, $argLines, (New-Object System.Text.UTF8Encoding($false)))
+& (Join-Path $bt "d8.bat") "@$argFile"
 if ($LASTEXITCODE -ne 0) { throw "d8 failed" }
 
 & (Join-Path $jdkBin "jar.exe") uf (Join-Path $build "base.apk") `

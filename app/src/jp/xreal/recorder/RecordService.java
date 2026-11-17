@@ -82,6 +82,8 @@ public final class RecordService extends Service {
     private int saveMode = SAVE_MODE_MP4;
     private static volatile long recordingStartedMs;
     private static volatile String thermalSummary = "";
+    private static volatile String videoLinkMessage = "";
+    private static volatile int videoReconnectCount;
     private Thread telemetryThread;
     private volatile boolean telemetryRunning;
     private DisplayManager displayManager;
@@ -146,13 +148,21 @@ public final class RecordService extends Service {
     }
 
     public static String getVideoRateSummary() {
+        String link = videoLinkMessage;
+        if (link != null && !link.isEmpty()) {
+            return link;
+        }
         long spanNs = lastVideoNs - firstVideoNs;
         if (videoFrames < 2 || spanNs < 1_000_000_000L) {
             return "受信レートを計測中";
         }
         double seconds = spanNs / 1_000_000_000.0;
-        return String.format(Locale.US, "受信平均 %.2f fps / %.2f Mbps",
+        String rate = String.format(Locale.US, "受信平均 %.2f fps / %.2f Mbps",
                 (videoFrames - 1) / seconds, videoBytes * 8.0 / seconds / 1_000_000.0);
+        if (videoReconnectCount > 0) {
+            rate += " / 再接続" + videoReconnectCount + "回";
+        }
+        return rate;
     }
 
     /** Measured video bitrate in bits/s, or 0 while still measuring. */
@@ -487,6 +497,28 @@ public final class RecordService extends Service {
                     status = "映像エラー: " + message;
                     Log.e(TAG, "video error: " + message);
                 }
+
+                @Override
+                public void onStreamStalled(String reason) {
+                    videoLinkMessage = "映像一時停止: 再接続待ち…";
+                    status = "録画中: USB接続が切れました。再接続を待っています";
+                    Log.w(TAG, "video stream stalled: " + reason);
+                }
+
+                @Override
+                public void onStreamResumed() {
+                    videoLinkMessage = "";
+                    if (finalVideo instanceof TcpSource) {
+                        videoReconnectCount = ((TcpSource) finalVideo).getReconnectCount();
+                    }
+                    status = "録画中: 映像を再開しました";
+                    Log.i(TAG, "video stream resumed");
+                }
+
+                @Override
+                public void onStreamReset() {
+                    Log.i(TAG, "video stream reset after reconnect");
+                }
             });
 
             // Preserve the previously validated UVC start order. TCP does not
@@ -531,6 +563,8 @@ public final class RecordService extends Service {
             finalAudioRef.set(finalAudio);
             audio.start();
             status = "録画中: " + mp4Name;
+            videoLinkMessage = "";
+            videoReconnectCount = 0;
             startTelemetry();
 
             boolean audioFailureHandled = false;

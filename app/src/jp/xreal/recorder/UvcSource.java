@@ -32,6 +32,13 @@ public final class UvcSource implements VideoSource {
         void onAccessUnit(byte[] annexB, long timestampNs);
 
         void onError(String message);
+
+        /** Called when the video stream is reset (e.g. after a USB reconnect). */
+        default void onStreamReset() { }
+
+        default void onStreamStalled(String reason) { }
+
+        default void onStreamResumed() { }
     }
 
     public static final class RawWriteException extends RuntimeException {

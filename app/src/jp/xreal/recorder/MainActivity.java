@@ -52,6 +52,8 @@ import java.util.Locale;
 
 public class MainActivity extends Activity {
     private static final String ACTION_USB_PERMISSION = "jp.xreal.recorder.USB_PERMISSION";
+    /** AI/development command action (adb shell am broadcast). */
+    public static final String ACTION_DEV = "jp.xreal.recorder.DEV_CMD";
     private static final int REQ_PERMISSIONS = 1001;
     private static final int REQ_OUTPUT_FOLDER = 1002;
     private static final String PREFS = "recording_options";
@@ -132,6 +134,38 @@ public class MainActivity extends Activity {
                 setStatus("USB権限を許可しました: " + d.getProductName());
             } else {
                 setStatus("USB権限が拒否されました");
+            }
+        }
+    };
+
+    /** Development commands: adb shell am broadcast -a jp.xreal.recorder.DEV_CMD --es cmd <cmd> */
+    private final BroadcastReceiver devReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (!ACTION_DEV.equals(intent.getAction())) {
+                return;
+            }
+            String cmd = intent.getStringExtra("cmd");
+            if (cmd == null) {
+                setStatus("DEV_CMD: cmd extra required");
+                return;
+            }
+            switch (cmd) {
+                case "start":
+                    startRecording();
+                    break;
+                case "stop":
+                    stopRecording();
+                    break;
+                case "permission":
+                    findDevice();
+                    break;
+                case "status":
+                    setStatus("DEV " + (RecordService.isRecording() ? "REC" : "IDLE")
+                            + " / " + (device == null ? "no device" : device.getDeviceName()));
+                    break;
+                default:
+                    setStatus("DEV_CMD unknown: " + cmd);
             }
         }
     };
@@ -674,6 +708,12 @@ public class MainActivity extends Activity {
             }
             receiverRegistered = true;
         }
+        IntentFilter devFilter = new IntentFilter(ACTION_DEV);
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(devReceiver, devFilter, Context.RECEIVER_EXPORTED);
+        } else {
+            registerReceiver(devReceiver, devFilter);
+        }
         findDevice();
         pollStatus();
         startTelemetry();
@@ -690,6 +730,10 @@ public class MainActivity extends Activity {
         if (receiverRegistered) {
             unregisterReceiver(usbReceiver);
             receiverRegistered = false;
+        }
+        try {
+            unregisterReceiver(devReceiver);
+        } catch (IllegalArgumentException ignored) {
         }
     }
 
