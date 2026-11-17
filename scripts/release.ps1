@@ -90,8 +90,13 @@ $auth = gh auth status 2>&1
 if ($LASTEXITCODE -ne 0) {
     throw "gh の認証が完了していません。'gh auth login' を実行してください。`n$auth"
 }
-$existing = gh release view $Version 2>&1
-if ($LASTEXITCODE -eq 0) {
+# gh writes "release not found" to stderr when absent; suppress it so Stop does not throw.
+$savedEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$null = gh release view $Version 2>$null
+$viewExit = $LASTEXITCODE
+$ErrorActionPreference = $savedEap
+if ($viewExit -eq 0) {
     throw "release $Version は既に存在します。Version を変更するか、既存 release を削除してください。"
 }
 #endregion
