@@ -105,6 +105,7 @@ public class MainActivity extends Activity {
     private static final String[] VIDEO_ROUTES = {
             "720p/30（広い画角）",
             "1600p/60（高レート）",
+            "720p/60（広角・高レート）",
             "UVC HEVC"
     };
     private static final String[] DISPLAY_MODES = {
@@ -900,7 +901,7 @@ public class MainActivity extends Activity {
                         setStatus("録画中は画質を変更できません");
                         return;
                     }
-                    if (which == 2) {
+                    if (which == 3) {
                         // UVC HEVC route: guide the user to enable UVC and grant USB permission.
                         selectedVideoRoute = RecordService.ROUTE_UVC_HEVC;
                         preferences.edit().putInt("video_route", selectedVideoRoute).apply();
@@ -922,8 +923,9 @@ public class MainActivity extends Activity {
                             setStatus("UVC HEVC の準備完了");
                         }
                     } else {
-                        // TCP route: 0 = 720p/30, 1 = 1600p/60
-                        String mode = which == 0 ? "1280 720 30" : "1600 1200 60";
+                        // TCP route: 0 = 720p/30, 1 = 1600p/60, 2 = 720p/60
+                        String mode = which == 0 ? "1280 720 30"
+                                : which == 1 ? "1600 1200 60" : "1280 720 60";
                         selectedVideoRoute = RecordService.ROUTE_TCP_HEVC;
                         preferences.edit().putInt("video_route", selectedVideoRoute).apply();
                         switchLiveMode(mode);
@@ -940,6 +942,8 @@ public class MainActivity extends Activity {
         String label;
         if (selectedVideoRoute == RecordService.ROUTE_UVC_HEVC) {
             label = "画質: UVC HEVC";
+        } else if (confirmedLiveMode != null && "1280 720 60".equals(confirmedLiveMode)) {
+            label = "画質: 720p/60（広角・高レート）";
         } else if (confirmedLiveMode != null && confirmedLiveMode.startsWith("1600")) {
             label = "画質: 1600p/60（高レート）";
         } else {
@@ -1221,8 +1225,7 @@ public class MainActivity extends Activity {
             long saverSeconds = RecordService.getElapsedSeconds();
             String audioState = s != null && s.startsWith("録画中: 音声停止") ? "音声停止"
                     : !RecordService.hasAudioData() ? "音声データを待機中"
-                    : RecordService.isAudioExactZero() ? "録音用の音声が3秒間ゼロ"
-                    : RecordService.isAudioQuiet() ? "音声が小さいか無音" : "音声入力あり";
+                    : "音声入力あり";
             boolean videoReceived = !stopping && !videoStalled && RecordService.hasVideoData();
             SpannableString saverText = new SpannableString(stopping ? "保存中"
                     : videoStalled ? (RecordService.hasVideoData() ? "映像受信停止" : "映像を受信できません") : videoReceived
@@ -1273,9 +1276,7 @@ public class MainActivity extends Activity {
         }
         audioIndicator.setText(!recording ? "" : s != null && s.startsWith("録画中: 音声停止")
                 ? "音声停止・映像のみ録画中" : !RecordService.hasAudioData()
-                ? "音声データを待機中" : RecordService.isAudioExactZero()
-                ? "録音用の音声が3秒間ゼロです" : RecordService.isAudioQuiet()
-                ? "音声入力が非常に小さい状態です" : "USBマイク · モノラル");
+                ? "音声データを待機中" : "USBマイク · モノラル");
         // The service's idle text must not overwrite this Activity's USB/UVC status.
         if (videoStalled) {
             statusView.setText(RecordService.hasVideoData()

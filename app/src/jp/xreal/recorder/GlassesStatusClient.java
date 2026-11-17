@@ -99,8 +99,8 @@ final class GlassesStatusClient {
 
     String readLiveMode(String token) throws IOException {
         String result = runLiveScript(GlassesLivePlan.readCommand(), token);
-        if ("1280 720 30\n".equals(result) || "1600 1200 30\n".equals(result)
-                || "1600 1200 60\n".equals(result)) {
+        if ("1280 720 30\n".equals(result) || "1280 720 60\n".equals(result)
+                || "1600 1200 30\n".equals(result) || "1600 1200 60\n".equals(result)) {
             return result.trim();
         }
         throw new IOException("対応する録画設定を確認できません");

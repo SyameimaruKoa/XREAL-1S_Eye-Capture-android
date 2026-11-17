@@ -137,12 +137,6 @@ final class RecordingPresentation extends Presentation {
         } else if (!audioSeen && ready) {
             audio.setText("音声データを待機中");
             audio.setTextColor(Color.LTGRAY);
-        } else if (exactZero) {
-            audio.setText("録音用の音声が3秒間ゼロです");
-            audio.setTextColor(Color.rgb(255, 185, 80));
-        } else if (silence) {
-            audio.setText("音声入力が非常に小さい状態です");
-            audio.setTextColor(Color.rgb(255, 185, 80));
         } else if (ready) {
             audio.setText("USBマイク · モノラル");
             audio.setTextColor(Color.LTGRAY);

@@ -551,9 +551,9 @@ public final class RecordService extends Service {
                             if (silent) {
                                 audioSilenceEverDetected = true;
                             }
-                            status = silent ? "録画中: 音声が3秒以上非常に小さいか無音です"
+                            status = silent ? "録画中: USB音声の入力を検出"
                                     : "録画中: USB音声の入力を検出";
-                            Log.w(TAG, "USB audio low-level warning=" + silent);
+                            Log.i(TAG, "USB audio low-level state=" + silent);
                             NotificationManager nm = (NotificationManager)
                                     getSystemService(Context.NOTIFICATION_SERVICE);
                             nm.notify(NOTIFICATION_ID, buildNotification());
@@ -638,9 +638,6 @@ public final class RecordService extends Service {
             }
             if (muxer != null && muxer.isFailed() && (videoSource.isFailed() || audio.isFailed())) {
                 status += "\nMuxerエラー: " + muxer.getError();
-            }
-            if (audioSilenceEverDetected) {
-                status += "\n注意: 音声が3秒以上非常に小さいか無音でした";
             }
         } catch (Throwable t) {
             status = "録画エラー: " + t.getClass().getSimpleName() + ": " + t.getMessage();
@@ -738,8 +735,7 @@ public final class RecordService extends Service {
         }
         return b.setContentTitle("XREAL Recorder")
                 .setContentText(status.startsWith("録画中: 音声停止")
-                        ? "音声停止・映像のみ録画中" : audioSilenceDetected
-                        ? "音声が3秒以上非常に小さいか無音です"
+                        ? "音声停止・映像のみ録画中"
                         : videoRoute == ROUTE_TCP_HEVC ? "録画中（TCP HEVC + USBマイク）"
                         : "録画中（UVC HEVC + USBマイク）")
                 .setSmallIcon(android.R.drawable.ic_menu_camera)

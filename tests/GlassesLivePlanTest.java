@@ -36,7 +36,7 @@ public final class GlassesLivePlanTest {
                 "mode query includes the firmware guard and reads values");
         require(!read.contains("of=/proc/") && !read.contains("conv=notrunc"),
                 "mode query must not write process memory");
-        String[] modes = {"1280 720 30", "1600 1200 30", "1600 1200 60"};
+        String[] modes = {"1280 720 30", "1280 720 60", "1600 1200 30", "1600 1200 60"};
         for (String from : modes) {
             for (String to : modes) {
                 String script = GlassesLivePlan.command(from, to);
