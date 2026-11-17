@@ -125,6 +125,17 @@ final class RecordingOutput {
         }
     }
 
+    /** Open a fragmented MP4 sink (mode 3). The sink owns and closes the channel. */
+    FragmentedMp4Sink openFragmentedMuxer() throws IOException {
+        java.io.OutputStream stream = resolver.openOutputStream(uri, "rw");
+        if (stream == null) {
+            throw new IOException("Could not open fMP4 in the selected location");
+        }
+        java.nio.channels.WritableByteChannel ch =
+                java.nio.channels.Channels.newChannel(stream);
+        return new FragmentedMp4Sink(ch, stream);
+    }
+
     synchronized void complete() throws IOException {
         if (completed) {
             return;

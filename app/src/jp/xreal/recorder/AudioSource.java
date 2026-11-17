@@ -143,6 +143,9 @@ public final class AudioSource {
         }
 
         MediaFormat fmt = MediaFormat.createAudioFormat("audio/mp4a-latm", RATE, 1);
+        // AAC LC / 48 kHz / mono AudioSpecificConfig; media3's fMP4 muxer needs
+        // this to describe the AAC track (Android's MediaMuxer derives it itself).
+        fmt.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(new byte[]{0x11, (byte) 0x88}));
         fmt.setInteger(MediaFormat.KEY_AAC_PROFILE,
                 MediaCodecInfo.CodecProfileLevel.AACObjectLC);
         fmt.setInteger(MediaFormat.KEY_BIT_RATE, 128000);

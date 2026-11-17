@@ -49,6 +49,8 @@ public final class RecordService extends Service {
     public static final int ROUTE_UVC_HEVC = 1;
     public static final int SAVE_MODE_MP4 = 0;       // mode 1: convert while recording
     public static final int SAVE_MODE_RAW = 1;       // mode 2: raw sidecars then convert
+    public static final int SAVE_MODE_FMP4 = 2;      // mode 3: fragmented MP4 (extra library)
+    public static final int SAVE_MODE_RAW_ONLY = 3;  // mode 4: raw sidecars only, no MP4
     public static final String EXTRA_SAVE_MODE = "save_mode";
     public static final String PREF_SAVE_MODE = "save_mode";
 
@@ -206,7 +208,8 @@ public final class RecordService extends Service {
                 mode = getSharedPreferences("recording_options", MODE_PRIVATE)
                         .getInt(PREF_SAVE_MODE, SAVE_MODE_MP4);
             }
-            saveMode = (mode == SAVE_MODE_RAW) ? SAVE_MODE_RAW : SAVE_MODE_MP4;
+            saveMode = (mode == SAVE_MODE_RAW || mode == SAVE_MODE_RAW_ONLY
+                    || mode == SAVE_MODE_FMP4) ? mode : SAVE_MODE_MP4;
             try {
                 if (Build.VERSION.SDK_INT >= 29) {
                     startForeground(NOTIFICATION_ID, buildNotification(),
@@ -278,7 +281,9 @@ public final class RecordService extends Service {
         File hevcFile = null;
         File wavFile = null;
         File adtsFile = null;
-        final boolean rawMode = saveMode == SAVE_MODE_RAW;
+        final boolean rawMode = saveMode == SAVE_MODE_RAW || saveMode == SAVE_MODE_RAW_ONLY;
+        final boolean rawOnly = saveMode == SAVE_MODE_RAW_ONLY;
+        final boolean fmp4Mode = saveMode == SAVE_MODE_FMP4;
 
         try {
             File dir = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
@@ -289,14 +294,16 @@ public final class RecordService extends Service {
                 throw new IllegalStateException("cannot create output directory");
             }
             String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+            String rawExt = rawOnly ? ".hevc4" : ".hevc";
+            String audioExt = rawOnly ? ".aac4" : ".aac";
             if (rawMode || diagnostics) {
-                hevcFile = new File(dir, "xreal_" + ts + ".hevc");
+                hevcFile = new File(dir, "xreal_" + ts + rawExt);
             }
             if (diagnostics) {
                 wavFile = new File(dir, "xreal_" + ts + ".wav");
             }
             if (rawMode) {
-                adtsFile = new File(dir, "xreal_" + ts + ".aac");
+                adtsFile = new File(dir, "xreal_" + ts + audioExt);
             }
 
             UsbManager um = (UsbManager) getSystemService(Context.USB_SERVICE);
@@ -308,9 +315,10 @@ public final class RecordService extends Service {
             if (!rawMode) {
                 output = RecordingOutput.create(this, outputTree, captureTimeMs);
                 mp4Name = output.getFilename();
-                muxer = output.openMuxer();
+                muxer = fmp4Mode ? output.openFragmentedMuxer() : output.openMuxer();
             } else {
-                mp4Name = hevcFile != null ? hevcFile.getName().replaceFirst("(?i)\\.hevc$", ".mp4")
+                mp4Name = hevcFile != null
+                        ? hevcFile.getName().replaceFirst("(?i)\\.hevc4?$", ".mp4")
                         : "VID_" + ts + ".mp4";
             }
             final JSONObject cameraInfo = new JSONObject();
@@ -551,7 +559,7 @@ public final class RecordService extends Service {
             finishWriter(finalWriter);
 
             String convertError = null;
-            if (rawMode) {
+            if (rawMode && !rawOnly) {
                 File mp4File = new File(dir, mp4Name);
                 try {
                     int fps = videoSource.getFrameRate();

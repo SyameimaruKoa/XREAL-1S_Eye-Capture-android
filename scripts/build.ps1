@@ -27,13 +27,38 @@ if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed" }
 
 $sources = Get-ChildItem (Join-Path $root "app\src") -Recurse -Filter *.java |
     ForEach-Object { $_.FullName }
-& (Join-Path $jdkBin "javac.exe") --release 8 -cp $platform -d (Join-Path $build "classes") $sources
+
+# Media3 muxer (fMP4 mode) dependencies: fetched at build time, not checked in.
+$mediaDir = Join-Path $root ".cache\media3-libs"
+$aars = @('media3-muxer', 'media3-common', 'media3-container')
+$libJars = @()
+foreach ($name in $aars) {
+    $aar = Join-Path $mediaDir "$name.aar"
+    $jar = Join-Path $build "libs\$name.jar"
+    if (-not (Test-Path $aar)) { throw "Missing media3 library: $aar" }
+    New-Item -ItemType Directory -Force (Split-Path -Parent $jar) | Out-Null
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($aar)
+    $entry = $zip.Entries | Where-Object { $_.FullName -eq 'classes.jar' }
+    if ($null -eq $entry) { $zip.Dispose(); throw "No classes.jar in $aar" }
+    [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $jar, $true)
+    $zip.Dispose()
+    $libJars += $jar
+}
+$annotation = Join-Path $mediaDir "annotation.jar"
+if (Test-Path $annotation) { $libJars += $annotation }
+$guava = Join-Path $mediaDir "guava.jar"
+if (Test-Path $guava) { $libJars += $guava }
+$classpath = ($libJars + @($platform)) -join ';'
+& (Join-Path $jdkBin "javac.exe") --release 11 -cp $classpath -d (Join-Path $build "classes") $sources
 if ($LASTEXITCODE -ne 0) { throw "javac failed" }
 
 $classes = Get-ChildItem (Join-Path $build "classes") -Recurse -Filter *.class |
     ForEach-Object { $_.FullName }
+# Include media3 classes in the output DEX so fMP4 muxer is available at runtime.
+$dexInputs = @($classes) + $libJars
 & (Join-Path $bt "d8.bat") --lib $platform --min-api 31 `
-    --output (Join-Path $build "dex") $classes
+    --output (Join-Path $build "dex") $dexInputs
 if ($LASTEXITCODE -ne 0) { throw "d8 failed" }
 
 & (Join-Path $jdkBin "jar.exe") uf (Join-Path $build "base.apk") `

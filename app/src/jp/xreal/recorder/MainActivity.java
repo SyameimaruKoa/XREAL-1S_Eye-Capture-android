@@ -90,7 +90,9 @@ public class MainActivity extends Activity {
     private int selectedSaveMode;
     private static final String[] SAVE_MODES = {
             "MP4 同時変換（標準）",
-            "生保存→停止時にMP4変換（保全）"
+            "生保存→停止時にMP4変換（保全）",
+            "fMP4（断片化MP4・保全）",
+            "生データのみ（無変換）"
     };
     private TextView destinationView;
     private TextView telemetryView;
@@ -470,7 +472,10 @@ public class MainActivity extends Activity {
         });
         root.addView(diagnosticsCheck);
 
-        selectedSaveMode = preferences.getInt(RecordService.PREF_SAVE_MODE, RecordService.SAVE_MODE_MP4);
+        int savedMode = preferences.getInt(RecordService.PREF_SAVE_MODE, RecordService.SAVE_MODE_MP4);
+        selectedSaveMode = savedMode == RecordService.SAVE_MODE_RAW ? 1
+                : savedMode == RecordService.SAVE_MODE_RAW_ONLY ? 3
+                : savedMode == 2 ? 2 : 0;
         saveModeButton = new Button(this);
         styleButton(saveModeButton, Color.rgb(45, 45, 45));
         saveModeButton.setSingleLine(false);
@@ -484,7 +489,10 @@ public class MainActivity extends Activity {
                     .setTitle("保存モードを選択")
                     .setSingleChoiceItems(SAVE_MODES, selectedSaveMode, (choice, index) -> {
                         selectedSaveMode = index;
-                        preferences.edit().putInt(RecordService.PREF_SAVE_MODE, index).commit();
+                        int modeConst = index == 1 ? RecordService.SAVE_MODE_RAW
+                                : index == 3 ? RecordService.SAVE_MODE_RAW_ONLY
+                                : index == 2 ? 2 : RecordService.SAVE_MODE_MP4;
+                        preferences.edit().putInt(RecordService.PREF_SAVE_MODE, modeConst).commit();
                         saveModeButton.setText("保存モード: " + SAVE_MODES[index] + "\nタップして変更");
                         choice.dismiss();
                     })
@@ -797,7 +805,10 @@ public class MainActivity extends Activity {
                 .putExtra(RecordService.EXTRA_OUTPUT_LABEL, outputLabel)
                 .putExtra(RecordService.EXTRA_DIAGNOSTICS, diagnosticsCheck.isChecked())
                 .putExtra(RecordService.EXTRA_VIDEO_ROUTE, route)
-                .putExtra(RecordService.EXTRA_SAVE_MODE, selectedSaveMode);
+                .putExtra(RecordService.EXTRA_SAVE_MODE,
+                        selectedSaveMode == 1 ? RecordService.SAVE_MODE_RAW
+                        : selectedSaveMode == 3 ? RecordService.SAVE_MODE_RAW_ONLY
+                        : selectedSaveMode == 2 ? 2 : RecordService.SAVE_MODE_MP4);
         preferences.edit().putInt("video_route", route).apply();
         RecordService.setStartPending(true);
         try {
