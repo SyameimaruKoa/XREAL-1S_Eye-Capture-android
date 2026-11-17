@@ -101,11 +101,11 @@ public class MainActivity extends Activity {
     private volatile String telemetryText = "グラス情報: 取得待ち";
     private Thread telemetryThread;
     private volatile boolean telemetryRunning;
-    private Button videoRouteView;
     private int selectedVideoRoute;
     private static final String[] VIDEO_ROUTES = {
-            "TCP HEVC 自動\n720p/30 約17 Mbps · 720p/60 約33 Mbps\n1600×1200/30 約15.7 Mbps · 60 約34 Mbps",
-            "UVC HEVC\n2048×1512 / 60 fps · 約2.03 Mbps"
+            "720p/30（広い画角）",
+            "1600p/60（高レート）",
+            "UVC HEVC"
     };
     private static final String[] DISPLAY_MODES = {
             "固定表示（右上）",
@@ -241,12 +241,12 @@ public class MainActivity extends Activity {
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         root.addView(title);
 
-        TextView note = new TextView(this);
-        note.setText("映像は選択した経路から取得\n音声: 48kHz / モノラル AAC");
-        note.setTextSize(13);
-        note.setTextColor(Color.rgb(190, 190, 190));
-        note.setPadding(0, 16, 0, 24);
-        root.addView(note);
+        telemetryView = new TextView(this);
+        telemetryView.setTextColor(Color.rgb(170, 200, 255));
+        telemetryView.setTextSize(13);
+        telemetryView.setPadding(0, 12, 0, 12);
+        telemetryView.setText(telemetryText);
+        root.addView(telemetryView);
 
         recordingIndicator = new TextView(this);
         recordingIndicator.setTextSize(32);
@@ -331,10 +331,9 @@ public class MainActivity extends Activity {
         deviceSettings.addView(glassesStatusButton);
 
         glassesLiveModeButton = new Button(this);
-        glassesLiveModeButton.setText("TCP の画質・フレームレートを選択");
         glassesLiveModeButton.setSingleLine(false);
         styleButton(glassesLiveModeButton, Color.rgb(45, 45, 45));
-        glassesLiveModeButton.setOnClickListener(v -> showLiveModePicker());
+        glassesLiveModeButton.setOnClickListener(v -> showQualityPicker());
 
         glasses60Button = new Button(this);
         glasses60Button.setText("TCP 60fps を準備（本体再起動）");
@@ -346,8 +345,7 @@ public class MainActivity extends Activity {
             }
         });
         TextView glassesModeNote = new TextView(this);
-        glassesModeNote.setText("以下の旧方式は本体を再起動します。映像が消えた場合は USB-C の"
-                + "抜き差しが必要になることがあります。1600×1200 は720pより左右の画角が狭くなります。");
+        glassesModeNote.setText("再起動します。画角が狭くなる点に注意。");
         glassesModeNote.setTextColor(Color.LTGRAY);
         glassesModeNote.setTextSize(12);
         deviceSettings.addView(glassesModeNote);
@@ -405,57 +403,15 @@ public class MainActivity extends Activity {
                 preferences.edit().putBoolean("keep_screen", checked).apply();
             }
         });
-        TextView keepScreenNote = new TextView(this);
-        keepScreenNote.setText("アプリ表示中の自動消灯を防ぎます。手動ロックには未対応です。");
-        keepScreenNote.setTextColor(Color.LTGRAY);
-        keepScreenNote.setTextSize(12);
-
-        TextView routeLabel = new TextView(this);
-        routeLabel.setText("録画モード");
-        routeLabel.setTextColor(Color.WHITE);
-        routeLabel.setTextSize(14);
-        routeLabel.setPadding(0, 24, 0, 8);
-        root.addView(routeLabel);
         selectedVideoRoute = preferences.getInt("video_route", RecordService.ROUTE_TCP_HEVC);
         if (selectedVideoRoute < 0 || selectedVideoRoute >= VIDEO_ROUTES.length) {
             selectedVideoRoute = RecordService.ROUTE_TCP_HEVC;
         }
-        videoRouteView = new Button(this);
-        styleButton(videoRouteView, Color.rgb(45, 45, 45));
-        videoRouteView.setSingleLine(false);
-        videoRouteView.setText(VIDEO_ROUTES[selectedVideoRoute] + "\nタップして変更");
-        videoRouteView.setOnClickListener(view -> {
-            AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                    .setTitle("録画モードを選択")
-                    .setSingleChoiceItems(VIDEO_ROUTES, selectedVideoRoute, (choice, index) -> {
-                        selectedVideoRoute = index;
-                        preferences.edit().putInt("video_route", index).commit();
-                        videoRouteView.setText(VIDEO_ROUTES[index] + "\nタップして変更");
-                        choice.dismiss();
-                    })
-                    .setNegativeButton("キャンセル", null)
-                    .create();
-            dialog.show();
-        });
-        root.addView(videoRouteView);
-        TextView rateNote = new TextView(this);
-        rateNote.setText("ビットレートは録画の実測例で、撮影内容によって変わります。\n"
-                + "TCP の解像度・fps は下のボタンで切り替えられます。\n"
-                + "1600×1200/30fps・60fps は720p/30fpsより左右の画角が狭いことを確認しています。720p/60fps の画角は未確認です。");
-        rateNote.setTextColor(Color.LTGRAY);
-        rateNote.setTextSize(12);
-        root.addView(rateNote);
-        TextView tcpModeLabel = new TextView(this);
-        tcpModeLabel.setText("TCP の解像度・フレームレート");
-        tcpModeLabel.setTextColor(Color.WHITE);
-        tcpModeLabel.setTextSize(14);
-        tcpModeLabel.setPadding(0, 24, 0, 8);
-        root.addView(tcpModeLabel);
+        updateQualityButton();
         root.addView(glassesLiveModeButton);
         root.addView(deviceSettingsToggle);
         root.addView(deviceSettings);
         root.addView(keepScreenCheck);
-        root.addView(keepScreenNote);
 
         destinationView = new TextView(this);
         destinationView.setTextColor(Color.WHITE);
@@ -535,21 +491,8 @@ public class MainActivity extends Activity {
         });
         root.addView(saveModeButton);
 
-        telemetryView = new TextView(this);
-        telemetryView.setTextColor(Color.rgb(170, 200, 255));
-        telemetryView.setTextSize(13);
-        telemetryView.setPadding(0, 16, 0, 8);
-        telemetryView.setText(telemetryText);
-        root.addView(telemetryView);
-
         TextView help = new TextView(this);
-        help.setText("\n使い方:\n"
-                + "1. XREAL 1SをUSB-Cで接続\n"
-                + "2. USB権限を許可\n"
-                + "3. 録画開始 → 停止\n\n"
-                + "UVCが見えない場合は「UVCを有効化」を押し、再接続とUSB権限の確認を待ってください。\n\n"
-                + "診断用ファイルはアプリ専用フォルダーに保存されます。\n\n"
-                + "画面消灯中もForeground Serviceで継続します。");
+        help.setText("接続して録画開始 → 停止");
         help.setTextSize(12);
         help.setTextColor(Color.rgb(170, 170, 170));
         help.setPadding(0, 24, 0, 24);
@@ -791,9 +734,8 @@ public class MainActivity extends Activity {
             usbManager.requestPermission(found, pi);
             return;
         }
-        if (videoRouteView != null
-                && selectedVideoRoute == RecordService.ROUTE_TCP_HEVC) {
-            setStatus("XREAL 1S 接続済み: TCP映像は録画開始時に確認します");
+        if (selectedVideoRoute == RecordService.ROUTE_TCP_HEVC) {
+            setStatus("XREAL 1S 接続済み");
         } else if (hasUvc(found)) {
             setStatus("準備完了: UVC IF10 / EP 0x89 を検出");
         } else {
@@ -975,32 +917,46 @@ public class MainActivity extends Activity {
         return java.util.UUID.randomUUID().toString().replace("-", "");
     }
 
-    private void showLiveModePicker() {
-        String[] labels = {
-                "1600×1200 / 60fps · 約34 Mbps",
-                "1280×720 / 30fps · 約17 Mbps（左右が広い）",
-                "1600×1200 / 30fps · 約15.7 Mbps"
-        };
-        String[] modes = {"1600 1200 60", "1280 720 30", "1600 1200 30"};
+    private void showQualityPicker() {
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("TCP の画質を選択（再起動なし）")
-                .setItems(labels, (dialog, which) -> switchLiveMode(modes[which]))
+                .setTitle("画質")
+                .setItems(VIDEO_ROUTES, (dialog, which) -> {
+                    if (RecordService.isRecordingOrStarting() || glassesStatusPending) {
+                        setStatus("録画中は画質を変更できません");
+                        return;
+                    }
+                    if (which == 2) {
+                        // UVC HEVC route (no live-mode switch needed)
+                        selectedVideoRoute = RecordService.ROUTE_UVC_HEVC;
+                        preferences.edit().putInt("video_route", selectedVideoRoute).apply();
+                        updateQualityButton();
+                    } else {
+                        // TCP route: 0 = 720p/30, 1 = 1600p/60
+                        String mode = which == 0 ? "1280 720 30" : "1600 1200 60";
+                        selectedVideoRoute = RecordService.ROUTE_TCP_HEVC;
+                        preferences.edit().putInt("video_route", selectedVideoRoute).apply();
+                        switchLiveMode(mode);
+                    }
+                })
                 .setNegativeButton("キャンセル", null)
                 .show();
     }
 
-    private void updateConfirmedLiveMode(String mode) {
-        confirmedLiveMode = mode;
+    private void updateQualityButton() {
         if (glassesLiveModeButton == null) {
             return;
         }
-        String label = "TCP の画質・フレームレートを選択";
-        if (confirmedLiveMode != null) {
+        String label = "画質: " + VIDEO_ROUTES[selectedVideoRoute];
+        if (confirmedLiveMode != null && selectedVideoRoute == RecordService.ROUTE_TCP_HEVC) {
             String[] parts = confirmedLiveMode.split(" ");
-            label += "\n本体設定（前回確認）: " + parts[0] + "×" + parts[1]
-                    + " / " + parts[2] + "fps";
+            label += "（確認済 " + parts[2] + "fps）";
         }
         glassesLiveModeButton.setText(label);
+    }
+
+    private void updateConfirmedLiveMode(String mode) {
+        confirmedLiveMode = mode;
+        updateQualityButton();
     }
 
     private void switchLiveMode(String target) {
@@ -1346,7 +1302,6 @@ public class MainActivity extends Activity {
         resetFolderButton.setEnabled(!recordingBusy);
         diagnosticsCheck.setEnabled(!recordingBusy);
         saveModeButton.setEnabled(!recordingBusy);
-        videoRouteView.setEnabled(!recordingBusy);
         glassesStatusButton.setEnabled(!recordingBusy && !glassesStatusPending);
         glassesLiveModeButton.setEnabled(!recordingBusy && !glassesStatusPending
                 && !preferences.getBoolean("glasses_recovery_required", false));
