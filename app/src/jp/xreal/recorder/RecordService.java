@@ -61,6 +61,7 @@ public final class RecordService extends Service {
     public static final int SAVE_MODE_RAW = 1;       // mode 2: raw sidecars then convert
     public static final int SAVE_MODE_FMP4 = 2;      // mode 3: fragmented MP4 (extra library)
     public static final int SAVE_MODE_RAW_ONLY = 3;  // mode 4: raw sidecars only, no MP4
+    public static final int SAVE_MODE_PREVIEW = 4;   // viewfinder only: no muxer/audio/files
     public static final String EXTRA_SAVE_MODE = "save_mode";
     public static final String PREF_SAVE_MODE = "save_mode";
 
@@ -229,7 +230,7 @@ public final class RecordService extends Service {
                         .getInt(PREF_SAVE_MODE, SAVE_MODE_FMP4);
             }
             saveMode = (mode == SAVE_MODE_RAW || mode == SAVE_MODE_RAW_ONLY
-                    || mode == SAVE_MODE_FMP4) ? mode : SAVE_MODE_MP4;
+                    || mode == SAVE_MODE_FMP4 || mode == SAVE_MODE_PREVIEW) ? mode : SAVE_MODE_MP4;
             try {
                 if (Build.VERSION.SDK_INT >= 29) {
                     startForeground(NOTIFICATION_ID, buildNotification(),
@@ -304,6 +305,7 @@ public final class RecordService extends Service {
         final boolean rawMode = saveMode == SAVE_MODE_RAW || saveMode == SAVE_MODE_RAW_ONLY;
         final boolean rawOnly = saveMode == SAVE_MODE_RAW_ONLY;
         final boolean fmp4Mode = saveMode == SAVE_MODE_FMP4;
+        final boolean previewOnly = saveMode == SAVE_MODE_PREVIEW;
 
         try {
             File dir = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
@@ -332,7 +334,9 @@ public final class RecordService extends Service {
             videoSource.open();
 
             long captureTimeMs = System.currentTimeMillis();
-            if (!rawMode) {
+            if (previewOnly) {
+                mp4Name = "PREVIEW";
+            } else if (!rawMode) {
                 output = RecordingOutput.create(this, outputTree, captureTimeMs);
                 mp4Name = output.getFilename();
                 muxer = fmp4Mode ? output.openFragmentedMuxer() : output.openMuxer();
@@ -467,6 +471,10 @@ public final class RecordService extends Service {
                     lastCsd = csd;
                     lastVideoWidth = finalVideo.getWidth();
                     lastVideoHeight = finalVideo.getHeight();
+                    HevcPreview sink = previewSink;
+                    if (sink != null) {
+                        sink.start(lastVideoWidth, lastVideoHeight, csd);
+                    }
                     // Raw-save mode needs the parameter sets in the HEVC sidecar;
                     // the converter rebuilds csd-0 from them on stop.
                     if (rawMode && finalHevc != null && csd != null) {
@@ -578,8 +586,10 @@ public final class RecordService extends Service {
                     });
             audio = finalAudio;
             finalAudioRef.set(finalAudio);
-            audio.start();
-            status = "録画中: " + mp4Name;
+            if (!previewOnly) {
+                audio.start();
+            }
+            status = previewOnly ? "画角プレビューを表示中" : "録画中: " + mp4Name;
             videoLinkMessage = "";
             videoReconnectCount = 0;
             startTelemetry();

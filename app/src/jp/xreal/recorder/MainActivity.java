@@ -67,6 +67,10 @@ public class MainActivity extends Activity {
     private RecordingPresentation.WaveformView phoneWaveform;
     private TextureView previewView;
     private HevcPreview hevcPreview;
+    private boolean photoMode;
+    private MaterialButton modeButton;
+    private LinearLayout photoCard;
+    private LinearLayout videoCard;
     private MaterialButton displayModeButton;
     private MaterialCheckBox keepScreenCheck;
     private FrameLayout screenSaver;
@@ -192,6 +196,7 @@ public class MainActivity extends Activity {
         recoverPendingRawRecordings();
         requestRuntimePermissions();
         findDevice();
+        applyMode();
     }
 
     /** Convert raw sidecars left by an interrupted mode-2 recording on next launch. */
@@ -329,19 +334,31 @@ public class MainActivity extends Activity {
         telemetryView.setText(telemetryText);
         root.addView(telemetryView);
 
-        // Live preview + still-photo capture. The preview reuses the recording stream.
-        LinearLayout photoCard = addCard(root, dp(8));
+        // Mode switch: photo (live viewfinder) vs video (recording).
+        photoMode = preferences.getBoolean("photo_mode", false);
+        modeButton = button(photoMode ? "モード: 写真" : "モード: 動画", false, v -> {
+            photoMode = !photoMode;
+            preferences.edit().putBoolean("photo_mode", photoMode).apply();
+            applyMode();
+            modeButton.setText(photoMode ? "モード: 写真" : "モード: 動画");
+        });
+        addCard(root, dp(8)).addView(modeButton,
+                new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        // Photo mode: live viewfinder (angle check) + shutter. No recording.
+        photoCard = addCard(root, dp(8));
         TextView photoLabel = new TextView(this);
-        photoLabel.setText("プレビュー / 静止画撮影");
+        photoLabel.setText("画角プレビュー");
         applyTextAppearance(photoLabel, com.google.android.material.R.attr.textAppearanceTitleSmall);
         photoLabel.setTextColor(onSurfaceColor());
         addRow(photoCard, photoLabel, 0);
         previewView = new TextureView(this);
         addRow(photoCard, previewView, dp(8));
         LinearLayout.LayoutParams previewLp = (LinearLayout.LayoutParams) previewView.getLayoutParams();
-        previewLp.height = dp(200);
+        previewLp.height = dp(220);
         hevcPreview = new HevcPreview(previewView, message -> setStatus(message));
-        MaterialButton captureButton = button("撮影", false, v -> captureStill());
+        MaterialButton captureButton = button("シャッター", true, v -> captureStill());
         addRow(photoCard, captureButton, dp(8));
 
         recordingIndicator = new TextView(this);
@@ -363,13 +380,13 @@ public class MainActivity extends Activity {
         statusView.setText("待機中");
         statusView.setPadding(0, 0, 0, dp(8));
 
-        LinearLayout actions = addCard(root, dp(8));
+        videoCard = addCard(root, dp(8));
         startButton = button("録画開始", true, v -> startRecording());
-        addRow(actions, startButton, 0);
+        addRow(videoCard, startButton, 0);
         stopButton = button("録画停止", false, v -> stopRecording());
         stopButton.setEnabled(false);
-        addRow(actions, stopButton, dp(8));
-        addRow(actions, statusView, dp(8));
+        addRow(videoCard, stopButton, dp(8));
+        addRow(videoCard, statusView, dp(8));
 
         boolean showRecovery = preferences.getBoolean("glasses_recovery_required", false);
         LinearLayout utilsCard = addCard(root, dp(8));
@@ -644,6 +661,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
+        stopPreviewSession();
         telemetryRunning = false;
         updateConfirmedLiveMode(null);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -732,17 +750,64 @@ public class MainActivity extends Activity {
         return false;
     }
 
+    /** Switch UI and camera session between photo (viewfinder) and video (recording). */
+    private void applyMode() {
+        if (photoCard != null) {
+            photoCard.setVisibility(photoMode ? View.VISIBLE : View.GONE);
+        }
+        if (videoCard != null) {
+            videoCard.setVisibility(photoMode ? View.GONE : View.VISIBLE);
+        }
+        if (recordingIndicator != null) {
+            recordingIndicator.setVisibility(photoMode ? View.GONE : View.VISIBLE);
+        }
+        if (photoMode) {
+            if (RecordService.isRecordingOrStarting()) {
+                stopRecording();
+            }
+            startPreviewSession();
+        } else {
+            stopPreviewSession();
+        }
+    }
+
+    /** Start a preview-only camera session via RecordService (no MP4/audio/files). */
+    private void startPreviewSession() {
+        findDevice();
+        if (device == null || usbManager == null || !usbManager.hasPermission(device)) {
+            setStatus("XREAL 1S の接続と USB 権限を確認してください");
+            return;
+        }
+        RecordService.previewSink = hevcPreview;
+        Intent intent = new Intent(this, RecordService.class)
+                .setAction(RecordService.ACTION_START)
+                .putExtra(RecordService.EXTRA_DEVICE, device)
+                .putExtra(RecordService.EXTRA_SAVE_MODE, RecordService.SAVE_MODE_PREVIEW);
+        if (Build.VERSION.SDK_INT >= 26) {
+            startForegroundService(intent);
+        } else {
+            startService(intent);
+        }
+        setStatus("画角プレビューを開始中");
+    }
+
+    private void stopPreviewSession() {
+        Intent intent = new Intent(this, RecordService.class)
+                .setAction(RecordService.ACTION_STOP);
+        startService(intent);
+        RecordService.previewSink = null;
+        if (hevcPreview != null && !hevcPreview.isStopped()) {
+            hevcPreview.stop();
+        }
+    }
+
     private void captureStill() {
         if (hevcPreview == null || previewView == null) {
             setStatus("プレビューが利用できません");
             return;
         }
-        if (!RecordService.isRecording()) {
-            setStatus("先に録画を開始してプレビューを表示してください");
-            return;
-        }
         if (hevcPreview.isStopped()) {
-            setStatus("プレビューの準備中です。少し待ってからもう一度押してください");
+            setStatus("画角プレビューの準備中です。少し待ってからもう一度押してください");
             return;
         }
         byte[] png = hevcPreview.capturePng();
@@ -1272,18 +1337,6 @@ public class MainActivity extends Activity {
         boolean recordingBusy = RecordService.isRecordingOrStarting();
         boolean stopping = RecordService.isStopping();
         boolean videoStalled = RecordService.isVideoStalled();
-        // Auto-start the live preview once the recording stream provides CSD.
-        if (recording && hevcPreview != null && hevcPreview.isStopped()
-                && RecordService.lastCsd != null && previewView != null
-                && previewView.getSurfaceTexture() != null) {
-            RecordService.previewSink = hevcPreview;
-            hevcPreview.start(RecordService.getVideoWidth(), RecordService.getVideoHeight(),
-                    RecordService.lastCsd);
-        }
-        if (!recording && hevcPreview != null && !hevcPreview.isStopped()) {
-            hevcPreview.stop();
-            RecordService.previewSink = null;
-        }
         int audioPeak = recording ? RecordService.getAudioPeak() : 0;
         boolean keepScreen = recording && keepScreenCheck.isChecked();
         if (keepScreen) {
@@ -1330,22 +1383,29 @@ public class MainActivity extends Activity {
         recoveryShown = needsRecovery;
         long seconds = RecordService.getElapsedSeconds();
         boolean videoReceived = recording && !stopping && !videoStalled && RecordService.hasVideoData();
-        recordingIndicator.setText(!recording ? "待機中" : stopping ? "保存中"
-                : videoStalled ? (RecordService.hasVideoData() ? "映像受信停止" : "映像を受信できません") : videoReceived
-                ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
-                        seconds / 3600, (seconds / 60) % 60, seconds % 60) : "映像を待機中");
-        recordingIndicator.setTextColor(videoReceived ? Color.rgb(255, 95, 95)
-                : videoStalled ? Color.rgb(255, 185, 80) : Color.WHITE);
-        phoneWaveform.setVisibility(recording ? View.VISIBLE : View.GONE);
-        if (recording) {
+        boolean showRecordingStatus = !photoMode;
+        recordingIndicator.setVisibility(showRecordingStatus ? View.VISIBLE : View.GONE);
+        if (showRecordingStatus) {
+            recordingIndicator.setText(!recording ? "待機中" : stopping ? "保存中"
+                    : videoStalled ? (RecordService.hasVideoData() ? "映像受信停止" : "映像を受信できません") : videoReceived
+                    ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
+                            seconds / 3600, (seconds / 60) % 60, seconds % 60) : "映像を待機中");
+            recordingIndicator.setTextColor(videoReceived ? Color.rgb(255, 95, 95)
+                    : videoStalled ? Color.rgb(255, 185, 80) : Color.WHITE);
+        }
+        phoneWaveform.setVisibility(showRecordingStatus && recording ? View.VISIBLE : View.GONE);
+        if (showRecordingStatus && recording) {
             phoneWaveform.addPeak(audioPeak);
         }
         if (telemetryView != null) {
             telemetryView.setText(telemetryText);
         }
-        audioIndicator.setText(!recording ? "" : s != null && s.startsWith("録画中: 音声停止")
-                ? "音声停止・映像のみ録画中" : !RecordService.hasAudioData()
-                ? "音声データを待機中" : "USBマイク · モノラル");
+        audioIndicator.setVisibility(showRecordingStatus ? View.VISIBLE : View.GONE);
+        if (showRecordingStatus) {
+            audioIndicator.setText(!recording ? "" : s != null && s.startsWith("録画中: 音声停止")
+                    ? "音声停止・映像のみ録画中" : !RecordService.hasAudioData()
+                    ? "音声データを待機中" : "USBマイク · モノラル");
+        }
         // The service's idle text must not overwrite this Activity's USB/UVC status.
         if (videoStalled) {
             statusView.setText(RecordService.hasVideoData()
