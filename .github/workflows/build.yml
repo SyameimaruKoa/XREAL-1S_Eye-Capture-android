@@ -53,6 +53,28 @@ jobs:
           [System.IO.File]::WriteAllBytes($path, [System.Convert]::FromBase64String($env:SIGNING_KEYSTORE))
           "KEYSTORE=$path" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Run Java tests
+        shell: pwsh
+        run: |
+          $env:PATH = "C:\Program Files\Git\bin;$env:PATH"
+          $sdk = $env:ANDROID_HOME
+          if (-not $sdk) { $sdk = $env:ANDROID_SDK_ROOT }
+          $androidJar = Join-Path $sdk "platforms\android-35\android.jar"
+          $out = Join-Path $env:RUNNER_TEMP "xreal-tests"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $names = @('AudioSilenceDetector','GlassesCommandProtocol','GlassesLivePlan',
+                     'GlassesRecoveryPlan','GlassesStartupPlan','TcpDriftGate',
+                     'TcpReadProgress','TcpTimestampRecovery','UsbMicrophoneSelector',
+                     'VideoProgressWatchdog','VideoWriter')
+          $src = $names | ForEach-Object { "app\src\jp\xreal\recorder\$_.java" }
+          $tests = Get-ChildItem tests\*Test.java | ForEach-Object { $_.FullName }
+          & javac -cp $androidJar -d $out ($src + $tests)
+          if ($LASTEXITCODE -ne 0) { throw "test compilation failed" }
+          foreach ($file in Get-ChildItem tests\*Test.java) {
+            & java -cp $out "jp.xreal.recorder.$($file.BaseName)"
+            if ($LASTEXITCODE -ne 0) { throw "test failed: $($file.BaseName)" }
+          }
+
       - name: Build APK
         shell: pwsh
         run: |
