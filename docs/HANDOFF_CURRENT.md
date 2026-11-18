@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## 現在の状態サマリー（2026-11-19 04:45 時点）
+## 現在の状態サマリー（2026-11-19 04:50 時点）
+- CI 安定性確認: master で workflow_dispatch run 44383787156 を連続実行し、全9ステップ（Checkout / JDK21 / SDK / deps / keystore / 14テスト / ビルド / upload / post）が success。flaky ではない。実機は v0.1.23 インストール済み・画面スリープ(Dozing)維持。
+
 - **最新リリース**: v0.1.23 (versionCode 24)、master の HEAD は `0caf6ca`。GitHub Release と CI ビルド（14テスト＋APK）ともに成功。署名証明書 SHA-256 217fb31e...（既存と一致）。
 - **アプリ機能**: 動画録画一本（TCP HEVC 1600p/30・1600p/60・720p/30＋UVC HEVC）。4つの保存モード（MP4同時／生→変換＋次回復旧／fMP4／生オンリー）。Material 3 ダーク動的テーマ。audio は UAC モノラル複製を 1ch AAC 化。
 - **今回の作業**: (1)音声ホットパス最適化（ByteBuffer/new 削減・peak 1パス化、2.72倍速、機能不変を MonoCompare/MonoConversionTest で検証）(2)起動時 OOM 修正（RawToMp4Converter を 2パス・ストリーミング化、1GB HEVC 残存下でも安定起動を実機確認）(3)回復スレッドの catch(Throwable) 堅牢化 (4)CI に Java テスト 14件を自動実行化 (5)master へマージ・リリース。
