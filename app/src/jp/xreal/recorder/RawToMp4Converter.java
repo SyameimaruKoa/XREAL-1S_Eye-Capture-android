@@ -38,11 +38,11 @@ final class RawToMp4Converter {
 
     static Result convert(File hevcFile, File aacFile, File outputFile, int width, int height, int fps)
             throws IOException {
-        List<Au> aus = readAccessUnits(hevcFile);
-        if (aus.isEmpty()) {
-            throw new IOException("生HEVCに映像フレームがありません");
-        }
-        byte[] csd = buildCsd(aus);
+        // Two passes keep peak memory bounded: the first pass collects only the
+        // small VPS/SPS/PPS parameter sets, the second streams AUs into the muxer
+        // one at a time. Holding every AU of a long recording (over 1 GB) in a
+        // List caused an OutOfMemoryError during next-launch recovery.
+        byte[] csd = readCsd(hevcFile);
         if (csd == null) {
             throw new IOException("HEVCのVPS/SPS/PPSを取得できません");
         }
@@ -69,19 +69,18 @@ final class RawToMp4Converter {
             }
             muxer.start();
 
-            long videoTimescaleUs = 0;
             // Use one video AU per 1/fps step at the container level. The recorded HEVC
             // carries no per-frame timestamps in raw form, so a constant cadence from the
             // known mode fps is the best available approximation.
             long stepUs = 1_000_000L / fps;
-            for (int i = 0; i < aus.size(); i++) {
-                Au au = aus.get(i);
-                ByteBuffer buf = ByteBuffer.wrap(au.data);
+            final long[] videoTimescaleUs = {0};
+            long auCount = forEachNal(hevcFile, false, (data, type) -> {
+                ByteBuffer buf = ByteBuffer.wrap(data);
                 MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-                info.set(0, au.data.length, videoTimescaleUs, MediaCodec.BUFFER_FLAG_KEY_FRAME);
+                info.set(0, data.length, videoTimescaleUs[0], MediaCodec.BUFFER_FLAG_KEY_FRAME);
                 muxer.writeSampleData(videoTrack, buf, info);
-                videoTimescaleUs += stepUs;
-            }
+                videoTimescaleUs[0] += stepUs;
+            });
 
             int writtenAudio = 0;
             if (audioTrack >= 0) {
@@ -96,19 +95,10 @@ final class RawToMp4Converter {
                     writtenAudio++;
                 }
             }
-            return new Result(aus.size(), writtenAudio);
+            return new Result((int) auCount, writtenAudio);
         } finally {
             try { muxer.stop(); } catch (RuntimeException ignored) { }
             muxer.release();
-        }
-    }
-
-    private static final class Au {
-        final byte[] data;
-        final int nalType;
-        Au(byte[] data, int nalType) {
-            this.data = data;
-            this.nalType = nalType;
         }
     }
 
@@ -117,9 +107,18 @@ final class RawToMp4Converter {
         AdtsFrame(byte[] data) { this.data = data; }
     }
 
-    /** Split Annex-B stream into NAL units; collect parameter sets for csd. */
-    private static List<Au> readAccessUnits(File file) throws IOException {
-        List<Au> result = new ArrayList<>();
+    private interface NalConsumer {
+        void accept(byte[] data, int type) throws IOException;
+    }
+
+    /**
+     * Streams Annex-B NAL units to a consumer without retaining them all. Returns
+     * the number of NAL units seen. When csdOnly is true, only VPS/SPS/PPS (types
+     * 32/33/34) are passed to the consumer; the count still covers every NAL.
+     */
+    private static long forEachNal(File file, boolean csdOnly, NalConsumer consumer)
+            throws IOException {
+        long count = 0;
         final int CHUNK = 64 * 1024;
         try (java.io.BufferedInputStream in =
                      new java.io.BufferedInputStream(new java.io.FileInputStream(file), CHUNK)) {
@@ -139,7 +138,10 @@ final class RawToMp4Converter {
                         if (nal.size() > 0) {
                             byte[] data = nal.toByteArray();
                             int type = (data[0] >> 1) & 0x3f;
-                            result.add(new Au(data, type));
+                            if (!csdOnly || type == 32 || type == 33 || type == 34) {
+                                consumer.accept(data, type);
+                            }
+                            count++;
                             nal.reset();
                         }
                         zeros = 0;
@@ -156,24 +158,24 @@ final class RawToMp4Converter {
             if (nal.size() > 0) {
                 byte[] data = nal.toByteArray();
                 int type = (data[0] >> 1) & 0x3f;
-                result.add(new Au(data, type));
+                if (!csdOnly || type == 32 || type == 33 || type == 34) {
+                    consumer.accept(data, type);
+                }
+                count++;
             }
         }
-        return result;
+        return count;
     }
 
     /** Build csd-0: Annex-B (00 00 00 01 + NAL) VPS/SPS/PPS, same as UvcSource.extractCsd. */
-    private static byte[] buildCsd(List<Au> aus) throws IOException {
+    private static byte[] readCsd(File file) throws IOException {
         java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-        for (Au au : aus) {
-            if (au.data.length == 0) {
-                continue;
-            }
-            if (au.nalType == 32 || au.nalType == 33 || au.nalType == 34) {
+        forEachNal(file, true, (data, type) -> {
+            if (data.length > 0) {
                 out.write(new byte[]{0, 0, 0, 1});
-                out.write(au.data);
+                out.write(data);
             }
-        }
+        });
         return out.size() > 0 ? out.toByteArray() : null;
     }
 

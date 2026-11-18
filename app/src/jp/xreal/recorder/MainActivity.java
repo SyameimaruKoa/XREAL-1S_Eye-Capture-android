@@ -222,9 +222,12 @@ public class MainActivity extends Activity {
                         aac.delete();
                     }
                     Log.i("XrealRecover", "recovered " + mp4.getName() + " au=" + r.auCount);
-                } catch (Exception e) {
+                } catch (Throwable t) {
+                    // Catch Error too: a malformed large sidecar must not kill the
+                    // recovery thread and leave later files unprocessed.
                     failed++;
-                    Log.w("XrealRecover", "failed " + hevc.getName() + ": " + e.getMessage());
+                    Log.w("XrealRecover", "failed " + hevc.getName() + ": "
+                            + t.getClass().getSimpleName() + ": " + t.getMessage());
                 }
             }
             final int fr = recovered;

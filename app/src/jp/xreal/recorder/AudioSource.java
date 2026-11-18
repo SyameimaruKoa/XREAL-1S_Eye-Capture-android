@@ -221,6 +221,10 @@ public final class AudioSource {
                 AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_32BIT),
                 RATE * BYTES_PER_FRAME / 2);
         ByteBuffer pcm = ByteBuffer.allocateDirect(readSize).order(ByteOrder.LITTLE_ENDIAN);
+        // Reused for the diagnostic WAV sidecar; null when diagnostics are off.
+        byte[] raw = wavFile != null ? new byte[readSize] : null;
+        // Reused across AAC input chunks; queueEncoder() copies into MediaCodec's own buffer.
+        byte[] mono = new byte[ENCODER_CHUNK_BYTES / BYTES_PER_FRAME * 2];
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         AudioSilenceDetector silence = new AudioSilenceDetector(3L * RATE * 2);
         boolean silenceWarning = false;
@@ -253,10 +257,9 @@ public final class AudioSource {
                 pcm.position(0);
                 pcm.limit(n);
 
-                byte[] raw = new byte[n];
-                pcm.get(raw);
-                if (wav != null) {
-                    wav.write(raw);
+                if (raw != null) {
+                    pcm.get(raw, 0, n);
+                    wav.write(raw, 0, n);
                 }
 
                 long nowNs = SystemClock.elapsedRealtimeNanos();
@@ -277,19 +280,16 @@ public final class AudioSource {
                     if (frames <= 0) {
                         continue;
                     }
-                    ByteBuffer mono = ByteBuffer.allocate(frames * 2).order(ByteOrder.LITTLE_ENDIAN);
+                    int monoBytes = frames * 2;
+                    int peak = 0;
                     for (int i = 0; i < frames; i++) {
                         int left = pcm.getInt(off + i * BYTES_PER_FRAME);
-                        mono.putShort((short) (left >> 16));
-                    }
-
-                    byte[] encodedInput = mono.array();
-                    int peak = 0;
-                    for (int i = 0; i < encodedInput.length; i += 2) {
-                        int sample = (short) ((encodedInput[i] & 0xff) | (encodedInput[i + 1] << 8));
+                        short sample = (short) (left >> 16);
+                        mono[i * 2] = (byte) sample;
+                        mono[i * 2 + 1] = (byte) (sample >> 8);
                         peak = Math.max(peak, Math.abs(sample));
                     }
-                    boolean currentWarning = silence.update(encodedInput);
+                    boolean currentWarning = silence.update(mono, monoBytes);
                     listener.onAudioLevel(peak, silence.isExactZero());
                     if (currentWarning != silenceWarning) {
                         silenceWarning = currentWarning;
@@ -299,7 +299,7 @@ public final class AudioSource {
                     }
                     long ptsUs = (audioStartNs - t0Ns) / 1000
                             + framesWritten * 1_000_000L / RATE;
-                    queueEncoder(encodedInput, ptsUs);
+                    queueEncoder(mono, monoBytes, ptsUs);
                     framesWritten += frames;
                     drainEncoder(info, false);
                 }
@@ -414,7 +414,7 @@ public final class AudioSource {
         }
     }
 
-    private void queueEncoder(byte[] data, long ptsUs) throws Exception {
+    private void queueEncoder(byte[] data, int length, long ptsUs) throws Exception {
         int index = -1;
         for (int attempt = 0; attempt < 100; attempt++) {
             index = encoder.dequeueInputBuffer(10000);
@@ -434,12 +434,12 @@ public final class AudioSource {
             throw new IllegalStateException("AAC input buffer is null");
         }
         input.clear();
-        if (data.length > input.remaining()) {
+        if (length > input.remaining()) {
             throw new IllegalStateException("AAC input buffer too small: "
-                    + input.remaining() + " < " + data.length);
+                    + input.remaining() + " < " + length);
         }
-        input.put(data);
-        encoder.queueInputBuffer(index, 0, data.length, ptsUs, 0);
+        input.put(data, 0, length);
+        encoder.queueInputBuffer(index, 0, length, ptsUs, 0);
     }
 
     private void queueEos(long ptsUs, MediaCodec.BufferInfo info) {

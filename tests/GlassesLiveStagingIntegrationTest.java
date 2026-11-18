@@ -9,7 +9,11 @@ import java.util.concurrent.TimeUnit;
 /** Exercises generated staging commands using harmless scripts in a local shell. */
 public final class GlassesLiveStagingIntegrationTest {
     private static String shell(String command) throws Exception {
-        Process process = new ProcessBuilder("bash", "-s").redirectErrorStream(true).start();
+        String bash = System.getenv("XREAL_TEST_BASH");
+        if (bash == null || bash.isEmpty()) {
+            bash = "bash";
+        }
+        Process process = new ProcessBuilder(bash, "-s").redirectErrorStream(true).start();
         process.getOutputStream().write(command.getBytes(StandardCharsets.UTF_8));
         process.getOutputStream().close();
         if (!process.waitFor(30, TimeUnit.SECONDS)) {
