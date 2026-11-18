@@ -1,6 +1,7 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-19、以下の開始予定・実行中の記録より優先）
+- 2026-11-19 APKサイズ比較: 最適化後(dca21ab+f7a4c2f)と最適化前(dca21ab)で build.ps1 ビルドし APK サイズを比較 → 両方とも 7,872,747 bytes で完全一致。最適化はコード量を増やしたのみでバイナリサイズ・dex数に影響なし(.cache/apk-optimized.apk / apk-original.apk に退避)。
 - 2026-11-19 mono変換ループのベンチマーク: 最適化後(再利用バッファ＋peak同時計算)294ms vs 最適化前(ByteBuffer.allocate＋別走査)802ms、20万回×1024フレームで 2.72倍速。peak値は両者とも32736で一致し機能不変(.cache/MonoBenchmark.java)。★最適化の効果を定量的に確認できた。
 - 2026-11-19 全ホットパス最適化余地チェック完了: AudioSource(最適化済み)、TcpSource(Arrays.copyOfRangeはVideoWriterがAUをキュー保持するため必要、削除不可)、UvcSource(readLoopでbyte[] bufとByteArrayOutputStream frameを再利用、問題なし)、VideoWriter/MuxerSink(同期とキュー適正)、RecordingOutput/RawToMp4Converter(起動・停止時のみのホットパス外)、MainActivity UI(500ms)/telemetry(4s)(適正)。★功能的に削れる最適化はAudioSourceの一箇所のみで実装済み。残りは安全性・正确性を保つため変更しないのが妥当。
 - 2026-11-19 クラッシュの切り分け: 最適化後APKで Activity が起動直後に落ちる(Vector: Crash unexpectedly / LSPlant: Failed to hook EncodeGenericId / Process jp.xreal.recorder has died)事象が多発したため、git checkout --detach dca21ab(最適化前) でビルド・導入して比較 → 最適化前APKでも同様にクラッシュ(PID24459→has died)。★よってクラッシュは最適化コミットではなく端末側の LSPosed系モジュール / Samsung BGProtectManager による環境要因と断定。最適化コードの回帰ではない。ブランチ sc-52b_20261119 に復帰済み。8.5分録画は最適化後APKで成功済みなので機能は確認できている。
