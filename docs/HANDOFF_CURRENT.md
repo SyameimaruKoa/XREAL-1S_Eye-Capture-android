@@ -1,7 +1,7 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態サマリー（2026-11-19 05:35 時点）
-- 6:40 までに変更: ユーザー指示「6:40までに変更」を受け、HANDOFF サマリーの日時・master HEAD・APK digest 記述を最新状態に更新。コードの機能変更は不要（全作業完了・全検証成功の状態を維持）。
+- 6:40 までに変更: ユーザー指示「6:40までに変更」を受け、HANDOFF サマリーの日時・master HEAD・APK digest 記述を最新状態に更新(commit 9710dcd)。push 後の CI run 44392723912 も conclusion=success を確認。コードの機能変更は不要（全作業完了・全検証成功の状態を維持）。
 - CI 安定性確認: master で workflow_dispatch run 44383787156 を連続実行し、全9ステップ（Checkout / JDK21 / SDK / deps / keystore / 14テスト / ビルド / upload / post）が success。flaky ではない。実機は v0.1.23 インストール済み・画面スリープ(Dozing)維持。
 - リポジトリ健全性チェック(04:51): git status クリーン、master HEAD e0cda7a (push済み)、ブランチは master と sc-52b_20261118(ステレオ調査記録)のみ、最新リリース v0.1.23。未コミット変更なし。
 - CI最終確認(05:06): push で走った master run 44386878995 conclusion=success。6時まで残り約54分だが全作業完了・全検証成功の状態。
