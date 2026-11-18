@@ -1,6 +1,7 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-19、以下の開始予定・実行中の記録より優先）
+- 2026-11-19 CI完全成功: workflow_dispatch run 44369322145 で "Run Java tests"(13件) と "Build APK" と "Upload APK" が全て conclusion=success。★最適化コミット＋全テスト＋CIビルドが GitHub Actions で完全に通った。
 - 2026-11-19 CIテストのbash問題を再修正: GlassesLiveStagingIntegrationTest が ProcessBuilder("bash","-s") で WSL スタブを解決する問題に対し、テスト側で XREAL_TEST_BASH 環境変数を優先、workflow で C:\Program Files\Git\usr\bin を PATH と XREAL_TEST_BASH に設定。ローカルで PATH＋環境変数両方指定すると13テスト全て成功(PATHのみだと rm が見つからず失敗)。
 - 2026-11-19 スマホ再起動対応: ユーザーが端末再起動＋画面ロックを0000に変更。再起動でtable52の throw 169.254.2.0/24 が復活しグラスping不通だったので手動削除＋169.254.2.0/24 dev eth0 追加で復旧。画面を keyevent224 で起こして確認し、Termuxウィジェットメニューを keyevent4 で閉じた後、keyevent223 ですぐスリープ(Dozing)に戻し焼付き防止。ロックは再び有効(deviceLocked=1、0000で解除可)。
 - 2026-11-19 CIテストステップの失敗と修正: workflow_dispatch run 44366093925 で "Run Java tests" が失敗。原因は GitHub Actions の windows-latest で "bash" が system32 のWSLスタブを解決し GlassesLiveStagingIntegrationTest が "no installed distributions" で失敗。PATH指定を C:\Program Files\Git\usr\bin に変更して再検証予定。
