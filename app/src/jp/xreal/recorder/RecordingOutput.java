@@ -70,6 +70,47 @@ final class RecordingOutput {
         return new RecordingOutput(resolver, uri, pending, actualName, tree);
     }
 
+    /** Save a still image to Gallery-visible DCIM/100XREAL (or the chosen folder). */
+    static Uri createStill(Context context, Uri tree, long captureTimeMs, byte[] png)
+            throws IOException {
+        ContentResolver resolver = context.getContentResolver();
+        String filename = "XREAL_STILL_"
+                + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date(captureTimeMs))
+                + ".png";
+        Uri uri;
+        boolean pending = tree == null;
+        if (tree != null) {
+            Uri directory = DocumentsContract.buildDocumentUriUsingTree(tree,
+                    DocumentsContract.getTreeDocumentId(tree));
+            uri = DocumentsContract.createDocument(resolver, directory, "image/png", filename);
+        } else {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Images.Media.DISPLAY_NAME, filename);
+            values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+            values.put(MediaStore.Images.Media.RELATIVE_PATH,
+                    Environment.DIRECTORY_DCIM + "/100XREAL");
+            values.put(MediaStore.Images.Media.DATE_TAKEN, captureTimeMs);
+            values.put(MediaStore.Images.Media.IS_PENDING, 1);
+            uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+        }
+        if (uri == null) {
+            throw new IOException("画像の保存先を作成できません");
+        }
+        try (OutputStream out = resolver.openOutputStream(uri)) {
+            if (out == null) {
+                throw new IOException("画像を書き込めません");
+            }
+            out.write(png);
+            out.flush();
+        }
+        if (pending) {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Images.Media.IS_PENDING, 0);
+            resolver.update(uri, values, null, null);
+        }
+        return uri;
+    }
+
     private static String nextFilename(ContentResolver resolver, Uri tree,
                                        String extension, long captureTimeMs) throws IOException {
         String base = "VID_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)

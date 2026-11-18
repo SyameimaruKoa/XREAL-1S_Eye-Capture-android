@@ -71,6 +71,7 @@ public class MainActivity extends Activity {
     private MaterialButton modeButton;
     private LinearLayout photoCard;
     private LinearLayout videoCard;
+    private TextView photoLabel;
     private MaterialButton displayModeButton;
     private MaterialCheckBox keepScreenCheck;
     private FrameLayout screenSaver;
@@ -174,6 +175,9 @@ public class MainActivity extends Activity {
                     break;
                 case "permission":
                     findDevice();
+                    break;
+                case "capture":
+                    captureStill();
                     break;
                 case "status":
                     setStatus("DEV " + (RecordService.isRecording() ? "REC" : "IDLE")
@@ -348,7 +352,7 @@ public class MainActivity extends Activity {
 
         // Photo mode: live viewfinder (angle check) + shutter. No recording.
         photoCard = addCard(root, dp(8));
-        TextView photoLabel = new TextView(this);
+        photoLabel = new TextView(this);
         photoLabel.setText("画角プレビュー");
         applyTextAppearance(photoLabel, com.google.android.material.R.attr.textAppearanceTitleSmall);
         photoLabel.setTextColor(onSurfaceColor());
@@ -812,26 +816,26 @@ public class MainActivity extends Activity {
         }
         byte[] png = hevcPreview.capturePng();
         if (png == null) {
+            if (photoLabel != null) {
+                photoLabel.setText("画像取得失敗（プレビュー準備中）");
+            }
             setStatus("画像を取得できませんでした");
             return;
         }
+        if (photoLabel != null) {
+            photoLabel.setText("撮影中 " + (png.length / 1024) + "KB");
+        }
         try {
-            java.io.File dir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
-            if (dir == null) {
-                dir = getExternalFilesDir(null);
+            Uri tree = outputTree == null ? null : Uri.parse(outputTree);
+            Uri saved = RecordingOutput.createStill(this, tree, System.currentTimeMillis(), png);
+            if (photoLabel != null) {
+                photoLabel.setText("保存: " + saved.getLastPathSegment());
             }
-            if (dir == null) {
-                throw new java.io.IOException("保存先がありません");
-            }
-            dir.mkdirs();
-            String name = "XREAL_STILL_" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss",
-                    Locale.US).format(new java.util.Date()) + ".png";
-            java.io.File out = new java.io.File(dir, name);
-            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(out)) {
-                fos.write(png);
-            }
-            setStatus("静止画を保存: " + name);
+            setStatus("静止画を保存: " + saved);
         } catch (Exception e) {
+            if (photoLabel != null) {
+                photoLabel.setText("保存失敗: " + e.getMessage());
+            }
             setStatus("静止画の保存に失敗: " + e.getMessage());
         }
     }
