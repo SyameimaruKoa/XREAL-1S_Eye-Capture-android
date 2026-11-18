@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-19、以下の開始予定・実行中の記録より優先）
+- 2026-11-19 dex構造比較: 最適化前後とも aapt list で classes.dex〜classes7.dex の7dexで完全一致。APKサイズ(7,872,747 bytes)も一致。最適化はバイナリ構造に影響なし。
+- 2026-11-19 実機安定性: 最適化版APKを3回起動試行したが全部プロセス起動せず(LSPosed/Vectorクラッシュが常時発生)。端末側モジュールが原因で最適化コードではない(dca21abでも同様)。実機検証は03:00時点で不可。8.5分録画は既に成功済み。
 - 2026-11-19 APKサイズ比較: 最適化後(dca21ab+f7a4c2f)と最適化前(dca21ab)で build.ps1 ビルドし APK サイズを比較 → 両方とも 7,872,747 bytes で完全一致。最適化はコード量を増やしたのみでバイナリサイズ・dex数に影響なし(.cache/apk-optimized.apk / apk-original.apk に退避)。
 - 2026-11-19 mono変換ループのベンチマーク: 最適化後(再利用バッファ＋peak同時計算)294ms vs 最適化前(ByteBuffer.allocate＋別走査)802ms、20万回×1024フレームで 2.72倍速。peak値は両者とも32736で一致し機能不変(.cache/MonoBenchmark.java)。★最適化の効果を定量的に確認できた。
 - 2026-11-19 全ホットパス最適化余地チェック完了: AudioSource(最適化済み)、TcpSource(Arrays.copyOfRangeはVideoWriterがAUをキュー保持するため必要、削除不可)、UvcSource(readLoopでbyte[] bufとByteArrayOutputStream frameを再利用、問題なし)、VideoWriter/MuxerSink(同期とキュー適正)、RecordingOutput/RawToMp4Converter(起動・停止時のみのホットパス外)、MainActivity UI(500ms)/telemetry(4s)(適正)。★功能的に削れる最適化はAudioSourceの一箇所のみで実装済み。残りは安全性・正確性を保つため変更しないのが妥当。
