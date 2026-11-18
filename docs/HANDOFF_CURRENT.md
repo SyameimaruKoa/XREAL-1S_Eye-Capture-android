@@ -1,6 +1,7 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-19、以下の開始予定・実行中の記録より優先）
+- 2026-11-19 ★起動時クラッシュの真因を特定・修正: これまでの「Vector/LSPosedクラッシュ」は誤診で、真因は OutOfMemoryError だった(AndroidRuntime: java.lang.OutOfMemoryError: Failed to allocate a 69032 byte allocation... at RawToMp4Converter.readAccessUnits → MainActivity.lambda$recoverPendingRawRecordings)。残存した 1.0GB の未完了HEVC(xreal_20261119_015704.hevc)を起動時回復処理が List<Au> に全保持しようとして heap 268MB を超過。修正: RawToMp4Converter を2パス・ストリーミング方式に変更。第1パス readCsd() は VPS/SPS/PPS のみ収集、第2パス forEachNal() が AU を1つずつ muxer へ直接書き込み(全保持しない)。Au クラス/ readAccessUnits / buildCsd を削除。実機検証: 1GB HEVC が残ったままAPK導入→PID10562 で安定起動、OOM/FATAL なし、全HEVCが「VPS/SPS/PPSを取得できません」でスキップされ正常起動完了(04:01)。Vectorモジュールは一時無効化中だが原因ではないので元に戻す検討可。画面は作業後すぐスリープ(Dozing)に戻し焼付き防止維持。
 - 2026-11-19 診断WAVの機能保全を静的確認: 最適化で raw バッファを再利用したが、wav.write(raw,0,n) は使用バイト n のみを書き込み未使用部分は書かれない。patchWav はファイル長から dataSize を計算するためヘッダも正確。よって診断WAVの内容は最適化前後で不変と確認。
 - 2026-11-19 残クラスの静的レビュー完了: HidUvc(0xD2/0xD3は一度きりのHID制御で問題なし)、GlassesTelemetryClient(入力長・id検証あり、問題なし)、RecordService停止フロー(stopSelf()は保存完了後に呼ばれる。STOP後にServiceが残ったのは保存中/STOP broadcast未達によるものでコードバグではない)。★全26クラスのレビューが完了し、機能を削らず安全に出来る最適化はAudioSourceの一箇所のみ(実装済み)と結論。
 - 2026-11-19 USB再接続不良はユーザー指摘で訂正: コールドブート直後にグラス側USBガジェットが起動していないため電話側にXREALが出ないのは正常。ケーブル接触を疑ったのは誤り。ロック解除は確認済み(deviceLocked=0、ホーム画面表示)、画面はスリープ(Dozing)に戻して焼付き防止維持。
