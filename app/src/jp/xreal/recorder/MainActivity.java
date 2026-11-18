@@ -104,8 +104,8 @@ public class MainActivity extends Activity {
     private int selectedVideoRoute;
     private static final String[] VIDEO_ROUTES = {
             "720p/30（広い画角）",
+            "1600p/30（高画質）",
             "1600p/60（高レート）",
-            "720p/60（広角・高レート）",
             "UVC HEVC"
     };
     private static final String[] DISPLAY_MODES = {
@@ -923,9 +923,9 @@ public class MainActivity extends Activity {
                             setStatus("UVC HEVC の準備完了");
                         }
                     } else {
-                        // TCP route: 0 = 720p/30, 1 = 1600p/60, 2 = 720p/60
+                        // TCP route: 0 = 720p/30, 1 = 1600p/30, 2 = 1600p/60
                         String mode = which == 0 ? "1280 720 30"
-                                : which == 1 ? "1600 1200 60" : "1280 720 60";
+                                : which == 1 ? "1600 1200 30" : "1600 1200 60";
                         selectedVideoRoute = RecordService.ROUTE_TCP_HEVC;
                         preferences.edit().putInt("video_route", selectedVideoRoute).apply();
                         switchLiveMode(mode);
@@ -942,9 +942,9 @@ public class MainActivity extends Activity {
         String label;
         if (selectedVideoRoute == RecordService.ROUTE_UVC_HEVC) {
             label = "画質: UVC HEVC";
-        } else if (confirmedLiveMode != null && "1280 720 60".equals(confirmedLiveMode)) {
-            label = "画質: 720p/60（広角・高レート）";
-        } else if (confirmedLiveMode != null && confirmedLiveMode.startsWith("1600")) {
+        } else if (confirmedLiveMode != null && confirmedLiveMode.equals("1600 1200 30")) {
+            label = "画質: 1600p/30（高画質）";
+        } else if (confirmedLiveMode != null && confirmedLiveMode.equals("1600 1200 60")) {
             label = "画質: 1600p/60（高レート）";
         } else {
             label = "画質: 720p/30（広い画角）";
