@@ -19,11 +19,11 @@ GOOGLE = "https://dl.google.com/dl/android/maven2"
 CENTRAL = "https://repo1.maven.org/maven2"
 
 MEDIA3 = [
-    ("androidx.media3", "media3-muxer", "1.11.1", "aar", "media3-muxer.aar"),
-    ("androidx.media3", "media3-common", "1.11.1", "aar", "media3-common.aar"),
-    ("androidx.media3", "media3-container", "1.11.1", "aar", "media3-container.aar"),
-    ("androidx.annotation", "annotation", "1.8.1", "jar", "annotation.jar"),
-    ("com.google.guava", "guava", "33.4.8-android", "jar", "guava.jar"),
+    (GOOGLE, "androidx.media3", "media3-muxer", "1.11.1", "aar", "media3-muxer.aar"),
+    (GOOGLE, "androidx.media3", "media3-common", "1.11.1", "aar", "media3-common.aar"),
+    (GOOGLE, "androidx.media3", "media3-container", "1.11.1", "aar", "media3-container.aar"),
+    (GOOGLE, "androidx.annotation", "annotation", "1.8.1", "jar", "annotation.jar"),
+    (CENTRAL, "com.google.guava", "guava", "33.4.8-android", "jar", "guava.jar"),
 ]
 KOTLIN_STDLIB = [
     ("org.jetbrains.kotlin", "kotlin-stdlib", "1.9.24", "jar"),
@@ -53,8 +53,8 @@ def main():
     print("[2/4] Selecting newest artifacts...")
     subprocess.run([py, os.path.join(SCRIPTS, "sort_material_deps.py")], check=True)
     print("[3/4] Fetching media3 muxer stack...")
-    for group, artifact, version, ext, name in MEDIA3:
-        url = maven_url(GOOGLE, group, artifact, version, ext)
+    for base, group, artifact, version, ext, name in MEDIA3:
+        url = maven_url(base, group, artifact, version, ext)
         dest = os.path.join(MEDIA_DIR, name)
         if download(url, dest):
             print("  media3: %s" % name)
