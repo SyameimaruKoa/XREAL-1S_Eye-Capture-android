@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-19、以下の開始予定・実行中の記録より優先）
+- 2026-11-19 スマホ再起動対応: ユーザーが端末再起動＋画面ロックを0000に変更。再起動でtable52の throw 169.254.2.0/24 が復活しグラスping不通だったので手動削除＋169.254.2.0/24 dev eth0 追加で復旧。画面を keyevent224 で起こして確認し、Termuxウィジェットメニューを keyevent4 で閉じた後、keyevent223 ですぐスリープ(Dozing)に戻し焼付き防止。ロックは再び有効(deviceLocked=1、0000で解除可)。
+- 2026-11-19 CIテストステップの失敗と修正: workflow_dispatch run 44366093925 で "Run Java tests" が失敗。原因は GitHub Actions の windows-latest で "bash" が system32 のWSLスタブを解決し GlassesLiveStagingIntegrationTest が "no installed distributions" で失敗。PATH指定を C:\Program Files\Git\usr\bin に変更して再検証予定。
 - 2026-11-19 CIにJavaテスト自動実行を追加: .github/workflows/build.yml に "Run Java tests" ステップを追加(android.jar classpath・Git Bash PATH・13テストをコンパイル＆逐次実行)。機能削減ではなく回帰防止の強化。workflow_dispatch で検証予定。
 - 2026-11-19 回帰テスト追加: tests/AudioMonoConversionTest.java を追加。最適化前の ByteBuffer.putShort 方式と最適化後の直接バイト書込方式で mono PCM バイト列と peak が完全同一であることを検証(exit=0 / AudioMonoConversionTest passed)。将来の音声最適化で機能が変わらないことを守るガード。全テスト数は13個になり、再実行で PASS=13 FAIL=0 を確認。
 - 2026-11-19 dex構造比較: 最適化前後とも aapt list で classes.dex〜classes7.dex の7dexで完全一致。APKサイズ(7,872,747 bytes)も一致。最適化はバイナリ構造に影響なし。

@@ -56,7 +56,11 @@ jobs:
       - name: Run Java tests
         shell: pwsh
         run: |
-          $env:PATH = "C:\Program Files\Git\bin;$env:PATH"
+          # windows-latest has Git for Windows under C:\Program Files\Git\usr\bin.
+          # Without this, "bash" resolves to the WSL stub in system32 and the
+          # staging integration test fails ("no installed distributions").
+          $gitBash = "C:\Program Files\Git\usr\bin"
+          if (Test-Path $gitBash) { $env:PATH = "$gitBash;$env:PATH" }
           $sdk = $env:ANDROID_HOME
           if (-not $sdk) { $sdk = $env:ANDROID_SDK_ROOT }
           $androidJar = Join-Path $sdk "platforms\android-35\android.jar"
