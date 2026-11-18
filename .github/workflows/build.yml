@@ -1,4 +1,4 @@
-name: Build APK
+﻿name: Build APK
 
 on:
   push:
@@ -19,13 +19,22 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android SDK packages
         shell: pwsh
         run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          $sdk = $env:ANDROID_HOME
+          if (-not $sdk) { $sdk = $env:ANDROID_SDK_ROOT }
+          if (-not $sdk) { throw "Android SDK path not found" }
+          Write-Host "SDK: $sdk"
+          $sdkmanager = Join-Path $sdk "cmdline-tools\latest\bin\sdkmanager.bat"
+          if (-not (Test-Path $sdkmanager)) {
+            # cmdline-tools may be under a versioned directory on the runner.
+            $candidate = Get-ChildItem (Join-Path $sdk "cmdline-tools") -Filter sdkmanager.bat -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($candidate) { $sdkmanager = $candidate.FullName }
+          }
+          if (-not (Test-Path $sdkmanager)) { throw "sdkmanager not found under $sdk" }
+          & $sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          if ($LASTEXITCODE -ne 0) { throw "sdkmanager failed" }
 
       - name: Fetch build dependencies
         shell: pwsh
