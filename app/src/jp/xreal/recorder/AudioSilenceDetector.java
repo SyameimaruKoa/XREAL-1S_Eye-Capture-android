@@ -15,10 +15,14 @@ final class AudioSilenceDetector {
     }
 
     boolean update(byte[] pcm) {
-        if ((pcm.length & 1) != 0) {
+        return update(pcm, pcm.length);
+    }
+
+    boolean update(byte[] pcm, int length) {
+        if ((length & 1) != 0) {
             throw new IllegalArgumentException("PCM must contain whole 16-bit samples");
         }
-        for (int i = 0; i < pcm.length; i += 2) {
+        for (int i = 0; i < length; i += 2) {
             int sample = (short) ((pcm[i] & 0xff) | (pcm[i + 1] << 8));
             exactZeroBytes = sample == 0 ? Math.min(thresholdBytes, exactZeroBytes + 2) : 0;
             if (Math.abs(sample) > 32) {
