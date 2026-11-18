@@ -1,6 +1,7 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-19、以下の開始予定・実行中の記録より優先）
+- 2026-11-19 OOM修正後メモリ実測: 1GB HEVC残存下で起動後の dumpsys meminfo は Dalvik Heap 33MB / TOTAL PSS 103MB(修正前は heap 268MB 上限で OOM)。2パス方式でピークメモリが抑えられていることを実データで確認。
 - 2026-11-19 OOM修正版で録画フロー実機検証: PIN0000でロック解除→DEV_CMD start で service=3・映像 auIndex=240 まで到達・音声 low-level state 切り替わりを確認→20秒後 DEV_CMD stop で service=0・VID_20261119_041514.mp4(90MB)保存。pullして ffprobe → HEVC1280x720・AAC1ch・duration42.048s・完全解析可能。OOM修正後、1GB HEVC残存下でも録画→停止→保存まで正常に通ることを確認。作業後すぐスリープ(Dozing)に戻し焼付き防止維持。
 - 2026-11-19 OOM修正のCI検証: workflow_dispatch run 44377268822 で "Run Java tests"(14件) と "Build APK" と "Upload APK" が全て conclusion=success。
 - 2026-11-19 OOM修正の回帰テスト追加: tests/RawConverterStreamingTest.java を追加。2パス・ストリーミング方式のNAL列挙が旧方式(全AU保持)と同じCSDを生成することを合成Annex-B(VPS/SPS/PPS+3スライス)で検証(passed)。全テスト数は14個、再実行で PASS=14 FAIL=0。
