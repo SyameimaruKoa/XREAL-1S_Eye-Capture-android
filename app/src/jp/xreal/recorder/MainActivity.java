@@ -36,7 +36,6 @@ import android.view.MotionEvent;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
-import android.view.TextureView;
 import android.widget.CompoundButton;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -65,13 +64,7 @@ public class MainActivity extends Activity {
     private TextView recordingIndicator;
     private TextView audioIndicator;
     private RecordingPresentation.WaveformView phoneWaveform;
-    private TextureView previewView;
-    private HevcPreview hevcPreview;
-    private boolean photoMode;
-    private MaterialButton modeButton;
-    private LinearLayout photoCard;
     private LinearLayout videoCard;
-    private TextView photoLabel;
     private MaterialButton displayModeButton;
     private MaterialCheckBox keepScreenCheck;
     private FrameLayout screenSaver;
@@ -176,9 +169,6 @@ public class MainActivity extends Activity {
                 case "permission":
                     findDevice();
                     break;
-                case "capture":
-                    captureStill();
-                    break;
                 case "status":
                     setStatus("DEV " + (RecordService.isRecording() ? "REC" : "IDLE")
                             + " / " + (device == null ? "no device" : device.getDeviceName()));
@@ -200,7 +190,6 @@ public class MainActivity extends Activity {
         recoverPendingRawRecordings();
         requestRuntimePermissions();
         findDevice();
-        applyMode();
     }
 
     /** Convert raw sidecars left by an interrupted mode-2 recording on next launch. */
@@ -337,33 +326,6 @@ public class MainActivity extends Activity {
         telemetryView.setPadding(0, dp(8), 0, dp(8));
         telemetryView.setText(telemetryText);
         root.addView(telemetryView);
-
-        // Mode switch: photo (live viewfinder) vs video (recording).
-        photoMode = preferences.getBoolean("photo_mode", false);
-        modeButton = button(photoMode ? "モード: 写真" : "モード: 動画", false, v -> {
-            photoMode = !photoMode;
-            preferences.edit().putBoolean("photo_mode", photoMode).apply();
-            applyMode();
-            modeButton.setText(photoMode ? "モード: 写真" : "モード: 動画");
-        });
-        addCard(root, dp(8)).addView(modeButton,
-                new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        // Photo mode: live viewfinder (angle check) + shutter. No recording.
-        photoCard = addCard(root, dp(8));
-        photoLabel = new TextView(this);
-        photoLabel.setText("画角プレビュー");
-        applyTextAppearance(photoLabel, com.google.android.material.R.attr.textAppearanceTitleSmall);
-        photoLabel.setTextColor(onSurfaceColor());
-        addRow(photoCard, photoLabel, 0);
-        previewView = new TextureView(this);
-        addRow(photoCard, previewView, dp(8));
-        LinearLayout.LayoutParams previewLp = (LinearLayout.LayoutParams) previewView.getLayoutParams();
-        previewLp.height = dp(220);
-        hevcPreview = new HevcPreview(previewView, message -> setStatus(message));
-        MaterialButton captureButton = button("シャッター", true, v -> captureStill());
-        addRow(photoCard, captureButton, dp(8));
 
         recordingIndicator = new TextView(this);
         applyTextAppearance(recordingIndicator, com.google.android.material.R.attr.textAppearanceHeadlineLarge);
@@ -665,7 +627,6 @@ public class MainActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
-        stopPreviewSession();
         telemetryRunning = false;
         updateConfirmedLiveMode(null);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -752,92 +713,6 @@ public class MainActivity extends Activity {
             }
         }
         return false;
-    }
-
-    /** Switch UI and camera session between photo (viewfinder) and video (recording). */
-    private void applyMode() {
-        if (photoCard != null) {
-            photoCard.setVisibility(photoMode ? View.VISIBLE : View.GONE);
-        }
-        if (videoCard != null) {
-            videoCard.setVisibility(photoMode ? View.GONE : View.VISIBLE);
-        }
-        if (recordingIndicator != null) {
-            recordingIndicator.setVisibility(photoMode ? View.GONE : View.VISIBLE);
-        }
-        if (photoMode) {
-            if (RecordService.isRecordingOrStarting()) {
-                stopRecording();
-            }
-            startPreviewSession();
-        } else {
-            stopPreviewSession();
-        }
-    }
-
-    /** Start a preview-only camera session via RecordService (no MP4/audio/files). */
-    private void startPreviewSession() {
-        findDevice();
-        if (device == null || usbManager == null || !usbManager.hasPermission(device)) {
-            setStatus("XREAL 1S の接続と USB 権限を確認してください");
-            return;
-        }
-        RecordService.previewSink = hevcPreview;
-        Intent intent = new Intent(this, RecordService.class)
-                .setAction(RecordService.ACTION_START)
-                .putExtra(RecordService.EXTRA_DEVICE, device)
-                .putExtra(RecordService.EXTRA_SAVE_MODE, RecordService.SAVE_MODE_PREVIEW);
-        if (Build.VERSION.SDK_INT >= 26) {
-            startForegroundService(intent);
-        } else {
-            startService(intent);
-        }
-        setStatus("画角プレビューを開始中");
-    }
-
-    private void stopPreviewSession() {
-        Intent intent = new Intent(this, RecordService.class)
-                .setAction(RecordService.ACTION_STOP);
-        startService(intent);
-        RecordService.previewSink = null;
-        if (hevcPreview != null && !hevcPreview.isStopped()) {
-            hevcPreview.stop();
-        }
-    }
-
-    private void captureStill() {
-        if (hevcPreview == null || previewView == null) {
-            setStatus("プレビューが利用できません");
-            return;
-        }
-        if (hevcPreview.isStopped()) {
-            setStatus("画角プレビューの準備中です。少し待ってからもう一度押してください");
-            return;
-        }
-        byte[] png = hevcPreview.capturePng();
-        if (png == null) {
-            if (photoLabel != null) {
-                photoLabel.setText("画像取得失敗（プレビュー準備中）");
-            }
-            setStatus("画像を取得できませんでした");
-            return;
-        }
-        if (photoLabel != null) {
-            photoLabel.setText("撮影中 " + (png.length / 1024) + "KB");
-        }
-        try {
-            Uri tree = outputTree == null ? null : Uri.parse(outputTree);
-            Uri saved = RecordingOutput.createStill(this, tree, System.currentTimeMillis(), png);
-            if (photoLabel != null) {
-                photoLabel.setText("保存: " + saved.getLastPathSegment());
-            }
-            setStatus("静止画を保存: " + saved);
-        } catch (Exception e) {
-            if (photoLabel != null) {
-                photoLabel.setText("保存失敗: " + e.getMessage());
-            }
-            setStatus("静止画の保存に失敗: " + e.getMessage());
-        }
     }
 
     private void startRecording() {
@@ -1387,29 +1262,22 @@ public class MainActivity extends Activity {
         recoveryShown = needsRecovery;
         long seconds = RecordService.getElapsedSeconds();
         boolean videoReceived = recording && !stopping && !videoStalled && RecordService.hasVideoData();
-        boolean showRecordingStatus = !photoMode;
-        recordingIndicator.setVisibility(showRecordingStatus ? View.VISIBLE : View.GONE);
-        if (showRecordingStatus) {
-            recordingIndicator.setText(!recording ? "待機中" : stopping ? "保存中"
-                    : videoStalled ? (RecordService.hasVideoData() ? "映像受信停止" : "映像を受信できません") : videoReceived
-                    ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
-                            seconds / 3600, (seconds / 60) % 60, seconds % 60) : "映像を待機中");
-            recordingIndicator.setTextColor(videoReceived ? Color.rgb(255, 95, 95)
-                    : videoStalled ? Color.rgb(255, 185, 80) : Color.WHITE);
-        }
-        phoneWaveform.setVisibility(showRecordingStatus && recording ? View.VISIBLE : View.GONE);
-        if (showRecordingStatus && recording) {
+        recordingIndicator.setText(!recording ? "待機中" : stopping ? "保存中"
+                : videoStalled ? (RecordService.hasVideoData() ? "映像受信停止" : "映像を受信できません") : videoReceived
+                ? String.format(Locale.US, "● REC  %02d:%02d:%02d",
+                        seconds / 3600, (seconds / 60) % 60, seconds % 60) : "映像を待機中");
+        recordingIndicator.setTextColor(videoReceived ? Color.rgb(255, 95, 95)
+                : videoStalled ? Color.rgb(255, 185, 80) : Color.WHITE);
+        phoneWaveform.setVisibility(recording ? View.VISIBLE : View.GONE);
+        if (recording) {
             phoneWaveform.addPeak(audioPeak);
         }
         if (telemetryView != null) {
             telemetryView.setText(telemetryText);
         }
-        audioIndicator.setVisibility(showRecordingStatus ? View.VISIBLE : View.GONE);
-        if (showRecordingStatus) {
-            audioIndicator.setText(!recording ? "" : s != null && s.startsWith("録画中: 音声停止")
-                    ? "音声停止・映像のみ録画中" : !RecordService.hasAudioData()
-                    ? "音声データを待機中" : "USBマイク · モノラル");
-        }
+        audioIndicator.setText(!recording ? "" : s != null && s.startsWith("録画中: 音声停止")
+                ? "音声停止・映像のみ録画中" : !RecordService.hasAudioData()
+                ? "音声データを待機中" : "USBマイク · モノラル");
         // The service's idle text must not overwrite this Activity's USB/UVC status.
         if (videoStalled) {
             statusView.setText(RecordService.hasVideoData()
