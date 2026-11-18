@@ -40,6 +40,16 @@ public final class RecordService extends Service {
 
     public static final String ACTION_START = "jp.xreal.recorder.START";
     public static final String ACTION_STOP = "jp.xreal.recorder.STOP";
+
+    /** Preview sink attached by MainActivity while a still-photo session is active. */
+    public static volatile HevcPreview previewSink;
+    /** Last CSD (VPS/SPS/PPS) received, used to configure the preview decoder. */
+    public static volatile byte[] lastCsd;
+    public static volatile int lastVideoWidth = 1280;
+    public static volatile int lastVideoHeight = 720;
+
+    public static int getVideoWidth() { return lastVideoWidth; }
+    public static int getVideoHeight() { return lastVideoHeight; }
     public static final String EXTRA_DEVICE = "device";
     public static final String EXTRA_OUTPUT_TREE = "output_tree";
     public static final String EXTRA_OUTPUT_LABEL = "output_label";
@@ -454,6 +464,9 @@ public final class RecordService extends Service {
                         return;
                     }
                     csdSent[0] = true;
+                    lastCsd = csd;
+                    lastVideoWidth = finalVideo.getWidth();
+                    lastVideoHeight = finalVideo.getHeight();
                     // Raw-save mode needs the parameter sets in the HEVC sidecar;
                     // the converter rebuilds csd-0 from them on stop.
                     if (rawMode && finalHevc != null && csd != null) {
@@ -487,6 +500,10 @@ public final class RecordService extends Service {
                         lastVideoNs = receivedNs;
                         videoFrames++;
                         videoBytes += annexB.length;
+                        HevcPreview preview = previewSink;
+                        if (preview != null) {
+                            preview.feed(annexB, timestampNs);
+                        }
                     } catch (Exception e) {
                         throw new UvcSource.RawWriteException(e);
                     }

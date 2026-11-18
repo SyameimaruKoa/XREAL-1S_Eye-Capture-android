@@ -36,6 +36,7 @@ import android.view.MotionEvent;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.view.TextureView;
 import android.widget.CompoundButton;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -64,6 +65,8 @@ public class MainActivity extends Activity {
     private TextView recordingIndicator;
     private TextView audioIndicator;
     private RecordingPresentation.WaveformView phoneWaveform;
+    private TextureView previewView;
+    private HevcPreview hevcPreview;
     private MaterialButton displayModeButton;
     private MaterialCheckBox keepScreenCheck;
     private FrameLayout screenSaver;
@@ -325,6 +328,21 @@ public class MainActivity extends Activity {
         telemetryView.setPadding(0, dp(8), 0, dp(8));
         telemetryView.setText(telemetryText);
         root.addView(telemetryView);
+
+        // Live preview + still-photo capture. The preview reuses the recording stream.
+        LinearLayout photoCard = addCard(root, dp(8));
+        TextView photoLabel = new TextView(this);
+        photoLabel.setText("プレビュー / 静止画撮影");
+        applyTextAppearance(photoLabel, com.google.android.material.R.attr.textAppearanceTitleSmall);
+        photoLabel.setTextColor(onSurfaceColor());
+        addRow(photoCard, photoLabel, 0);
+        previewView = new TextureView(this);
+        addRow(photoCard, previewView, dp(8));
+        LinearLayout.LayoutParams previewLp = (LinearLayout.LayoutParams) previewView.getLayoutParams();
+        previewLp.height = dp(200);
+        hevcPreview = new HevcPreview(previewView, message -> setStatus(message));
+        MaterialButton captureButton = button("撮影", false, v -> captureStill());
+        addRow(photoCard, captureButton, dp(8));
 
         recordingIndicator = new TextView(this);
         applyTextAppearance(recordingIndicator, com.google.android.material.R.attr.textAppearanceHeadlineLarge);
@@ -712,6 +730,45 @@ public class MainActivity extends Activity {
             }
         }
         return false;
+    }
+
+    private void captureStill() {
+        if (hevcPreview == null || previewView == null) {
+            setStatus("プレビューが利用できません");
+            return;
+        }
+        if (!RecordService.isRecording()) {
+            setStatus("先に録画を開始してプレビューを表示してください");
+            return;
+        }
+        if (hevcPreview.isStopped()) {
+            setStatus("プレビューの準備中です。少し待ってからもう一度押してください");
+            return;
+        }
+        byte[] png = hevcPreview.capturePng();
+        if (png == null) {
+            setStatus("画像を取得できませんでした");
+            return;
+        }
+        try {
+            java.io.File dir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+            if (dir == null) {
+                dir = getExternalFilesDir(null);
+            }
+            if (dir == null) {
+                throw new java.io.IOException("保存先がありません");
+            }
+            dir.mkdirs();
+            String name = "XREAL_STILL_" + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss",
+                    Locale.US).format(new java.util.Date()) + ".png";
+            java.io.File out = new java.io.File(dir, name);
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(out)) {
+                fos.write(png);
+            }
+            setStatus("静止画を保存: " + name);
+        } catch (Exception e) {
+            setStatus("静止画の保存に失敗: " + e.getMessage());
+        }
     }
 
     private void startRecording() {
@@ -1215,6 +1272,18 @@ public class MainActivity extends Activity {
         boolean recordingBusy = RecordService.isRecordingOrStarting();
         boolean stopping = RecordService.isStopping();
         boolean videoStalled = RecordService.isVideoStalled();
+        // Auto-start the live preview once the recording stream provides CSD.
+        if (recording && hevcPreview != null && hevcPreview.isStopped()
+                && RecordService.lastCsd != null && previewView != null
+                && previewView.getSurfaceTexture() != null) {
+            RecordService.previewSink = hevcPreview;
+            hevcPreview.start(RecordService.getVideoWidth(), RecordService.getVideoHeight(),
+                    RecordService.lastCsd);
+        }
+        if (!recording && hevcPreview != null && !hevcPreview.isStopped()) {
+            hevcPreview.stop();
+            RecordService.previewSink = null;
+        }
         int audioPeak = recording ? RecordService.getAudioPeak() : 0;
         boolean keepScreen = recording && keepScreenCheck.isChecked();
         if (keepScreen) {

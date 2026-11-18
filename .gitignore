@@ -1,11 +1,16 @@
 *
 !.gitignore
+!.github/
+!.github/**
 !AGENTS.md
 !README.md
 !app/
 !app/**
 !scripts/
 !scripts/*.py
+!scripts/fetch_deps.py
+!scripts/m3-libs/
+!scripts/m3-libs/SELECTED.txt
 !scripts/build.ps1
 !scripts/build.sh
 !scripts/release.ps1
