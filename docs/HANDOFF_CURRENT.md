@@ -1,6 +1,7 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-19、以下の開始予定・実行中の記録より優先）
+- 2026-11-19 回帰テスト追加: tests/AudioMonoConversionTest.java を追加。最適化前の ByteBuffer.putShort 方式と最適化後の直接バイト書込方式で mono PCM バイト列と peak が完全同一であることを検証(exit=0 / AudioMonoConversionTest passed)。将来の音声最適化で機能が変わらないことを守るガード。全テスト数は12個になった。
 - 2026-11-19 dex構造比較: 最適化前後とも aapt list で classes.dex〜classes7.dex の7dexで完全一致。APKサイズ(7,872,747 bytes)も一致。最適化はバイナリ構造に影響なし。
 - 2026-11-19 実機安定性: 最適化版APKを3回起動試行したが全部プロセス起動せず(LSPosed/Vectorクラッシュが常時発生)。端末側モジュールが原因で最適化コードではない(dca21abでも同様)。実機検証は03:00時点で不可。8.5分録画は既に成功済み。
 - 2026-11-19 APKサイズ比較: 最適化後(dca21ab+f7a4c2f)と最適化前(dca21ab)で build.ps1 ビルドし APK サイズを比較 → 両方とも 7,872,747 bytes で完全一致。最適化はコード量を増やしたのみでバイナリサイズ・dex数に影響なし(.cache/apk-optimized.apk / apk-original.apk に退避)。
