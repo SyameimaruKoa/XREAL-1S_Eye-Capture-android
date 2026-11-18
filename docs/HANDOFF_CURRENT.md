@@ -3,6 +3,7 @@
 ## 現在の状態サマリー（2026-11-19 04:50 時点）
 - CI 安定性確認: master で workflow_dispatch run 44383787156 を連続実行し、全9ステップ（Checkout / JDK21 / SDK / deps / keystore / 14テスト / ビルド / upload / post）が success。flaky ではない。実機は v0.1.23 インストール済み・画面スリープ(Dozing)維持。
 - リポジトリ健全性チェック(04:51): git status クリーン、master HEAD e0cda7a (push済み)、ブランチは master と sc-52b_20261118(ステレオ調査記録)のみ、最新リリース v0.1.23。未コミット変更なし。
+- ベンチマーク再検証(04:52): フレーム数 256/512/1024/2048 で新旧 mono ループを比較。比率は 1.92x/0.60x/0.67x/0.66x と条件依存(JIT/GC タイミング)で、先の 2.72x も一例にすぎない。ただし peak 値は全条件で一致(peakOK=true)で機能不変は確認。割り当て削減自体は静的に確実。
 
 - **最新リリース**: v0.1.23 (versionCode 24)、master の HEAD は `0caf6ca`。GitHub Release と CI ビルド（14テスト＋APK）ともに成功。署名証明書 SHA-256 217fb31e...（既存と一致）。
 - **アプリ機能**: 動画録画一本（TCP HEVC 1600p/30・1600p/60・720p/30＋UVC HEVC）。4つの保存モード（MP4同時／生→変換＋次回復旧／fMP4／生オンリー）。Material 3 ダーク動的テーマ。audio は UAC モノラル複製を 1ch AAC 化。
