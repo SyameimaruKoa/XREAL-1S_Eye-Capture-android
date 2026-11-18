@@ -1,6 +1,7 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-19、以下の開始予定・実行中の記録より優先）
+- 2026-11-19 masterへマージ完了: sc-52b_20261119 の変更(音声最適化・OOM修正・回復処理堅牢化・CIテスト自動化・回帰テスト14件)を master に --no-ff マージ(98bf138)し push。master の CI(run 44381777704) も conclusion=success を確認。★本線に反映完了。
 - 2026-11-19 回復処理の全ファイル接通検証: 1GB＋89MB＋古いHEVC 6個が残った状態でアプリ起動→回復スレッドが全ファイルを順に処理し、OOM/FATAL なしで完了(04:31)。診断HEVCはCSDが無いため「VPS/SPS/PPSを取得できません」でスキップされるが、これは修正前と同じ既知挙動。退避した MP4(VID_20261119_041514.mp4)は元に戻済み。画面はスリープ(Dozing)に戻し焼付き防止維持。
 - 2026-11-19 回復処理堅牢化のCI検証: workflow_dispatch run 44380113421 で conclusion=success(14テスト＋ビルド＋APK upload)。
 - 2026-11-19 回復処理の堅牢化: MainActivity.recoverPendingRawRecordings の catch(Exception) を catch(Throwable) に変更。巨大/不正サイドカーが Error を投げても回復スレッドが死なず後続ファイルの処理が続くようにした(機能削減なしの安全性向上)。全14テスト PASS。
