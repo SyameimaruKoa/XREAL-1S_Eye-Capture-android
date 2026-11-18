@@ -59,20 +59,29 @@ def main():
         if download(url, dest):
             print("  media3: %s" % name)
     print("[4/4] Fetching Kotlin stdlib...")
-    selected = os.path.join(ROOT, "scripts", "m3-libs", "SELECTED.txt")
-    with open(selected, encoding="utf-8") as handle:
-        lines = [line.rstrip("\n") for line in handle if line.strip()]
+    # build.ps1 reads .cache/m3-libs/SELECTED.txt; scripts/m3-libs/SELECTED.txt
+    # is the checked-in copy. Both must list the Kotlin jars.
+    selected_paths = [
+        os.path.join(ROOT, ".cache", "m3-libs", "SELECTED.txt"),
+        os.path.join(ROOT, "scripts", "m3-libs", "SELECTED.txt"),
+    ]
     for group, artifact, version, ext in KOTLIN_STDLIB:
         url = maven_url(CENTRAL, group, artifact, version, ext)
         name = "%s-%s.%s" % (artifact, version, ext)
         dest = os.path.join(ROOT, ".cache", "m3-libs", name)
         if download(url, dest):
             print("  kotlin: %s" % name)
-        # build.ps1 reads SELECTED.txt, so the jars must be listed there.
-        if name not in lines:
-            lines.append(name)
-    with open(selected, "w", encoding="utf-8", newline="\n") as handle:
-        handle.write("\n".join(lines) + "\n")
+    for selected in selected_paths:
+        if not os.path.exists(selected):
+            continue
+        with open(selected, encoding="utf-8") as handle:
+            lines = [line.rstrip("\n") for line in handle if line.strip()]
+        for _, artifact, version, ext in KOTLIN_STDLIB:
+            name = "%s-%s.%s" % (artifact, version, ext)
+            if name not in lines:
+                lines.append(name)
+        with open(selected, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("\n".join(lines) + "\n")
     print("Done. Dependencies are in .cache/")
 
 
