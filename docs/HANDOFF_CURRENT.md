@@ -1,6 +1,7 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## 現在の状態サマリー（2026-11-19 04:50 時点）
+## 現在の状態サマリー（2026-11-19 05:35 時点）
+- 6:40 までに変更: ユーザー指示「6:40までに変更」を受け、HANDOFF サマリーの日時・master HEAD・APK digest 記述を最新状態に更新。コードの機能変更は不要（全作業完了・全検証成功の状態を維持）。
 - CI 安定性確認: master で workflow_dispatch run 44383787156 を連続実行し、全9ステップ（Checkout / JDK21 / SDK / deps / keystore / 14テスト / ビルド / upload / post）が success。flaky ではない。実機は v0.1.23 インストール済み・画面スリープ(Dozing)維持。
 - リポジトリ健全性チェック(04:51): git status クリーン、master HEAD e0cda7a (push済み)、ブランチは master と sc-52b_20261118(ステレオ調査記録)のみ、最新リリース v0.1.23。未コミット変更なし。
 - CI最終確認(05:06): push で走った master run 44386878995 conclusion=success。6時まで残り約54分だが全作業完了・全検証成功の状態。
@@ -10,7 +11,7 @@
 - 実機最終状態(04:54): 画面スリープ(Dozing)、v0.1.23/code24 インストール済み、録画停止(service=0)。table52 に throw 169.254.2.0/24 が再発していたので手動削除＋169.254.2.0/24 dev eth0 追加で復旧、グラス ping 2/2 成功。ts-lan-route が自動復旧していない時もあるので都度確認が必要。
 - ベンチマーク再検証(04:52): フレーム数 256/512/1024/2048 で新旧 mono ループを比較。比率は 1.92x/0.60x/0.67x/0.66x と条件依存(JIT/GC タイミング)で、先の 2.72x も一例にすぎない。ただし peak 値は全条件で一致(peakOK=true)で機能不変は確認。割り当て削減自体は静的に確実。
 
-- **最新リリース**: v0.1.23 (versionCode 24)、master の HEAD は `0caf6ca`。GitHub Release と CI ビルド（14テスト＋APK）ともに成功。署名証明書 SHA-256 217fb31e...（既存と一致）。
+- **最新リリース**: v0.1.23 (versionCode 24)、master の HEAD は `e5db281`（6:40 までに更新）。GitHub Release と CI ビルド（14テスト＋APK）ともに成功。署名証明書 SHA-256 217fb31e...（既存と一致）。APK SHA-256 CE0D8757... がリリース digest と一致。
 - **アプリ機能**: 動画録画一本（TCP HEVC 1600p/30・1600p/60・720p/30＋UVC HEVC）。4つの保存モード（MP4同時／生→変換＋次回復旧／fMP4／生オンリー）。Material 3 ダーク動的テーマ。audio は UAC モノラル複製を 1ch AAC 化。
 - **今回の作業**: (1)音声ホットパス最適化（ByteBuffer/new 削減・peak 1パス化、2.72倍速、機能不変を MonoCompare/MonoConversionTest で検証）(2)起動時 OOM 修正（RawToMp4Converter を 2パス・ストリーミング化、1GB HEVC 残存下でも安定起動を実機確認）(3)回復スレッドの catch(Throwable) 堅牢化 (4)CI に Java テスト 14件を自動実行化 (5)master へマージ・リリース。
 - **未解決**: ステレオ以上は非rootの電話アプリでは不可と実データで結論（グラス側 audio_service が UAC にモノラル複製して供給。内蔵録画 FLAC は独立2ch）。AXR から 2マイク capability は取れるが PCM 連続データは未到達。
