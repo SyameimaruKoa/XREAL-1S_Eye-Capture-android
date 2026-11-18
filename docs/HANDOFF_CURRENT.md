@@ -1,6 +1,7 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-19、以下の開始予定・実行中の記録より優先）
+- 2026-11-19 回復処理堅牢化のCI検証: workflow_dispatch run 44380113421 で conclusion=success(14テスト＋ビルド＋APK upload)。
 - 2026-11-19 回復処理の堅牢化: MainActivity.recoverPendingRawRecordings の catch(Exception) を catch(Throwable) に変更。巨大/不正サイドカーが Error を投げても回復スレッドが死なず後続ファイルの処理が続くようにした(機能削減なしの安全性向上)。全14テスト PASS。
 - 2026-11-19 OOM修正後メモリ実測: 1GB HEVC残存下で起動後の dumpsys meminfo は Dalvik Heap 33MB / TOTAL PSS 103MB(修正前は heap 268MB 上限で OOM)。2パス方式でピークメモリが抑えられていることを実データで確認。
 - 2026-11-19 OOM修正版で録画フロー実機検証: PIN0000でロック解除→DEV_CMD start で service=3・映像 auIndex=240 まで到達・音声 low-level state 切り替わりを確認→20秒後 DEV_CMD stop で service=0・VID_20261119_041514.mp4(90MB)保存。pullして ffprobe → HEVC1280x720・AAC1ch・duration42.048s・完全解析可能。OOM修正後、1GB HEVC残存下でも録画→停止→保存まで正常に通ることを確認。作業後すぐスリープ(Dozing)に戻し焼付き防止維持。
