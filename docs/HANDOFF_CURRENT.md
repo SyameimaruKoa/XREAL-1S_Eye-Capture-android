@@ -1,5 +1,13 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
+## 現在の状態サマリー（2026-11-19 04:45 時点）
+- **最新リリース**: v0.1.23 (versionCode 24)、master の HEAD は `0caf6ca`。GitHub Release と CI ビルド（14テスト＋APK）ともに成功。署名証明書 SHA-256 217fb31e...（既存と一致）。
+- **アプリ機能**: 動画録画一本（TCP HEVC 1600p/30・1600p/60・720p/30＋UVC HEVC）。4つの保存モード（MP4同時／生→変換＋次回復旧／fMP4／生オンリー）。Material 3 ダーク動的テーマ。audio は UAC モノラル複製を 1ch AAC 化。
+- **今回の作業**: (1)音声ホットパス最適化（ByteBuffer/new 削減・peak 1パス化、2.72倍速、機能不変を MonoCompare/MonoConversionTest で検証）(2)起動時 OOM 修正（RawToMp4Converter を 2パス・ストリーミング化、1GB HEVC 残存下でも安定起動を実機確認）(3)回復スレッドの catch(Throwable) 堅牢化 (4)CI に Java テスト 14件を自動実行化 (5)master へマージ・リリース。
+- **未解決**: ステレオ以上は非rootの電話アプリでは不可と実データで結論（グラス側 audio_service が UAC にモノラル複製して供給。内蔵録画 FLAC は独立2ch）。AXR から 2マイク capability は取れるが PCM 連続データは未到達。
+- **端末状態**: 画面はスリープ（Dozing）で焼付き防止、ロック PIN 0000。再起動直後はグラス側 USB ガジェットが起動するまで XREAL が電話に出ないのは正常（待てば eth0 が出現）。table52 の throw は ts-lan-route が自動復旧。Vector モジュールは一時無効化→元に戻済み（クラッシュ原因は OOM で Vector ではない）。
+- **残存ファイル**: アプリ内 Movies/ に xreal_*.hevc（最大 1GB）が残っているが、OOM 修正後は起動時にスキップされ問題ない。Diagnostics 用 WAV も残存。
+
 ## 現在の状態（2026-11-19、以下の開始予定・実行中の記録より優先）
 - 2026-11-19 リリース検証完了: v0.1.23 の署名証明書 SHA-256 217fb31e...(既存と一致、更新インストール可)を確認。GitHub Release https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.23 作成。master の CI(run 44382744860) conclusion=success。
 - 2026-11-19 v0.1.23(code24)をリリース: OOM修正・音声最適化・回復処理堅牢化・CIテスト自動化を含む。version bump後ビルド成功・実機で versionName=0.1.23/versionCode=24 確認。
