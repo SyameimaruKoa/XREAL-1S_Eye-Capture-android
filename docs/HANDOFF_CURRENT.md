@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
 ## 現在の状態（2026-11-19、以下の開始予定・実行中の記録より優先）
+- 2026-11-19 残クラスの静的レビュー完了: HidUvc(0xD2/0xD3は一度きりのHID制御で問題なし)、GlassesTelemetryClient(入力長・id検証あり、問題なし)、RecordService停止フロー(stopSelf()は保存完了後に呼ばれる。STOP後にServiceが残ったのは保存中/STOP broadcast未達によるものでコードバグではない)。★全26クラスのレビューが完了し、機能を削らず安全に出来る最適化はAudioSourceの一箇所のみ(実装済み)と結論。
+- 2026-11-19 USB再接続不良はユーザー指摘で訂正: コールドブート直後にグラス側USBガジェットが起動していないため電話側にXREALが出ないのは正常。ケーブル接触を疑ったのは誤り。ロック解除は確認済み(deviceLocked=0、ホーム画面表示)、画面はスリープ(Dozing)に戻して焼付き防止維持。
 - 2026-11-19 USB再接続不良: ユーザーがスマホ再起動・USB差し直しを実施したが、再起動後 XREAL 1S が USB デバイスとして認識されない(dumpsys usb に XREAL 無し / eth0·usb0 インターフェース無し)。dmesg に `msm-dwc3 a600000.ssusb: Cable disconnected` が 03:37 まで継続的に出力され、Type-C ケーブルが認識されていない状態。169.254.2.1 への通信不可。物理的な接触不良・ケーブル向き等の確認が必要でソフトウェア側では復旧不可。Vectorモジュールは一時無効化中(disableファイル有り)。画面はスリープ(Dozing)・ロック有効を維持。
 - 2026-11-19 CI完全成功: workflow_dispatch run 44369322145 で "Run Java tests"(13件) と "Build APK" と "Upload APK" が全て conclusion=success。★最適化コミット＋全テスト＋CIビルドが GitHub Actions で完全に通った。
 - 2026-11-19 CIテストのbash問題を再修正: GlassesLiveStagingIntegrationTest が ProcessBuilder("bash","-s") で WSL スタブを解決する問題に対し、テスト側で XREAL_TEST_BASH 環境変数を優先、workflow で C:\Program Files\Git\usr\bin を PATH と XREAL_TEST_BASH に設定。ローカルで PATH＋環境変数両方指定すると13テスト全て成功(PATHのみだと rm が見つからず失敗)。
