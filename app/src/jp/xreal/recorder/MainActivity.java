@@ -80,7 +80,7 @@ public class MainActivity extends Activity {
     private MaterialButton glassesStatusButton;
     private MaterialButton glasses60Button;
     private MaterialButton glassesLiveModeButton;
-    private static final String DEFAULT_LIVE_MODE = "1600 1200 60";
+    private static final String DEFAULT_LIVE_MODE = "1280 720 30";
     private String confirmedLiveMode = DEFAULT_LIVE_MODE;
     private MaterialButton glassesNormalButton;
     private MaterialButton glassesRecoverButton;
@@ -406,6 +406,7 @@ public class MainActivity extends Activity {
         glassesLiveModeButton = button("", false, v -> showQualityPicker());
         glassesLiveModeButton.setSingleLine(false);
 
+        updateConfirmedLiveMode(null);
         selectedVideoRoute = preferences.getInt("video_route", RecordService.ROUTE_TCP_HEVC);
         if (selectedVideoRoute < 0 || selectedVideoRoute >= VIDEO_ROUTES.length) {
             selectedVideoRoute = RecordService.ROUTE_TCP_HEVC;
@@ -686,9 +687,8 @@ public class MainActivity extends Activity {
             setStatus("XREAL 1S (3318:043e) が見つかりません");
             return;
         }
-        if (device != null && !device.getDeviceName().equals(found.getDeviceName())) {
-            updateConfirmedLiveMode(null);
-        }
+        boolean modeApplyNeeded = device == null
+                || !device.getDeviceName().equals(found.getDeviceName());
         device = found;
         if (!usbManager.hasPermission(found)) {
             setStatus("USB権限を要求しています...");
@@ -698,6 +698,9 @@ public class MainActivity extends Activity {
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
             usbManager.requestPermission(found, pi);
             return;
+        }
+        if (modeApplyNeeded) {
+            ensureDesiredLiveMode(null);
         }
         if (selectedVideoRoute == RecordService.ROUTE_TCP_HEVC) {
             setStatus("XREAL 1S 接続済み");
@@ -744,6 +747,10 @@ public class MainActivity extends Activity {
             setStatus("USB権限を許可してから再試行してください");
             return;
         }
+        ensureDesiredLiveMode(this::startRecordingInternal);
+    }
+
+    private void startRecordingInternal() {
         int route = selectedVideoRoute;
         if (route != RecordService.ROUTE_TCP_HEVC && !hasUvc(device)) {
             setStatus("UVCがありません。先にUVCを有効化してください");
@@ -946,6 +953,8 @@ public class MainActivity extends Activity {
         String label;
         if (selectedVideoRoute == RecordService.ROUTE_UVC_HEVC) {
             label = "画質: UVC HEVC";
+        } else if (confirmedLiveMode != null && confirmedLiveMode.equals("1280 720 60")) {
+            label = "画質: 720p/60";
         } else if (confirmedLiveMode != null && confirmedLiveMode.equals("1600 1200 30")) {
             label = "画質: 1600p/30（高画質）";
         } else if (confirmedLiveMode != null && confirmedLiveMode.equals("1600 1200 60")) {
@@ -957,7 +966,12 @@ public class MainActivity extends Activity {
     }
 
     private void updateConfirmedLiveMode(String mode) {
-        confirmedLiveMode = mode != null ? mode : DEFAULT_LIVE_MODE;
+        if (mode != null) {
+            confirmedLiveMode = mode;
+            preferences.edit().putString("confirmed_live_mode", mode).apply();
+        } else {
+            confirmedLiveMode = preferences.getString("confirmed_live_mode", DEFAULT_LIVE_MODE);
+        }
         updateQualityButton();
     }
 
@@ -1011,6 +1025,68 @@ public class MainActivity extends Activity {
                 setStatus(result);
             });
         }, "xreal-live-mode").start();
+    }
+
+    private void ensureDesiredLiveMode(Runnable onReady) {
+        if (selectedVideoRoute != RecordService.ROUTE_TCP_HEVC) {
+            if (onReady != null) {
+                onReady.run();
+            }
+            return;
+        }
+        if (RecordService.isRecordingOrStarting() || glassesStatusPending
+                || preferences.getBoolean("glasses_recovery_required", false)) {
+            if (onReady != null) {
+                setStatus("本体の状態を確認中です");
+            }
+            return;
+        }
+        if (device == null || usbManager == null || !usbManager.hasPermission(device)) {
+            if (onReady != null) {
+                setStatus("XREAL 1S の接続と USB 権限を確認してください");
+            }
+            return;
+        }
+        glassesStatusPending = true;
+        if (!preferences.edit().putBoolean("live_mode_uncertain", true).commit()) {
+            glassesStatusPending = false;
+            setStatus("安全状態を保存できませんでした");
+            return;
+        }
+        setStatus("本体の録画設定を確認中...");
+        new Thread(() -> {
+            String desired = preferences.getString("confirmed_live_mode", DEFAULT_LIVE_MODE);
+            boolean stateConfirmed = false;
+            String message = "";
+            try {
+                GlassesStatusClient client = new GlassesStatusClient(getApplicationContext());
+                String current = client.readLiveMode(liveToken());
+                if (!desired.equals(current)) {
+                    client.setLiveMode(current, desired, liveToken());
+                    current = client.readLiveMode(liveToken());
+                }
+                if (!desired.equals(current)) {
+                    throw new java.io.IOException("設定の確認に失敗しました");
+                }
+                stateConfirmed = true;
+            } catch (Exception e) {
+                message = e.getMessage() == null ? e.toString() : e.getMessage();
+            }
+            final boolean confirmed = stateConfirmed;
+            final String result = message;
+            runOnUiThread(() -> {
+                glassesStatusPending = false;
+                preferences.edit().putBoolean("live_mode_uncertain", false).apply();
+                if (confirmed) {
+                    updateConfirmedLiveMode(desired);
+                    if (onReady != null) {
+                        onReady.run();
+                    }
+                } else {
+                    setStatus("本体の録画設定を適用できません: " + result);
+                }
+            });
+        }, "xreal-ensure-live-mode").start();
     }
 
     private void prepareGlasses60() {
@@ -1380,23 +1456,31 @@ public class MainActivity extends Activity {
             if (RecordService.isRecording()) {
                 bps = RecordService.getVideoBitrateBps();
             }
+            String liveMode = confirmedLiveMode == null ? DEFAULT_LIVE_MODE : confirmedLiveMode;
             if (bps <= 0) {
                 if (selectedVideoRoute == 1) {
                     bps = 2_000_000; // UVC HEVC ~2 Mbps
-                } else if (confirmedLiveMode != null) {
-                    if (confirmedLiveMode.contains("1600")) {
-                        bps = confirmedLiveMode.endsWith("60") ? 34_000_000 : 15_700_000;
-                    } else {
-                        bps = confirmedLiveMode.endsWith("60") ? 33_000_000 : 17_000_000;
-                    }
+                } else if ("1280 720 60".equals(liveMode)) {
+                    bps = 33_000_000;
+                } else if ("1600 1200 30".equals(liveMode)) {
+                    bps = 15_700_000;
+                } else if ("1600 1200 60".equals(liveMode)) {
+                    bps = 34_000_000;
                 } else {
-                    bps = 17_000_000; // TCP 720/30 default
+                    bps = 17_000_000;
                 }
             }
             double totalBps = bps + 128_000; // AAC audio
             double seconds = available * 8.0 / totalBps;
             long minutes = (long) (seconds / 60);
-            String mode = bps > 20_000_000 ? "60fps/34M" : bps > 10_000_000 ? "17M" : "2M";
+            String mode;
+            if (selectedVideoRoute == 1) {
+                mode = "UVC/2M";
+            } else {
+                String[] parts = liveMode.split(" ");
+                mode = parts[0] + "×" + parts[1] + "/" + parts[2]
+                        + "fps/" + Math.round(bps / 1_000_000.0) + "M";
+            }
             return String.format(Locale.US, "録画可能 約%d分 (残り%.1fGB, %s)",
                     minutes, available / 1_000_000_000.0, mode);
         } catch (Exception e) {
