@@ -1,6 +1,8 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## 現在の状態サマリー（2026-11-19 05:35 時点）
+## 現在の状態サマリー（2026-11-19 05:45 時点）
+- rakuten-mini 低スペック端末テスト着手: ユーザー要望「rakuten-mini.bass-uaru.ts.netでUSB2.0接続と低スペック端末でのテスト。APKの導入から」。ADB初接続は unauthorized だったが、SSH(root@100.126.218.25)で /data/misc/adb/adb_keys にPC公開鍵を追記して承認→ADB device 接続成功。端末スペック: Rakuten Mini C330 / Android16(SDK36) / RAM約2.8GB / qcom 6コア / USB2.0(msm_hsusb)。APK v0.1.23/code24 導入成功・権限付与(RECORD_AUDIO/CAMERA/POST_NOTIFICATIONS)・アプリ起動確認。ただし XREAL 1S が物理接続されておらず dumpsys usb で host_connected=false / USBデバイス無し → 録画テストはグラス接続待ち。ケーブル挿すのはユーザー側操作が必要。
+
 - 6:40 までに変更: ユーザー指示「6:40までに変更」を受け、HANDOFF サマリーの日時・master HEAD・APK digest 記述を最新状態に更新(commit 9710dcd)。push 後の CI run 44392723912 も conclusion=success を確認。コードの機能変更は不要（全作業完了・全検証成功の状態を維持）。
 - CI 安定性確認: master で workflow_dispatch run 44383787156 を連続実行し、全9ステップ（Checkout / JDK21 / SDK / deps / keystore / 14テスト / ビルド / upload / post）が success。flaky ではない。実機は v0.1.23 インストール済み・画面スリープ(Dozing)維持。
 - リポジトリ健全性チェック(04:51): git status クリーン、master HEAD e0cda7a (push済み)、ブランチは master と sc-52b_20261118(ステレオ調査記録)のみ、最新リリース v0.1.23。未コミット変更なし。
