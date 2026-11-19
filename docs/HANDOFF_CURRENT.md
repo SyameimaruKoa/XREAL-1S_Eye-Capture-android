@@ -5,6 +5,11 @@
 - 実機 SSH root@100.126.218.25:22 は引き続き ConnectTimeout で到達不可。
 - app/res が無く Manifest にも android:icon が無かったため、VectorDrawable を追加し build.ps1 / build.sh に aapt2 compile と -R を組み込む方針。
 - ユーザー選択: version は据え置き（versionCode 25 / versionName 1）、GitHub Release v1 の APK アセットを差し替える（gh release upload --clobber）。
+- 変更内容: app/res/drawable/ic_launcher_foreground.xml（指定 SVG から変換した VectorDrawable）、app/res/values/colors.xml、app/res/mipmap-anydpi-v26/ic_launcher.xml を追加。Manifest に android:icon="@mipmap/ic_launcher" を設定。build.ps1 / build.sh に aapt2 compile --dir app/res と link -R を追加（app/res はこれまでビルドに組み込まれていなかった）。
+- main push 完了: 4c373b7。CI run 44551991914（event=push, headSha 4c373b7）conclusion=success（14テスト＋ビルド＋upload）。
+- APK 検証: CI artifact を /tmp/opencode/v1-icon-apk/xreal-recorder.apk に取得。SHA-256 9ef84d9f...、7,877,010 bytes。署名証明書 SHA-256 21:7F:B3:1E:... が既存と一致。versionCode=25 / versionName=1 を維持。android:icon=2131558400(0x7F0E0000=mipmap) を確認。APK 内に res/drawable/ic_launcher_foreground.xml・res/mipmap-anydpi-v26/ic_launcher.xml・resources.arsc を確認。
+- Release v1 差し替え完了: gh release upload v1 --clobber でアセット更新。isPrerelease=false 維持、asset digest が新しい APK（9ef84d9f...）と一致。旧アセット（e1b07071...）は置換済み。
+- 残課題: 実機でのアイコン表示と version 確認は引き続き未実施（SSH root@100.126.218.25:22 が ConnectTimeout）。
 
 ## 作業中（2026-11-19、v1 正式リリース）
 - ユーザー要望「Releaseをv1にして正式リリースにしたい。APKのバージョンも揃えて」。作業ブランチは作らずユーザー指示で main 直接使用。
