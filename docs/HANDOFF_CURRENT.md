@@ -8,6 +8,10 @@
 - README に「アプリID（APPID）」セクションを追加。Release v1 本文にも APPID 変更を明記予定。
 - main push 完了: d60ab2f。CI run 44560842461 が起動、完了待ち。
 - GitHub Release: 0.X 系列のうち v0.1.0〜v0.1.7 も正式公開だったため、全 0.X 系列を pre-release に変更済み。現在 non-prerelease は v1 のみ。v1 は正式のまま APK 差し替えと本文更新を行う。
+- CI run 44560842461 は失敗: workflow のテストソースパス `app\src\jp\xreal\recorder\` が旧 APPID のまま残り、javac が file not found。ce50ea2 で `app\src\com\syameimarukoa\xreal_recorder\` に修正して再ビルド（run 44561348577）成功（14テスト＋ビルド＋upload）。
+- APK 検証: /tmp/opencode/v1-newappid/xreal-recorder.apk、SHA-256 06cc0762...、7,881,105 bytes。署名証明書 SHA-256 21:7F:B3:1E:... 一致。Manifest に com.syameimarukoa.xreal_recorder のみ（旧 jp.xreal.recorder なし）。versionCode=25 / versionName=1 維持。
+- Release v1: gh release upload --clobber でアセット差し替え完了、isPrerelease=false 維持。本文に APPID（新: com.syameimarukoa.xreal_recorder / 旧 v0.1.x: jp.xreal.recorder）と別アプリ・設定非引継ぎ・0.X 全プレリリースを明記。
+- 残作業: 実機へ新 APPID の APK をインストールし、1600p/30 の詳細測定を行う。旧 APPID のアプリは競合回避のため未アンインストール（測定前に判断）。
 
 ## 作業中（2026-11-20、ランチャーアイコンの縮小）
 - ユーザー報告「アイコンがはみ出まくっているので、はみ出ないように縮小して」。adaptive-icon の foreground は 108dp 領域に拡大され、中心 66dp（viewport 26 では座標 [5.05,20.95]）しか表示されない。紫アイコンの座標は x∈[1,22.7], y∈[3.4,22.25] で大幅にはみ出していた。
