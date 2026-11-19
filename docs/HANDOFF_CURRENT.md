@@ -1,5 +1,12 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
+## 作業中（2026-11-19、v1 正式リリース）
+- ユーザー要望「Releaseをv1にして正式リリースにしたい。APKのバージョンも揃えて」。作業ブランチは作らずユーザー指示で main 直接使用。
+- 変更: app/AndroidManifest.xml を versionCode 25 / versionName 1 に更新（v0.1.23/code24 から）。
+- 手順: main へコミット・push → CI(windows-latest) ビルド成功確認 → 成果物 APK を添付し GitHub Release v1 を正式公開（--prerelease なし）。
+- CI 修正: .github/workflows/build.yml の push 対象が master（リポジトリに master は存在せず既定ブランチは main）だったため main に変更。main push で CI が走るようにした。
+- 実機未確認: この環境の PATH に adb は無く、SSH root@100.126.218.25:22 は ConnectTimeout（乖離）で現在状態取得不可。APK の version/署名は CI 成果物で確認する。
+
 ## 現在の状態サマリー（2026-11-19 09:58 時点）
 - rakuten-mini 画質別電力比較: ロック解除後、UIで画質を 1600p/60 → 720p/30 に変更し録画。720p/30 は level63→57%/電圧3568→3376mV(-192mV)/温度32.3→33.6℃(+1.3℃)で170秒・362MBの動画を保存。ffprobeで HEVC1280x720/29.8fps/AAC1ch/170.048s を確認(VID_20261119_095146.mp4→.cache/rakuten-720p30b.mp4)。1600p/60 は30秒で -130mV/+0.2℃、muxMs 391-670ms。時間が異なるため単純比較は不可だが、低スペック端末ではどちらのモードでも録画で電圧降下・発熱が明確。adb pull は USB2.0 で 2.4MB/s と遅いが完全取得できた(SSH scp は停止して ADB 成果を採用)。
 
