@@ -10,6 +10,7 @@
 - ffprobe 結果: HEVC 1600×1200 / avg 29.85 fps（2451 フレーム / 82.1 秒）/ 映像 16.01 Mbps / AAC mono 48 kHz 128 kbps。対照 720p/30 は HEVC 1280×720 / 29.85 fps / 13.43 Mbps / AAC mono。
 - README に「実測値（TCP HEVC／実機・ffprobe）」表を追加し、1600p/30 と 720p/30 を掲載。冒頭の実測例にも 1600p/30 を追記。
 - 実機の最終状態: 新 APPID アプリがインストール済み・前面。録画サービスは停止済み。グラスは USB 接続のまま。
+- ユーザー指摘「実測例は下に表があるからいらない。情報を二重で掲載しないこと」を受け、README 冒頭の機能説明から実測値（fps／Mbps）を削除。数値は「実測値（TCP HEVC／実機・ffprobe）」表に一本化。
 
 ## 作業中（2026-11-20、APPID 変更）
 - ユーザー要望「APPIDを com.syameimarukoa.xreal_recorder に変更して。過去のAPKはすべてプレリリースにして。APPIDが違うことも表記」。
