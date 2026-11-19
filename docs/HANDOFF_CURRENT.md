@@ -6,6 +6,10 @@
 - 手順: main へコミット・push → CI(windows-latest) ビルド成功確認 → 成果物 APK を添付し GitHub Release v1 を正式公開（--prerelease なし）。
 - CI 修正: .github/workflows/build.yml の push 対象が master（リポジトリに master は存在せず既定ブランチは main）だったため main に変更。main push で CI が走るようにした。
 - 実機未確認: この環境の PATH に adb は無く、SSH root@100.126.218.25:22 は ConnectTimeout（乖離）で現在状態取得不可。APK の version/署名は CI 成果物で確認する。
+- main push 完了: fe63d65。CI run 44539663916（event=push, headBranch=main）conclusion=success（14テスト＋ビルド＋upload、headSha fe63d65）。
+- APK 検証: CI artifact を /tmp/opencode/v1-apk/xreal-recorder.apk に取得。SHA-256 e1b07071...、7,872,746 bytes。署名証明書 SHA-256 21:7F:B3:1E:... が v0.1.23 と一致（更新インストール可）。APK 内 AndroidManifest.xml を直接パースし versionCode=25 / versionName=1 を確認（v0.1.23 は 24 / 0.1.23）。
+- Release 公開完了: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v1 。isPrerelease=false（正式リリース）、asset xreal-recorder.apk の digest がローカル APK と一致。本文はユーザー選択で既知制限を明記（UAC 音声がモノラル複製／画面OFF中は DEV_CMD が届かない）。v0.1.23 は pre-release だった。
+- 残課題: 実機の versionName=1 / versionCode=25 は未確認（SSH root@100.126.218.25:22 が ConnectTimeout で端末に到達できず）。端末に到達できたら Release の APK を更新インストールして確認すること。
 
 ## 現在の状態サマリー（2026-11-19 09:58 時点）
 - rakuten-mini 画質別電力比較: ロック解除後、UIで画質を 1600p/60 → 720p/30 に変更し録画。720p/30 は level63→57%/電圧3568→3376mV(-192mV)/温度32.3→33.6℃(+1.3℃)で170秒・362MBの動画を保存。ffprobeで HEVC1280x720/29.8fps/AAC1ch/170.048s を確認(VID_20261119_095146.mp4→.cache/rakuten-720p30b.mp4)。1600p/60 は30秒で -130mV/+0.2℃、muxMs 391-670ms。時間が異なるため単純比較は不可だが、低スペック端末ではどちらのモードでも録画で電圧降下・発熱が明確。adb pull は USB2.0 で 2.4MB/s と遅いが完全取得できた(SSH scp は停止して ADB 成果を採用)。
