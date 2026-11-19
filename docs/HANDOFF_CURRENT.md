@@ -1,6 +1,9 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## 現在の状態サマリー（2026-11-19 05:45 時点）
+## 現在の状態サマリー（2026-11-19 09:45 時点）
+- rakuten-mini 電力効率試験(09:42-09:45): 低スペック端末 Rakuten Mini C330(Android16/RAM2.8GB/qcom 6コア/USB2.0 msm_hsusb)で XREAL 1S を USB2.0 接続。ADBは SSH(root@100.126.218.25)経由で adb_keys にPC公開鍵を追加して承認。table52 に 169.254.2.0/24 dev eth0 を追加してグラス ping/ポート(52995/52999/50180)OPEN を確認。APK v0.1.23 導入・権限付与・録画開始で service=3・映像 auIndex=300 まで到達・音声 USB-Audio XREAL 1S ルートを確認。停止→保存 VID_20261119_094221.mp4(95MB) を ffprobe で確認(HEVC1280x720/29.8fps/AAC1ch/46.2s)。★低スペックCPUでは muxMs が 391→670ms と高スペック端末(80-200ms)より大幅に遅い。電力比較(30秒): 録画中 level73→72%/電圧3606→3476mV(-130mV)/温度32.0→32.2℃、アイドル level71→70%/電圧3623→3566mV(-57mV)/温度32.3→32.2℃。録画は電圧降下が約2.3倍で電力負荷が明確。Charge counter は更新が粗く 30秒では変化なし。
+- 端末制約: この端末は充電とOTG(USB Host)を同時に使えない(ユーザー判明)。XREAL 接続時は充電不可でバッテリー駆動になる。
+
 - rakuten-mini 低スペック端末テスト着手: ユーザー要望「rakuten-mini.bass-uaru.ts.netでUSB2.0接続と低スペック端末でのテスト。APKの導入から」。ADB初接続は unauthorized だったが、SSH(root@100.126.218.25)で /data/misc/adb/adb_keys にPC公開鍵を追記して承認→ADB device 接続成功。端末スペック: Rakuten Mini C330 / Android16(SDK36) / RAM約2.8GB / qcom 6コア / USB2.0(msm_hsusb)。APK v0.1.23/code24 導入成功・権限付与(RECORD_AUDIO/CAMERA/POST_NOTIFICATIONS)・アプリ起動確認。ただし XREAL 1S が物理接続されておらず dumpsys usb で host_connected=false / USBデバイス無し → 録画テストはグラス接続待ち。ケーブル挿すのはユーザー側操作が必要。
 
 - 6:40 までに変更: ユーザー指示「6:40までに変更」を受け、HANDOFF サマリーの日時・master HEAD・APK digest 記述を最新状態に更新(commit 9710dcd)。push 後の CI run 44392723912 も conclusion=success を確認。コードの機能変更は不要（全作業完了・全検証成功の状態を維持）。
