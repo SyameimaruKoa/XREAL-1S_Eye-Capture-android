@@ -1,5 +1,16 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
+## 実行中（2026-11-20、1600p/30 実測の再開）
+- 引継ぎ記録を commit 1ba5bbb で push 済み。
+- 実機状態（作業開始時）: SC-52B / Android 15(SDK35) / root。recorder 系アプリは uninstall 済みで未インストール（`/data/data/jp.xreal.recorder` なし、`/data/data/com.syameimarukoa.xreal_recorder` なし）。`/data/local/tmp/v1.apk` は APPID 変更前の古い APK。
+- XREAL 1S は USB 接続済み（sysfs: idVendor=3318 / idProduct=043e / manufacturer=XREAL / product=XREAL 1S、`/sys/bus/usb/devices/1-1`）。
+- 作業手順: 新 APPID の APK を install → SharedPreferences に confirmed_live_mode="1600 1200 30" を設定 → 起動 → USB 権限付与 → findDevice の ensureDesiredLiveMode でグラスへ適用 → 録画／停止 → ffprobe 解析 → README 反映。
+- 実行結果: 新 APPID APK を `/data/local/tmp/v1-newappid.apk` から `pm install -r` 成功（versionCode 25 / versionName 1）。prefs に confirmed_live_mode="1600 1200 30" を設定して起動。USB 権限ダイアログは DPAD 下×2 + ENTER で許可、ランタイム権限は pm grant で付与して再起動。起動後 live_mode_uncertain が true→false に遷移し、モード確認処理が完了。
+- 録画: 既知座標 (540,730) をタップして開始、`am startservice -a jp.xreal.recorder.STOP` で停止。生成物 `VID_20261120_011318.mp4`（165,727,770 bytes）を /tmp/opencode/1600p30.mp4 へ取得。
+- ffprobe 結果: HEVC 1600×1200 / avg 29.85 fps（2451 フレーム / 82.1 秒）/ 映像 16.01 Mbps / AAC mono 48 kHz 128 kbps。対照 720p/30 は HEVC 1280×720 / 29.85 fps / 13.43 Mbps / AAC mono。
+- README に「実測値（TCP HEVC／実機・ffprobe）」表を追加し、1600p/30 と 720p/30 を掲載。冒頭の実測例にも 1600p/30 を追記。
+- 実機の最終状態: 新 APPID アプリがインストール済み・前面。録画サービスは停止済み。グラスは USB 接続のまま。
+
 ## 作業中（2026-11-20、APPID 変更）
 - ユーザー要望「APPIDを com.syameimarukoa.xreal_recorder に変更して。過去のAPKはすべてプレリリースにして。APPIDが違うことも表記」。
 - ユーザー選択「V1を新しいAPPIDに置き換えて、0.X系列をプレリリース」。version は 25/1 のまま、v1 のアセットを差し替える。0.X 系列は既にすべて pre-release なので確認のみ。
