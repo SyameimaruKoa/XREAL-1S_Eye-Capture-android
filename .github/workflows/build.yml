@@ -79,7 +79,7 @@ jobs:
                      'GlassesRecoveryPlan','GlassesStartupPlan','TcpDriftGate',
                      'TcpReadProgress','TcpTimestampRecovery','UsbMicrophoneSelector',
                      'VideoProgressWatchdog','VideoWriter')
-          $src = $names | ForEach-Object { "app\src\jp\xreal\recorder\$_.java" }
+          $src = $names | ForEach-Object { "app\src\com\syameimarukoa\xreal_recorder\$_.java" }
           $tests = Get-ChildItem tests\*Test.java | ForEach-Object { $_.FullName }
           & javac -cp $androidJar -d $out ($src + $tests)
           if ($LASTEXITCODE -ne 0) { throw "test compilation failed" }

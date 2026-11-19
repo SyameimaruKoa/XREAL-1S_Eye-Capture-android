@@ -6,6 +6,8 @@
 - 変更: AndroidManifest の package、app/src と tests の全 Java package 宣言、.github/workflows/build.yml のテスト実行クラス名を `com.syameimarukoa.xreal_recorder` に変更。src ディレクトリも git mv で移動。
 - Intent action 文字列（jp.xreal.recorder.*）は外部開発ツール互換のため維持。
 - README に「アプリID（APPID）」セクションを追加。Release v1 本文にも APPID 変更を明記予定。
+- main push 完了: d60ab2f。CI run 44560842461 が起動、完了待ち。
+- GitHub Release: 0.X 系列のうち v0.1.0〜v0.1.7 も正式公開だったため、全 0.X 系列を pre-release に変更済み。現在 non-prerelease は v1 のみ。v1 は正式のまま APK 差し替えと本文更新を行う。
 
 ## 作業中（2026-11-20、ランチャーアイコンの縮小）
 - ユーザー報告「アイコンがはみ出まくっているので、はみ出ないように縮小して」。adaptive-icon の foreground は 108dp 領域に拡大され、中心 66dp（viewport 26 では座標 [5.05,20.95]）しか表示されない。紫アイコンの座標は x∈[1,22.7], y∈[3.4,22.25] で大幅にはみ出していた。
