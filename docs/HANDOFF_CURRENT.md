@@ -1,5 +1,14 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
+## 作業中（2026-11-20、README の SS 掲載）
+- ユーザー要望「実機は sc-52b.bass-uaru.ts.net / redome の SS 掲載場所を更新して。見やすいようにね。また、それにあった SS を実機で撮影して掲載して」。README.md に SS 掲載セクションを新設し、実機で撮影した画像を配置する。
+- 実機接続: ssh root@sc-52b.bass-uaru.ts.net 成功。SC-52B / Android 15 / root(magisk) / screencap あり / 1440x3200（override 1080x2400）。インストール済みは v0.1.23/code24 で v1 ではない。
+- 方針: v1 APK を実機に更新してからメイン画面を撮影し、README に掲載する。
+- 実機更新: v1 APK を /data/local/tmp/v1.apk へ転送し pm install -r 成功。versionCode=25 / versionName=1 を確認。
+- 撮影: USB 権限ダイアログ（XREAL 1S へのアクセスを許可するか）が前面に出ていたため、uiautomator で OK 座標 (798,2140) を特定してタップ。MainActivity を前面化し screencap -p で 1080x2400 の画像を取得（/sdcard/ss_main.png → docs/images/screenshot-main.png）。
+- README 更新: 「スクリーンショット」セクションを新設し、img タグで幅 320px に制限して表示。キャプションで主な操作を説明。
+- 実機の状態: 画面点灯・MainActivity 前面・USB 権限付与済み。versionCode 25 / versionName 1 の APK で撮影している。
+
 ## 作業中（2026-11-20、ランチャーアイコン変更）
 - ユーザー要望: 提示された 26x26 SVG（黒背景＋紫のアイウェア／録画アイコン）をアプリアイコンに変更。
 - 実機 SSH root@100.126.218.25:22 は引き続き ConnectTimeout で到達不可。
