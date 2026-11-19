@@ -106,6 +106,12 @@ foreach ($line in (Get-Content $selectedPath)) {
     }
 }
 
+# Compile app resources (launcher icon) and add them to the link inputs.
+$appResZip = Join-Path $build "res-compiled\app.zip"
+& (Join-Path $bt "aapt2.exe") compile --dir (Join-Path $root "app\res") -o $appResZip
+if ($LASTEXITCODE -ne 0) { throw "aapt2 compile failed for app res" }
+$resZips += $appResZip
+
 # ---------------------------------------------------------------------------
 # aapt2 link: merge app manifest + all AAR resources; generate R.java for the
 # app package and every library package (so precompiled library bytecode can

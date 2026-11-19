@@ -12,14 +12,17 @@ PLATFORM="$SDK/platforms/android-35/android.jar"
 BUILD="$ROOT/build"
 
 rm -rf "$BUILD"
-mkdir -p "$BUILD/classes" "$BUILD/dex"
+mkdir -p "$BUILD/classes" "$BUILD/dex" "$BUILD/res-compiled"
+
+"$BT/aapt2" compile --dir "$ROOT/app/res" -o "$BUILD/res-compiled/app.zip"
 
 "$BT/aapt2" link \
   -o "$BUILD/base.apk" \
   -I "$PLATFORM" \
   --manifest "$ROOT/app/AndroidManifest.xml" \
   --min-sdk-version 31 \
-  --target-sdk-version 35
+  --target-sdk-version 35 \
+  -R "$BUILD/res-compiled/app.zip"
 
 find "$ROOT/app/src" -name '*.java' -print > "$BUILD/sources.txt"
 javac --release 8 -cp "$PLATFORM" -d "$BUILD/classes" @"$BUILD/sources.txt"

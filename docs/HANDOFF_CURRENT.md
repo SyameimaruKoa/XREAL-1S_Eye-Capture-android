@@ -1,5 +1,11 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
+## 作業中（2026-11-20、ランチャーアイコン変更）
+- ユーザー要望: 提示された 26x26 SVG（黒背景＋紫のアイウェア／録画アイコン）をアプリアイコンに変更。
+- 実機 SSH root@100.126.218.25:22 は引き続き ConnectTimeout で到達不可。
+- app/res が無く Manifest にも android:icon が無かったため、VectorDrawable を追加し build.ps1 / build.sh に aapt2 compile と -R を組み込む方針。
+- ユーザー選択: version は据え置き（versionCode 25 / versionName 1）、GitHub Release v1 の APK アセットを差し替える（gh release upload --clobber）。
+
 ## 作業中（2026-11-19、v1 正式リリース）
 - ユーザー要望「Releaseをv1にして正式リリースにしたい。APKのバージョンも揃えて」。作業ブランチは作らずユーザー指示で main 直接使用。
 - 変更: app/AndroidManifest.xml を versionCode 25 / versionName 1 に更新（v0.1.23/code24 から）。
