@@ -1,5 +1,15 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
+## 低スペック端末（Rakuten Mini）USB2.0 テストまとめ（2026-11-19）
+本セクションは PR #（rakuten-mini_20261119）用の差分。
+- 端末: Rakuten Mini C330 / Android16(SDK36) / RAM約2.8GB / qcom 6コア / USB2.0(msm_hsusb)。充電とOTG(USB Host)を同時に使えないハード制約あり。
+- ADB接続: 初回 unauthorized → SSH(root@100.126.218.25)で /data/misc/adb/adb_keys にPC公開鍵を追加して承認。以降 ADB device 接続。
+- USB2.0接続: XREAL 1S を認識(manufacturer_name=XREAL / product_name=XREAL 1S)。table52 に 169.254.2.0/24 dev eth0 を追加して ping と 52995/52999/50180 の OPEN を確認。
+- 録画: APK v0.1.23/code24 導入・権限付与後、DEV_CMD start で service=3・映像 auIndex=300 到達・音声 USB-Audio XREAL 1S ルートを確認。停止→保存した VID_20261119_094221.mp4(95MB) を ffprobe で確認(HEVC1280x720/29.8fps/AAC1ch/46.2s)。
+- 画質別: 720p/30 でも録画成功。VID_20261119_095146.mp4(362MB/170s) を ADB pull(2.4MB/s) で取得し ffprobe 確認(HEVC1280x720/29.8fps/AAC1ch)。
+- 電力効率: 1600p/60 30秒で電圧-130mV/温度+0.2℃(muxMs 391-670ms)、720p/30 170秒で電圧-192mV/温度+1.3℃、アイドル30秒で電圧-57mV/温度-0.1℃。低スペックCPUでは muxer 処理が高スペック端末(80-200ms)より大幅遅延し、録画で電圧降下・発熱が明確。
+- 画面OFF中は DEV_CMD が届かず録画開始不可(既知制約を再確認)。
+
 ## 現在の状態サマリー（2026-11-19 09:58 時点）
 - rakuten-mini 画質別電力比較: ロック解除後、UIで画質を 1600p/60 → 720p/30 に変更し録画。720p/30 は level63→57%/電圧3568→3376mV(-192mV)/温度32.3→33.6℃(+1.3℃)で170秒・362MBの動画を保存。ffprobeで HEVC1280x720/29.8fps/AAC1ch/170.048s を確認(VID_20261119_095146.mp4→.cache/rakuten-720p30b.mp4)。1600p/60 は30秒で -130mV/+0.2℃、muxMs 391-670ms。時間が異なるため単純比較は不可だが、低スペック端末ではどちらのモードでも録画で電圧降下・発熱が明確。adb pull は USB2.0 で 2.4MB/s と遅いが完全取得できた(SSH scp は停止して ADB 成果を採用)。
 
