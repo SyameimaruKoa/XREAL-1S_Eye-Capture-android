@@ -1,5 +1,9 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
+## README 更新（2026-11-19、v1）
+- 正式版 v1 と main の AndroidManifest.xml (versionName 1 / versionCode 25) を確認。README を公開向けに更新し、APK ダウンロード、画質・保存モード・主要機能・既知制限、スクリーンショット8枠を追加。
+- 作業ブランチ `SC-52C_20261119`。アプリコード・APK・リリースには変更なし。実機操作なし。画像は未提供のため掲載予定とし、実画像の到着後に `docs/screenshots/` へ配置して各画像タグを有効化する。
+
 ## 作業中（2026-11-19、v1 正式リリース）
 - ユーザー要望「Releaseをv1にして正式リリースにしたい。APKのバージョンも揃えて」。作業ブランチは作らずユーザー指示で main 直接使用。
 - 変更: app/AndroidManifest.xml を versionCode 25 / versionName 1 に更新（v0.1.23/code24 から）。
