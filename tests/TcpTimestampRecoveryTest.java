@@ -1,4 +1,4 @@
-package jp.xreal.recorder;
+package com.syameimarukoa.xreal_recorder;
 
 public final class TcpTimestampRecoveryTest {
     private static void require(boolean condition, String message) {

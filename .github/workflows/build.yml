@@ -84,7 +84,7 @@ jobs:
           & javac -cp $androidJar -d $out ($src + $tests)
           if ($LASTEXITCODE -ne 0) { throw "test compilation failed" }
           foreach ($file in Get-ChildItem tests\*Test.java) {
-            & java -cp $out "jp.xreal.recorder.$($file.BaseName)"
+            & java -cp $out "com.syameimarukoa.xreal_recorder.$($file.BaseName)"
             if ($LASTEXITCODE -ne 0) { throw "test failed: $($file.BaseName)" }
           }
 

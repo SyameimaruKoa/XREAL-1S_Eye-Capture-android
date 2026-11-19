@@ -1,4 +1,4 @@
-package jp.xreal.recorder;
+package com.syameimarukoa.xreal_recorder;
 
 import android.app.Notification;
 import android.app.NotificationChannel;

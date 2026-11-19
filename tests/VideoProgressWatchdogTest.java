@@ -1,4 +1,4 @@
-package jp.xreal.recorder;
+package com.syameimarukoa.xreal_recorder;
 
 public final class VideoProgressWatchdogTest {
     public static void main(String[] args) {

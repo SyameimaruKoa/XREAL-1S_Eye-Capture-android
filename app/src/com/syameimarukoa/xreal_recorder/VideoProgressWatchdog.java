@@ -1,4 +1,4 @@
-package jp.xreal.recorder;
+package com.syameimarukoa.xreal_recorder;
 
 /** Evaluates whether the video stream has stopped making frame progress. */
 final class VideoProgressWatchdog {

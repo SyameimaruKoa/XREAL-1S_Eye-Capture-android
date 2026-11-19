@@ -1,4 +1,4 @@
-package jp.xreal.recorder;
+package com.syameimarukoa.xreal_recorder;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;

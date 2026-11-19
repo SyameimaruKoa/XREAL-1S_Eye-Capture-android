@@ -1,4 +1,4 @@
-package jp.xreal.recorder;
+package com.syameimarukoa.xreal_recorder;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;

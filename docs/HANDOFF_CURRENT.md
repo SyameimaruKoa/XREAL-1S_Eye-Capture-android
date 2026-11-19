@@ -1,5 +1,12 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
+## 作業中（2026-11-20、APPID 変更）
+- ユーザー要望「APPIDを com.syameimarukoa.xreal_recorder に変更して。過去のAPKはすべてプレリリースにして。APPIDが違うことも表記」。
+- ユーザー選択「V1を新しいAPPIDに置き換えて、0.X系列をプレリリース」。version は 25/1 のまま、v1 のアセットを差し替える。0.X 系列は既にすべて pre-release なので確認のみ。
+- 変更: AndroidManifest の package、app/src と tests の全 Java package 宣言、.github/workflows/build.yml のテスト実行クラス名を `com.syameimarukoa.xreal_recorder` に変更。src ディレクトリも git mv で移動。
+- Intent action 文字列（jp.xreal.recorder.*）は外部開発ツール互換のため維持。
+- README に「アプリID（APPID）」セクションを追加。Release v1 本文にも APPID 変更を明記予定。
+
 ## 作業中（2026-11-20、ランチャーアイコンの縮小）
 - ユーザー報告「アイコンがはみ出まくっているので、はみ出ないように縮小して」。adaptive-icon の foreground は 108dp 領域に拡大され、中心 66dp（viewport 26 では座標 [5.05,20.95]）しか表示されない。紫アイコンの座標は x∈[1,22.7], y∈[3.4,22.25] で大幅にはみ出していた。
 - 修正: ic_launcher_foreground.xml の紫アイコン 3 group をラッパー group（scaleX/scaleY=0.65, translate=4.55）で包み、中心 13 に対して縮小。黒背景 path はラッパー外に維持。XML 構文検証 OK。
@@ -7,6 +14,8 @@
 ## 作業中（2026-11-20、1600p/30 の詳細測定）
 - ユーザー要望「1600p30の詳細測定ができていないので、やって」。README の実測例は 720p/30 と 1600p/60 のみで 1600×1200/30 が未掲載。バグ修正 APK を実機に入れ、1600p/30 で録画して fps／ビットレート／フレーム数／音声を測定し README に反映する。
 - 実機: uiautomator dump が null root を返す状態。input コマンドは動作。画質ボタン座標 [48,1252][897,1313]、録画開始ボタン座標 [48,663][1032,798]。
+- 対照（720p/30、CID VID_20261120_002712.mp4）: ffprobe で HEVC 1280×720 / avg 29.85 fps / 映像 13.43 Mbps / 4.05 秒 / AAC mono 48kHz 128 kbps を確認。PC 側に ffprobe/ffmpeg あり、端末側には無し。
+- 測定手順: CI 成果物を実機へ入れ、recording_options.xml に confirmed_live_mode="1600 1200 30" を設定してアプリ起動 → ensureDesiredLiveMode がグラスへ適用 → 録画開始／停止 → ステータスと ffprobe で fps／ビットレート／解像度／音声を確認。
 
 ## 作業中（2026-11-20、画質設定バグの修正）
 - ユーザー報告「メガネを刺した直後に画質を設定編集せずに録画を開始すると 720p30 で録画されてしまう」。

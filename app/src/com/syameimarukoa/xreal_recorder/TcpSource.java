@@ -1,4 +1,4 @@
-package jp.xreal.recorder;
+package com.syameimarukoa.xreal_recorder;
 
 import android.content.Context;
 import android.net.ConnectivityManager;

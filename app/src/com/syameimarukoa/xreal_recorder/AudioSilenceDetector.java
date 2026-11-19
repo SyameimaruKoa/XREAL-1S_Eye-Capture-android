@@ -1,4 +1,4 @@
-package jp.xreal.recorder;
+package com.syameimarukoa.xreal_recorder;
 
 /** Detects sustained near-silence in the mono signed 16-bit PCM being saved. */
 final class AudioSilenceDetector {

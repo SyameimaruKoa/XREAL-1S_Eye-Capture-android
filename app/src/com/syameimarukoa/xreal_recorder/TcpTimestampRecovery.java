@@ -1,4 +1,4 @@
-package jp.xreal.recorder;
+package com.syameimarukoa.xreal_recorder;
 
 /** Estimates a bounded timestamp only when the camera repeats its previous timestamp. */
 final class TcpTimestampRecovery {
