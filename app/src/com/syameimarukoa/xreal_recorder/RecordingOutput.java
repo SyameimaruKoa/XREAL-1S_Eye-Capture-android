@@ -13,7 +13,9 @@ import android.provider.OpenableColumns;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
@@ -245,15 +247,22 @@ final class RecordingOutput {
         if (tree != null) {
             return;
         }
-        ParcelFileDescriptor descriptor = resolver.openFileDescriptor(uri, "rw");
-        if (descriptor == null) {
-            throw new IOException("Could not open recording MP4 for telemetry injection");
-        }
-        File temporary = new File(context.getCacheDir(),
-                "telemetry_" + System.currentTimeMillis() + ".mp4");
+        long stamp = System.currentTimeMillis();
+        File source = new File(context.getCacheDir(), "inject_source_" + stamp + ".mp4");
+        File temporary = new File(context.getCacheDir(), "inject_result_" + stamp + ".mp4");
         try {
-            String source = "/proc/self/fd/" + descriptor.getFd();
-            Mp4TelemetryInjector.inject(new File(source), temporary, width, height,
+            try (InputStream original = resolver.openInputStream(uri);
+                 FileOutputStream copy = new FileOutputStream(source)) {
+                if (original == null) {
+                    throw new IOException("Could not open recording MP4 for telemetry injection");
+                }
+                byte[] buffer = new byte[64 * 1024];
+                int count;
+                while ((count = original.read(buffer)) >= 0) {
+                    copy.write(buffer, 0, count);
+                }
+            }
+            Mp4TelemetryInjector.inject(source, temporary, width, height,
                     fps, durationUs, imuRateHz, orientation, samples, firstImuTimeUs);
             if (!temporary.exists() || temporary.length() == 0) {
                 throw new IOException("Telemetry injection produced an empty file");
@@ -270,7 +279,9 @@ final class RecordingOutput {
                 }
             }
         } finally {
-            descriptor.close();
+            if (source.exists() && !source.delete()) {
+                source.deleteOnExit();
+            }
             if (temporary.exists() && !temporary.delete()) {
                 temporary.deleteOnExit();
             }
