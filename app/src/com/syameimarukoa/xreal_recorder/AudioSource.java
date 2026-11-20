@@ -242,6 +242,15 @@ public final class AudioSource {
             }
 
             while (running) {
+                if (paused) {
+                    try {
+                        Thread.sleep(50);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                    continue;
+                }
                 pcm.clear();
                 int n = record.read(pcm, readSize, AudioRecord.READ_BLOCKING);
                 if (n < 0) {
@@ -255,9 +264,6 @@ public final class AudioSource {
                     continue;
                 }
                 zeroReads = 0;
-                if (paused) {
-                    continue;
-                }
                 pcm.position(0);
                 pcm.limit(n);
 
