@@ -18,12 +18,12 @@ TCP（USB 上の NCM/ECM ネットワーク）経由の HEVC 受信を主経路�
 
 メイン画面（待機中）。録画の開始／停止、画質（720p/30・1600p/30・1600p/60・UVC HEVC）、保存モード、第2画面設定を配置しています。
 
-## アプリID（APPID）
+## アプリID（APPID）アプリケーションID
 
 - v1: `com.syameimarukoa.xreal_recorder`
 - v0.1.x（プレリリース）: `jp.xreal.recorder`
 
-APPID が異なるため、v0.1.x と v1 は別アプリとして扱われます。設定や保存済み画質は引き継がれません。
+applicationId が異なるため、v0.1.x と v1 は別アプリとして扱われます。設定や保存済み画質は引き継がれません。
 
 ## 実測値（TCP HEVC／実機・ffprobe）
 
