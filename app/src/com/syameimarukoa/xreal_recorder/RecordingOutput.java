@@ -52,7 +52,7 @@ final class RecordingOutput {
             values.put(MediaStore.Video.Media.DISPLAY_NAME, filename);
             values.put(MediaStore.Video.Media.MIME_TYPE, mimeType);
             values.put(MediaStore.Video.Media.RELATIVE_PATH,
-                    Environment.DIRECTORY_DCIM + "/100XREAL");
+                    Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL");
             values.put(MediaStore.Video.Media.DATE_TAKEN, captureTimeMs);
             values.put(MediaStore.Video.Media.IS_PENDING, 1);
             uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
@@ -83,7 +83,7 @@ final class RecordingOutput {
         } else {
             children = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
             selection = MediaStore.Video.Media.RELATIVE_PATH + "=?";
-            selectionArgs = new String[]{Environment.DIRECTORY_DCIM + "/100XREAL/"};
+            selectionArgs = new String[]{Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL/"};
         }
         ensureNameAvailable(resolver, children, selection, selectionArgs, base);
         if (tree == null) {
