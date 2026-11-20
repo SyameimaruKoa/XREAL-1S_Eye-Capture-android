@@ -29,8 +29,7 @@ final class Mp4TelemetryInjector {
 
     static void inject(Context context, File input, File output, int width, int height,
                        float fps, long durationUs, int imuRateHz, String orientation,
-                       List<GyroflowProto.ImuSample> samples, long firstImuTimeUs)
-            throws Exception {
+                       List<GyroflowProto.ImuSample> samples) throws Exception {
         if (context != null && PropertyBoxParserImpl.BOX_MAP_CACHE == null) {
             Properties mapping = new Properties();
             try (InputStream stream = context.getAssets().open("isoparser2-default.properties")) {
@@ -60,7 +59,7 @@ final class Mp4TelemetryInjector {
         double stepUs = durations[0] * 1_000_000.0 / timescale;
         List<byte[]> payloads = new ArrayList<>(durations.length);
         for (int i = 0; i < durations.length; i++) {
-            double startUs = firstImuTimeUs + i * stepUs;
+            double startUs = i * stepUs;
             double endUs = startUs + stepUs;
             List<GyroflowProto.ImuSample> frameSamples = i == 0
                     ? samples : Collections.<GyroflowProto.ImuSample>emptyList();
