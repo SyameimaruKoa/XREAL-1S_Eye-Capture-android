@@ -7,6 +7,8 @@ import org.mp4parser.Container;
 import org.mp4parser.PropertyBoxParserImpl;
 import org.mp4parser.boxes.iso14496.part12.EditBox;
 import org.mp4parser.boxes.iso14496.part12.EditListBox;
+import org.mp4parser.boxes.iso14496.part12.ChunkOffsetBox;
+import org.mp4parser.boxes.iso14496.part12.FreeSpaceBox;
 import org.mp4parser.boxes.iso14496.part12.MovieBox;
 import org.mp4parser.boxes.iso14496.part12.TrackBox;
 import org.mp4parser.muxer.Movie;
@@ -72,8 +74,38 @@ final class Mp4TelemetryInjector {
         Container container = builder.build(movie);
         long movieTimescale = builder.getTimescale(movie);
         fixTiming(container, movie, movieTimescale, movie.getTimescale());
+        addDetectionBeacon(container);
         try (FileOutputStream stream = new FileOutputStream(output)) {
             container.writeContainer(stream.getChannel());
+        }
+    }
+
+    /** Put the format magic in moov so detection never misses telemetry samples. */
+    private static void addDetectionBeacon(Container container) {
+        byte[] magic = "GyroflowProtobuf".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        long shift = 8L + magic.length;
+        for (Box box : container.getBoxes()) {
+            if (!(box instanceof MovieBox)) {
+                continue;
+            }
+            FreeSpaceBox beacon = new FreeSpaceBox();
+            beacon.setData(magic);
+            ((MovieBox) box).addBox(beacon);
+            break;
+        }
+        for (Box box : container.getBoxes()) {
+            if (!(box instanceof org.mp4parser.boxes.iso14496.part12.MovieBox)) {
+                continue;
+            }
+            for (TrackBox trackBox : ((MovieBox) box).getBoxes(TrackBox.class)) {
+                for (ChunkOffsetBox offsets : trackBox.getBoxes(ChunkOffsetBox.class, true)) {
+                    long[] values = offsets.getChunkOffsets();
+                    for (int i = 0; i < values.length; i++) {
+                        values[i] += shift;
+                    }
+                    offsets.setChunkOffsets(values);
+                }
+            }
         }
     }
 
@@ -84,6 +116,9 @@ final class Mp4TelemetryInjector {
             if (!(box instanceof MovieBox)) {
                 continue;
             }
+            FreeSpaceBox beacon = new FreeSpaceBox();
+            beacon.setData("GyroflowProtobuf".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            ((MovieBox) box).addBox(beacon);
             for (TrackBox trackBox : ((MovieBox) box).getBoxes(TrackBox.class)) {
                 if (editTimescale > 0 && editTimescale != movieTimescale) {
                     for (EditBox edit : trackBox.getBoxes(EditBox.class)) {

@@ -25,7 +25,7 @@ final class GyroflowProto {
         ByteArrayOutputStream clip = new ByteArrayOutputStream();
         writeVarint(clip, 1, width);
         writeVarint(clip, 2, height);
-        writeDouble(clip, 3, durationUs / 1000.0);
+        writeDouble(clip, 3, (double) durationUs);
         writeFloat(clip, 4, fps);
         writeFloat(clip, 5, fps);
         writeFloat(clip, 6, fps);
