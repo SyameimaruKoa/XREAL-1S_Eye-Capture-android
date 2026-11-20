@@ -347,18 +347,11 @@ final class TcpSource implements VideoSource {
                 if (accessUnits == 0) {
                     candidateFirstNs = candidateNs;
                     arrivalFirstNs = arrivalNs;
-                    // After a reconnect, continue from the last presentation time so the
-                    // muxer sees no gap; a gap would be written as frozen/NULL frames and
-                    // breaks seeking in post-processing tools.
-                    if (lastPtsNs > 0) {
-                        ptsNs = monotonic(lastPtsNs);
-                        cameraPtsAnchorNs = ptsNs;
-                        lastPtsNs = ptsNs;
-                    } else {
-                        cameraPtsAnchorNs = arrivalNs;
-                        ptsNs = arrivalNs;
-                        lastPtsNs = ptsNs;
-                    }
+                    // Only write frames that actually arrived. After a reconnect the
+                    // real-time gap stays in the timeline; no duplicate frames are made.
+                    cameraPtsAnchorNs = arrivalNs;
+                    ptsNs = arrivalNs;
+                    lastPtsNs = ptsNs;
                 } else {
                     long candidateStep = candidateNs - candidateLastNs;
                     long arrivalStep = arrivalNs - arrivalLastNs;
