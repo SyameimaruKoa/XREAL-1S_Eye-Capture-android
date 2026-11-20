@@ -445,8 +445,12 @@ public final class RecordService extends Service {
                                     }
                                     finalOutput.writeMetadata(cameraInfo.toString(2));
                                     if (finalImu != null && finalImu.getSampleCount() > 0) {
-                                        finalOutput.writeGyroCsv(finalImu.formatCsv(
-                                                finalMp4Name, captureTimeMs));
+                                        try {
+                                            finalOutput.writeGyroCsv(finalImu.formatCsv(
+                                                    finalMp4Name, captureTimeMs));
+                                        } catch (Throwable t) {
+                                            Log.e(TAG, "gcsv write failed", t);
+                                        }
                                     }
                                 }
                             } finally {
