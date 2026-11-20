@@ -207,7 +207,7 @@ final class RecordingOutput {
             values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
             values.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
             values.put(MediaStore.MediaColumns.RELATIVE_PATH,
-                    Environment.DIRECTORY_DCIM + "/100XREAL");
+                    Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL");
             values.put(MediaStore.MediaColumns.IS_PENDING, 1);
             gyroUri = resolver.insert(MediaStore.Files.getContentUri("external"), values);
         }
