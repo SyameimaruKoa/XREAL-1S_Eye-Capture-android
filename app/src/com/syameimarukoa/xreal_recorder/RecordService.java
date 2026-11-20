@@ -26,6 +26,7 @@ import android.view.Display;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
@@ -323,6 +324,28 @@ public final class RecordService extends Service {
             UsbManager um = (UsbManager) getSystemService(Context.USB_SERVICE);
             videoSource = videoRoute == ROUTE_TCP_HEVC ? new TcpSource(this)
                     : new UvcSource(um, device);
+            if (videoSource instanceof TcpSource) {
+                final String liveToken = java.util.UUID.randomUUID().toString().replace("-", "");
+                String liveMode = getSharedPreferences("recording_options", MODE_PRIVATE)
+                        .getString("confirmed_live_mode", "1600 1200 60");
+                final String restoredMode = liveMode == null ? "1600 1200 60" : liveMode;
+                ((TcpSource) videoSource).setReconnectHook(() -> {
+                    try {
+                        GlassesStatusClient client = new GlassesStatusClient(this);
+                        String current = client.readLiveMode(liveToken);
+                        if (!restoredMode.equals(current)) {
+                            client.setLiveMode(current, restoredMode, liveToken);
+                            String verified = client.readLiveMode(liveToken);
+                            if (!restoredMode.equals(verified)) {
+                                throw new IOException("画質を復元できませんでした: " + verified);
+                            }
+                        }
+                        Log.i(TAG, "live mode restored after reconnect: " + restoredMode);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+            }
             videoSource.open();
 
             long captureTimeMs = System.currentTimeMillis();

@@ -50,6 +50,7 @@ final class TcpSource implements VideoSource {
     private volatile int height = 720;
     private boolean dimensionsReceived;
     private boolean startSent;
+    private Runnable reconnectHook;
     private UvcSource.Listener listener;
     private long candidateFirstNs;
     private long candidateLastNs;
@@ -136,6 +137,11 @@ final class TcpSource implements VideoSource {
             try { socket.close(); } catch (IOException ignored) { }
             throw new IOException("XREALに接続できません。接続状態とVPNのローカルネットワーク設定を確認してください", e);
         }
+    }
+
+    /** Hook invoked after sockets are re-established but before the camera is started. */
+    void setReconnectHook(Runnable hook) {
+        reconnectHook = hook;
     }
 
     @Override
@@ -245,6 +251,9 @@ final class TcpSource implements VideoSource {
                 if (network != null) {
                     video = connect(network, 52995);
                     control = connect(network, 52999);
+                    if (reconnectHook != null) {
+                        reconnectHook.run();
+                    }
                     controlThread = new Thread(new Runnable() {
                         @Override
                         public void run() {
