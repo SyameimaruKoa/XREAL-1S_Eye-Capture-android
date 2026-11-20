@@ -29,6 +29,11 @@ KOTLIN_STDLIB = [
     ("org.jetbrains.kotlin", "kotlin-stdlib", "1.9.24", "jar"),
     ("org.jetbrains.kotlin", "kotlin-stdlib-common", "1.9.24", "jar"),
 ]
+ISO_PARSER = [
+    (CENTRAL, "org.mp4parser", "isoparser", "1.9.56", "jar", "isoparser.jar"),
+    (CENTRAL, "org.mp4parser", "muxer", "1.9.56", "jar", "muxer.jar"),
+    (CENTRAL, "org.slf4j", "slf4j-api", "1.7.36", "jar", "slf4j-api.jar"),
+]
 
 
 def maven_url(base, group, artifact, version, ext):
@@ -82,6 +87,12 @@ def main():
                 lines.append(name)
         with open(selected, "w", encoding="utf-8", newline="\n") as handle:
             handle.write("\n".join(lines) + "\n")
+    print("[5/5] Fetching isoparser for MP4 telemetry embedding...")
+    for base, group, artifact, version, ext, name in ISO_PARSER:
+        url = maven_url(base, group, artifact, version, ext)
+        dest = os.path.join(MEDIA_DIR, name)
+        if download(url, dest):
+            print("  isoparser: %s" % name)
     print("Done. Dependencies are in .cache/")
 
 

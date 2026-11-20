@@ -42,7 +42,7 @@ foreach ($name in @('media3-muxer', 'media3-common', 'media3-container')) {
     $zip.Dispose()
     $libJars += $jar
 }
-foreach ($name in @('annotation', 'guava')) {
+foreach ($name in @('annotation', 'guava', 'isoparser', 'muxer', 'slf4j-api')) {
     $jar = Join-Path $mediaDir "$name.jar"
     if (Test-Path $jar) { $libJars += $jar }
 }

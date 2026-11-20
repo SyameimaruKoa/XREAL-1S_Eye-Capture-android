@@ -28,6 +28,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -450,6 +451,33 @@ public final class RecordService extends Service {
                                                     finalMp4Name, captureTimeMs));
                                         } catch (Throwable t) {
                                             Log.e(TAG, "gcsv write failed", t);
+                                        }
+                                        if (!fmp4Mode && !rawMode) {
+                                            try {
+                                                List<GyroflowProto.ImuSample> imuSamples =
+                                                        finalImu.getSamples();
+                                                long telemetrySpanNs =
+                                                        lastVideoNs - firstVideoNs;
+                                                long durationUs = telemetrySpanNs > 0
+                                                        ? telemetrySpanNs / 1000L : 0L;
+                                                float fps = finalVideo.getFrameRate();
+                                                if (fps <= 0 && telemetrySpanNs > 0
+                                                        && videoFrames > 1) {
+                                                    fps = (float) ((videoFrames - 1)
+                                                            * 1_000_000_000.0 / telemetrySpanNs);
+                                                }
+                                                if (fps <= 0) fps = 30f;
+                                                int rate = durationUs > 0
+                                                        ? (int) (imuSamples.size() * 1_000_000L
+                                                        / durationUs) : 1000;
+                                                finalOutput.injectTelemetry(
+                                                        finalVideo.getWidth(),
+                                                        finalVideo.getHeight(), fps,
+                                                        durationUs, rate, "YxZ", imuSamples,
+                                                        finalImu.getFirstTimestampNs() / 1000L);
+                                            } catch (Throwable t) {
+                                                Log.e(TAG, "telemetry injection failed", t);
+                                            }
                                         }
                                     }
                                 }

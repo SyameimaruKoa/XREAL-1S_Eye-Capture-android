@@ -11,15 +11,19 @@ import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 /** Creates a user-visible MP4 without requiring direct filesystem access. */
 final class RecordingOutput {
+    private final Context context;
     private final ContentResolver resolver;
     private final Uri uri;
     private final boolean pendingMedia;
@@ -27,8 +31,9 @@ final class RecordingOutput {
     private final Uri tree;
     private boolean completed;
 
-    private RecordingOutput(ContentResolver resolver, Uri uri, boolean pendingMedia,
-                            String filename, Uri tree) {
+    private RecordingOutput(Context context, ContentResolver resolver, Uri uri,
+                            boolean pendingMedia, String filename, Uri tree) {
+        this.context = context;
         this.resolver = resolver;
         this.uri = uri;
         this.pendingMedia = pendingMedia;
@@ -52,7 +57,7 @@ final class RecordingOutput {
             values.put(MediaStore.Video.Media.DISPLAY_NAME, filename);
             values.put(MediaStore.Video.Media.MIME_TYPE, mimeType);
             values.put(MediaStore.Video.Media.RELATIVE_PATH,
-                    Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL");
+                    Environment.DIRECTORY_DCIM + "/100XREAL");
             values.put(MediaStore.Video.Media.DATE_TAKEN, captureTimeMs);
             values.put(MediaStore.Video.Media.IS_PENDING, 1);
             uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
@@ -67,7 +72,7 @@ final class RecordingOutput {
                 actualName = cursor.getString(0);
             }
         }
-        return new RecordingOutput(resolver, uri, pending, actualName, tree);
+        return new RecordingOutput(context, resolver, uri, pending, actualName, tree);
     }
 
     private static String nextFilename(ContentResolver resolver, Uri tree,
@@ -83,7 +88,7 @@ final class RecordingOutput {
         } else {
             children = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
             selection = MediaStore.Video.Media.RELATIVE_PATH + "=?";
-            selectionArgs = new String[]{Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL/"};
+            selectionArgs = new String[]{Environment.DIRECTORY_DCIM + "/100XREAL/"};
         }
         ensureNameAvailable(resolver, children, selection, selectionArgs, base);
         if (tree == null) {
@@ -225,6 +230,49 @@ final class RecordingOutput {
             values.put(MediaStore.MediaColumns.IS_PENDING, 0);
             if (resolver.update(gyroUri, values, null, null) != 1) {
                 throw new IOException("Could not publish recording gyro CSV");
+            }
+        }
+    }
+
+    /**
+     * Embeds Gyroflow telemetry into the recorded MP4. Fragmented MP4 and SAF
+     * tree outputs are intentionally left untouched; those keep the .gcsv sidecar.
+     */
+    void injectTelemetry(int width, int height, float fps, long durationUs,
+                         int imuRateHz, String orientation,
+                         List<GyroflowProto.ImuSample> samples, long firstImuTimeUs)
+            throws Exception {
+        if (tree != null) {
+            return;
+        }
+        ParcelFileDescriptor descriptor = resolver.openFileDescriptor(uri, "rw");
+        if (descriptor == null) {
+            throw new IOException("Could not open recording MP4 for telemetry injection");
+        }
+        File temporary = new File(context.getCacheDir(),
+                "telemetry_" + System.currentTimeMillis() + ".mp4");
+        try {
+            String source = "/proc/self/fd/" + descriptor.getFd();
+            Mp4TelemetryInjector.inject(new File(source), temporary, width, height,
+                    fps, durationUs, imuRateHz, orientation, samples, firstImuTimeUs);
+            if (!temporary.exists() || temporary.length() == 0) {
+                throw new IOException("Telemetry injection produced an empty file");
+            }
+            try (FileInputStream input = new FileInputStream(temporary);
+                 OutputStream destination = resolver.openOutputStream(uri, "w")) {
+                if (destination == null) {
+                    throw new IOException("Could not open recording MP4 for rewriting");
+                }
+                byte[] buffer = new byte[64 * 1024];
+                int count;
+                while ((count = input.read(buffer)) >= 0) {
+                    destination.write(buffer, 0, count);
+                }
+            }
+        } finally {
+            descriptor.close();
+            if (temporary.exists() && !temporary.delete()) {
+                temporary.deleteOnExit();
             }
         }
     }
