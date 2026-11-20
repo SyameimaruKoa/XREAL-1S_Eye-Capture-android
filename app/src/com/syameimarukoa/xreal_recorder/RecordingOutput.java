@@ -11,7 +11,11 @@ import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
@@ -233,9 +237,9 @@ final class RecordingOutput {
     }
 
     /**
-     * Embeds Gyroflow telemetry into the recorded MP4 in place, without copying
-     * the file to a temporary location. SAF tree outputs are left untouched and
-     * keep the .gcsv sidecar.
+     * Embeds Gyroflow telemetry into the recorded MP4. SAF tree outputs are left
+     * untouched and keep the .gcsv sidecar. The MP4 must be staged in the app
+     * cache because mp4parser reads samples lazily while writing the container.
      */
     boolean injectTelemetry(int width, int height, float fps, long durationUs,
                             int imuRateHz, String orientation,
@@ -244,16 +248,42 @@ final class RecordingOutput {
         if (tree != null) {
             return false;
         }
-        ParcelFileDescriptor descriptor = resolver.openFileDescriptor(uri, "rw");
-        if (descriptor == null) {
-            throw new IOException("Could not open recording MP4 for telemetry injection");
-        }
+        long stamp = System.currentTimeMillis();
+        File source = new File(context.getCacheDir(), "inject_source_" + stamp + ".mp4");
+        File result = new File(context.getCacheDir(), "inject_result_" + stamp + ".mp4");
         try {
-            Mp4TelemetryInjector.inject(context, descriptor, filename, width, height,
-                    fps, durationUs, imuRateHz, orientation, samples, firstImuTimeUs);
+            try (InputStream original = resolver.openInputStream(uri);
+                 FileOutputStream copy = new FileOutputStream(source)) {
+                if (original == null) {
+                    throw new IOException("Could not read recording MP4");
+                }
+                byte[] buffer = new byte[64 * 1024];
+                int count;
+                while ((count = original.read(buffer)) >= 0) {
+                    copy.write(buffer, 0, count);
+                }
+            }
+            Mp4TelemetryInjector.inject(context, source, result, width, height, fps,
+                    durationUs, imuRateHz, orientation, samples, firstImuTimeUs);
+            try (FileInputStream injected = new FileInputStream(result);
+                 OutputStream destination = resolver.openOutputStream(uri, "w")) {
+                if (destination == null) {
+                    throw new IOException("Could not rewrite recording MP4");
+                }
+                byte[] buffer = new byte[64 * 1024];
+                int count;
+                while ((count = injected.read(buffer)) >= 0) {
+                    destination.write(buffer, 0, count);
+                }
+            }
             return true;
         } finally {
-            descriptor.close();
+            if (source.exists() && !source.delete()) {
+                source.deleteOnExit();
+            }
+            if (result.exists() && !result.delete()) {
+                result.deleteOnExit();
+            }
         }
     }
 }
