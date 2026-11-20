@@ -347,11 +347,18 @@ final class TcpSource implements VideoSource {
                 if (accessUnits == 0) {
                     candidateFirstNs = candidateNs;
                     arrivalFirstNs = arrivalNs;
-                    // Only write frames that actually arrived. After a reconnect the
-                    // real-time gap stays in the timeline; no duplicate frames are made.
-                    cameraPtsAnchorNs = arrivalNs;
-                    ptsNs = arrivalNs;
-                    lastPtsNs = ptsNs;
+                    // Continue from the last presentation time after a reconnect so the
+                    // link-down gap is removed from the timeline. No duplicate frames are
+                    // written: only frames that actually arrived are enqueued.
+                    if (lastPtsNs > 0) {
+                        ptsNs = monotonic(lastPtsNs);
+                        cameraPtsAnchorNs = ptsNs;
+                        lastPtsNs = ptsNs;
+                    } else {
+                        cameraPtsAnchorNs = arrivalNs;
+                        ptsNs = arrivalNs;
+                        lastPtsNs = ptsNs;
+                    }
                 } else {
                     long candidateStep = candidateNs - candidateLastNs;
                     long arrivalStep = arrivalNs - arrivalLastNs;

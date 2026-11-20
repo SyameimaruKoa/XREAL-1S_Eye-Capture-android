@@ -476,14 +476,21 @@ public final class RecordService extends Service {
                                                         finalImu.getSamples();
                                                 long telemetrySpanNs =
                                                         lastVideoNs - firstVideoNs;
-                                                long durationUs = telemetrySpanNs > 0
-                                                        ? telemetrySpanNs / 1000L : 0L;
+                                                // Use the IMU timeline as the clip clock: a USB
+                                                // link-down gap is removed from the video PTS,
+                                                // so the receive-time span is too long.
+                                                double imuSpanUs = imuSamples.size() > 1
+                                                        ? imuSamples.get(imuSamples.size() - 1).timeUs
+                                                        - imuSamples.get(0).timeUs : 0.0;
+                                                long durationUs = imuSpanUs > 0
+                                                        ? (long) imuSpanUs : (telemetrySpanNs > 0
+                                                        ? telemetrySpanNs / 1000L : 0L);
                                                 // TCP HEVC reports a fixed placeholder fps, so
-                                                // derive the real rate from received frames/time.
+                                                // derive the real rate from frames over that span.
                                                 float fps = 0f;
-                                                if (telemetrySpanNs > 0 && videoFrames > 1) {
+                                                if (durationUs > 0 && videoFrames > 1) {
                                                     fps = (float) ((videoFrames - 1)
-                                                            * 1_000_000_000.0 / telemetrySpanNs);
+                                                            * 1_000_000.0 / durationUs);
                                                 }
                                                 if (fps <= 0) fps = finalVideo.getFrameRate();
                                                 if (fps <= 0) fps = 30f;
