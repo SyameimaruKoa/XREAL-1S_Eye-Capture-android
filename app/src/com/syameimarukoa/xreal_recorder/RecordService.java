@@ -592,6 +592,10 @@ public final class RecordService extends Service {
                 public void onStreamStalled(String reason) {
                     videoLinkMessage = "映像一時停止: 再接続待ち…";
                     status = "録画中: USB接続が切れました。再接続を待っています";
+                    AudioSource pausedAudio = finalAudioRef.get();
+                    if (pausedAudio != null) {
+                        pausedAudio.pause();
+                    }
                     Log.w(TAG, "video stream stalled: " + reason);
                 }
 
@@ -600,6 +604,10 @@ public final class RecordService extends Service {
                     videoLinkMessage = "";
                     if (finalVideo instanceof TcpSource) {
                         videoReconnectCount = ((TcpSource) finalVideo).getReconnectCount();
+                    }
+                    AudioSource resumedAudio = finalAudioRef.get();
+                    if (resumedAudio != null) {
+                        resumedAudio.resume();
                     }
                     status = "録画中: 映像を再開しました";
                     Log.i(TAG, "video stream resumed");

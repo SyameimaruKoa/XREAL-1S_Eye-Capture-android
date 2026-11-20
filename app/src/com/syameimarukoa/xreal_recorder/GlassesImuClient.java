@@ -5,6 +5,7 @@ import android.net.ConnectivityManager;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
+import android.os.SystemClock;
 
 import java.io.DataInputStream;
 import java.io.EOFException;
@@ -34,8 +35,10 @@ final class GlassesImuClient {
     private final float[] lastMagnetometer = new float[3];
 
     private final boolean collectSamples;
+    private final Context context;
 
-    private GlassesImuClient(boolean collectSamples) {
+    private GlassesImuClient(Context context, boolean collectSamples) {
+        this.context = context;
         this.collectSamples = collectSamples;
     }
 
@@ -44,7 +47,7 @@ final class GlassesImuClient {
     }
 
     static GlassesImuClient start(Context context, boolean collectSamples) {
-        GlassesImuClient client = new GlassesImuClient(collectSamples);
+        GlassesImuClient client = new GlassesImuClient(context, collectSamples);
         if (!client.open(context)) {
             return null;
         }
@@ -96,18 +99,37 @@ final class GlassesImuClient {
         running = true;
         byte[] header = new byte[HEADER_SIZE];
         byte[] body = new byte[ImuReportParser.BODY_SIZE];
-        try {
-            DataInputStream input = new DataInputStream(socket.getInputStream());
-            while (running) {
-                input.readFully(header);
-                if (!ImuReportParser.isHeader(header)) {
-                    continue;
+        while (running) {
+            try {
+                DataInputStream input = new DataInputStream(socket.getInputStream());
+                while (running) {
+                    input.readFully(header);
+                    if (!ImuReportParser.isHeader(header)) {
+                        continue;
+                    }
+                    input.readFully(body);
+                    parse(body);
                 }
-                input.readFully(body);
-                parse(body);
+            } catch (EOFException | IOException ignored) {
             }
-        } catch (EOFException ignored) {
-        } catch (IOException ignored) {
+            if (!running) {
+                break;
+            }
+            // The IMU stream is cut when USB is replugged. Retry until it comes back
+            // so motion data keeps being logged for the whole recording.
+            closeSocket();
+            long deadline = SystemClock.elapsedRealtime() + 60000;
+            while (running && SystemClock.elapsedRealtime() < deadline) {
+                if (open(context)) {
+                    break;
+                }
+                try {
+                    Thread.sleep(250);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
         }
     }
 
