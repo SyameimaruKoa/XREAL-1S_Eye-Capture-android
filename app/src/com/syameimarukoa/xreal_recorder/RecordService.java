@@ -478,12 +478,14 @@ public final class RecordService extends Service {
                                                         lastVideoNs - firstVideoNs;
                                                 long durationUs = telemetrySpanNs > 0
                                                         ? telemetrySpanNs / 1000L : 0L;
-                                                float fps = finalVideo.getFrameRate();
-                                                if (fps <= 0 && telemetrySpanNs > 0
-                                                        && videoFrames > 1) {
+                                                // TCP HEVC reports a fixed placeholder fps, so
+                                                // derive the real rate from received frames/time.
+                                                float fps = 0f;
+                                                if (telemetrySpanNs > 0 && videoFrames > 1) {
                                                     fps = (float) ((videoFrames - 1)
                                                             * 1_000_000_000.0 / telemetrySpanNs);
                                                 }
+                                                if (fps <= 0) fps = finalVideo.getFrameRate();
                                                 if (fps <= 0) fps = 30f;
                                                 int rate = durationUs > 0
                                                         ? (int) (imuSamples.size() * 1_000_000L
