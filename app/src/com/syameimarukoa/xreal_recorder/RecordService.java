@@ -509,7 +509,7 @@ public final class RecordService extends Service {
                                                 embedded = finalOutput.injectTelemetry(
                                                         finalVideo.getWidth(),
                                                         finalVideo.getHeight(), fps,
-                                                        durationUs, rate, "xYZ", imuSamples,
+                                                        durationUs, rate, "xYz", imuSamples,
                                                         finalImu.getFirstTimestampNs() / 1000L);
                                             } catch (Throwable t) {
                                                 Log.e(TAG, "telemetry injection failed", t);
