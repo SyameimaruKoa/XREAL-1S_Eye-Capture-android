@@ -1,5 +1,17 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
+## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
+- ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。
+- 作業ブランチ: `OptiPlex-3040-MFF_20261120`（main から作成）。開始時 main はクリーン、HEAD は origin/main と同期。
+- 実機状態（開始時）: SC-52B / Android 15 / root は SSH `root@sc-52b.bass-uaru.ts.net` で応答。画面は Dozing（mWakefulness=Dozing / mHoldingDisplaySuspendBlocker=false）。`com.syameimarukoa.xreal_recorder` インストール済み。 rakuten-mini.bass-uaru.ts.net は SSH 接続タイムアウト。この環境の PATH に adb は無く、SSH 経由の shell を使用。
+- 調査完了: #2 は `RecordingPresentation` の sideMode 縦予算超过で温度ビューがクリップ。固定モードは問題なし。#3 は `WaveformView` が全バー同色で、`AudioSource` は peak のみを渡している。#5 はアプリにモーションデータが一切無く、グラス IMU（TCP 52990 系／AXR field16）は連続データ未到達。Gyroflow が同名 `.gcsv` を自動検出できることを公式 docs で確認。
+- 変更内容:
+  - #2: sideMode の padding 32→16、温度 48→32sp、波形 220→140px、温度を ` / ` で1行化。固定モードは据え置き。
+  - #3: `WaveformView.onDraw()` で peak<4096 緑、<16384 黄、それ以上赤。振幅計算・履歴・リスナーは据え置き。
+  - #5: `GyroCsvFormatter`（Gyroflow v1.3 `.gcsv`）と `MotionLogger`（TYPE_GYROSCOPE + TYPE_ACCELEROMETER、SENSOR_DELAY_GAME、最大20万行）を追加。`RecordService` が MP4/fMP4 保存時に同名 `.gcsv` をサイドカー保存。`RecordingOutput.writeGyroCsv()` と collision チェック、CI テスト対象に `GyroCsvFormatter` と新規テストを追加。スマホセンサーであることをヘッダ note に明記。
+- 未検証: ローカルに Android SDK が無くビルド・テスト未実施。実機はグラス未接続のため第2画面と録画後 `.gcsv` の実機確認も未実施。次はブランチ push → CI(workflow_dispatch) → 実機で確認。
+- 作業後は画面を Dozing に戻し、結果・未解決事項を本ファイルに追記する。
+
 ## 実行中（2026-11-20、1600p/30 実測の再開）
 - 引継ぎ記録を commit 1ba5bbb で push 済み。
 - 実機状態（作業開始時）: SC-52B / Android 15(SDK35) / root。recorder 系アプリは uninstall 済みで未インストール（`/data/data/jp.xreal.recorder` なし、`/data/data/com.syameimarukoa.xreal_recorder` なし）。`/data/local/tmp/v1.apk` は APPID 変更前の古い APK。

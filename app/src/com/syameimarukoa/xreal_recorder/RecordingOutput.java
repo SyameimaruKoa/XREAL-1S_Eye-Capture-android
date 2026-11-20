@@ -106,7 +106,8 @@ final class RecordingOutput {
             while (cursor.moveToNext()) {
                 String name = cursor.getString(0);
                 if (name != null && (name.equalsIgnoreCase(base + ".mp4")
-                        || name.equalsIgnoreCase(base + ".json"))) {
+                        || name.equalsIgnoreCase(base + ".json")
+                        || name.equalsIgnoreCase(base + ".gcsv"))) {
                     throw new IOException("Recording name already exists: " + base);
                 }
             }
@@ -189,6 +190,41 @@ final class RecordingOutput {
             values.put(MediaStore.MediaColumns.IS_PENDING, 0);
             if (resolver.update(metadataUri, values, null, null) != 1) {
                 throw new IOException("Could not publish recording metadata");
+            }
+        }
+    }
+
+    void writeGyroCsv(String csv) throws IOException {
+        String name = filename.replaceFirst("(?i)\\.(mp4|mkv)$", "") + ".gcsv";
+        Uri gyroUri;
+        if (tree != null) {
+            Uri directory = DocumentsContract.buildDocumentUriUsingTree(tree,
+                    DocumentsContract.getTreeDocumentId(tree));
+            gyroUri = DocumentsContract.createDocument(resolver, directory,
+                    "text/csv", name);
+        } else {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, "text/csv");
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH,
+                    Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL");
+            values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+            gyroUri = resolver.insert(MediaStore.Files.getContentUri("external"), values);
+        }
+        if (gyroUri == null) {
+            throw new IOException("Could not create recording gyro CSV");
+        }
+        try (OutputStream stream = resolver.openOutputStream(gyroUri, "w")) {
+            if (stream == null) {
+                throw new IOException("Could not open recording gyro CSV");
+            }
+            stream.write(csv.getBytes(StandardCharsets.UTF_8));
+        }
+        if (tree == null) {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            if (resolver.update(gyroUri, values, null, null) != 1) {
+                throw new IOException("Could not publish recording gyro CSV");
             }
         }
     }

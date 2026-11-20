@@ -292,6 +292,7 @@ public final class RecordService extends Service {
         File hevcFile = null;
         File wavFile = null;
         File adtsFile = null;
+        MotionLogger motionLogger = null;
         final boolean rawMode = saveMode == SAVE_MODE_RAW || saveMode == SAVE_MODE_RAW_ONLY;
         final boolean rawOnly = saveMode == SAVE_MODE_RAW_ONLY;
         final boolean fmp4Mode = saveMode == SAVE_MODE_FMP4;
@@ -332,6 +333,9 @@ public final class RecordService extends Service {
                         ? hevcFile.getName().replaceFirst("(?i)\\.hevc4?$", ".mp4")
                         : "VID_" + ts + ".mp4";
             }
+            motionLogger = MotionLogger.start(this);
+            final MotionLogger finalMotion = motionLogger;
+            final String finalMp4Name = mp4Name;
             final JSONObject cameraInfo = new JSONObject();
             cameraInfo.put("schema_version", 1);
             cameraInfo.put("file", mp4Name);
@@ -435,6 +439,10 @@ public final class RecordService extends Service {
                                 }
                                 if (finalOutput != null) {
                                     finalOutput.writeMetadata(cameraInfo.toString(2));
+                                    if (finalMotion != null) {
+                                        finalOutput.writeGyroCsv(finalMotion.formatCsv(
+                                                finalMp4Name, captureTimeMs));
+                                    }
                                 }
                             } finally {
                                 if (finalOutput != null) {
@@ -648,6 +656,12 @@ public final class RecordService extends Service {
             }
         } finally {
             telemetryRunning = false;
+            if (motionLogger != null) {
+                try {
+                    motionLogger.stop();
+                } catch (Throwable ignored) {
+                }
+            }
             if (audio != null) {
                 try {
                     audio.stop();
