@@ -68,6 +68,7 @@ final class TcpSource implements VideoSource {
     private long previousArrivalStepNs;
     private long cameraPtsAnchorNs;
     private long lastPtsNs;
+    private int skipReanchorFrames;
     private long clockReanchors;
     private long clockRejected;
     private long clockForcedSteps;
@@ -357,6 +358,9 @@ final class TcpSource implements VideoSource {
                         ptsNs = monotonic(lastPtsNs);
                         cameraPtsAnchorNs = ptsNs;
                         lastPtsNs = ptsNs;
+                        // The camera clock jumped during the link-down gap; keep the
+                        // old PTS anchor for a while instead of reanchoring to arrival.
+                        skipReanchorFrames = 300;
                     } else {
                         cameraPtsAnchorNs = arrivalNs;
                         ptsNs = arrivalNs;
@@ -445,7 +449,9 @@ final class TcpSource implements VideoSource {
         }
         timestampRecovery.observeStep(candidateNs - candidateLastNs);
         long drift = cameraPtsAnchorNs + (candidateNs - candidateFirstNs) - arrivalNs;
-        if (driftGate.shouldReanchor(drift, arrivalNs)) {
+        if (skipReanchorFrames > 0) {
+            skipReanchorFrames--;
+        } else if (driftGate.shouldReanchor(drift, arrivalNs)) {
             cameraPtsAnchorNs -= drift;
             clockReanchors++;
         }
