@@ -201,13 +201,13 @@ final class RecordingOutput {
             Uri directory = DocumentsContract.buildDocumentUriUsingTree(tree,
                     DocumentsContract.getTreeDocumentId(tree));
             gyroUri = DocumentsContract.createDocument(resolver, directory,
-                    "text/csv", name);
+                    "application/octet-stream", name);
         } else {
             ContentValues values = new ContentValues();
             values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
-            values.put(MediaStore.MediaColumns.MIME_TYPE, "text/csv");
+            values.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
             values.put(MediaStore.MediaColumns.RELATIVE_PATH,
-                    Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL");
+                    Environment.DIRECTORY_DCIM + "/100XREAL");
             values.put(MediaStore.MediaColumns.IS_PENDING, 1);
             gyroUri = resolver.insert(MediaStore.Files.getContentUri("external"), values);
         }
