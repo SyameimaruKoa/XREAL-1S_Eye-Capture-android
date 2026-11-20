@@ -32,12 +32,23 @@ final class GlassesImuClient {
     private float lastTemperature = Float.NaN;
     private final float[] lastMagnetometer = new float[3];
 
+    private final boolean collectSamples;
+
+    private GlassesImuClient(boolean collectSamples) {
+        this.collectSamples = collectSamples;
+    }
+
     static GlassesImuClient start(Context context) {
-        GlassesImuClient client = new GlassesImuClient();
+        return start(context, true);
+    }
+
+    static GlassesImuClient start(Context context, boolean collectSamples) {
+        GlassesImuClient client = new GlassesImuClient(collectSamples);
         if (!client.open(context)) {
             return null;
         }
         client.thread = new Thread(client::readLoop, "xreal-imu");
+        client.thread.setDaemon(true);
         client.thread.start();
         return client;
     }
@@ -110,11 +121,12 @@ final class GlassesImuClient {
                 System.arraycopy(sample.magnetometer, 0, lastMagnetometer, 0, 3);
                 return;
             }
-            if (rows.size() >= MAX_ROWS || !allFinite(sample.gyro) || !allFinite(sample.accel)) {
-                return;
-            }
             if (Float.isFinite(sample.temperature)) {
                 lastTemperature = sample.temperature;
+            }
+            if (!collectSamples || rows.size() >= MAX_ROWS
+                    || !allFinite(sample.gyro) || !allFinite(sample.accel)) {
+                return;
             }
             if (firstTimestampNs < 0) {
                 firstTimestampNs = sample.timestampNs;
@@ -143,6 +155,12 @@ final class GlassesImuClient {
     int getSampleCount() {
         synchronized (rows) {
             return imuFrames;
+        }
+    }
+
+    Float getTemperatureC() {
+        synchronized (rows) {
+            return Float.isFinite(lastTemperature) ? lastTemperature : null;
         }
     }
 

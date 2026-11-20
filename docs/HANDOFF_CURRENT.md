@@ -13,6 +13,7 @@
   - #2: sideMode の padding 32→16、温度 48→32sp、波形 220→140px、温度を ` / ` で1行化。固定モードは据え置き。
   - #3: `WaveformView.onDraw()` で peak<4096 緑、<16384 黄、それ以上赤。振幅計算・履歴・リスナーは据え置き。
   - #5: `GlassesImuClient`（52998 購読、6軸を `.gcsv` 用に行化、磁気・温度は JSON メタデータ）と `ImuReportParser`（純 Java、テスト済み）を追加。`RecordService` が録画開始時に開始し、終了時に停止して MP4 と同名 `.gcsv` を保存。`GyroCsvFormatter` の `ascale` を m/s²→g 換算(0.10197162)に修正。MP4 埋め込みは Gyroflow protobuf トラック(`hdlr=meta`/`stsd=gyrf`)とフレーム同期が必要で既存 `MediaMuxer` では大改造になるため `.gcsv` サイドカーを維持（自動検出される）。
+- 温度表示: AXR 能力情報では5系統（id6 グラス、id11/12 IMU、id13/14 NTC）が公開されているが、アプリから到達できるのは 52999 の `NRTemperatureGetValue`（グラス）と 52998 レポートの温度（IMU）の2系統のみ。実機で両者は異なる値（例: 61.0℃ と 47.4℃）を返すことを確認。`GlassesImuClient` に温度取得と軽量モード（`collectSamples=false`）を追加し、録画オーバーレイとメイン画面の両方に「グラス / IMU / スマホ」の3温度を表示。52998 への2同時接続も実機で確認済み。52999 の温度 RPC は field1 を 0〜15 変えても同じ値で、センサー選択は不可。
 - 検証: `GyroCsvFormatterTest` と `ImuReportParserTest` はローカル javac で成功。ローカルに Android SDK が無いため APK ビルドは CI で実施。
 - 未検証: #2 の第2画面と #5 の録画後 `.gcsv` の実機確認。グラスを挿し直した後で端末は Awake（画面 ON）。
 - CI: run `44690367126` と `44690758478` は成功。現状の再実行が必要。

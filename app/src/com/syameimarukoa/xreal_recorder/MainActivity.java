@@ -102,6 +102,7 @@ public class MainActivity extends Activity {
     private volatile String telemetryText = "グラス情報: 取得待ち";
     private Thread telemetryThread;
     private volatile boolean telemetryRunning;
+    private GlassesImuClient telemetryImuClient;
     private int selectedVideoRoute;
     private static final String[] VIDEO_ROUTES = {
             "720p/30（広い画角）",
@@ -632,6 +633,10 @@ public class MainActivity extends Activity {
     protected void onStop() {
         super.onStop();
         telemetryRunning = false;
+        if (telemetryImuClient != null) {
+            telemetryImuClient.stop();
+            telemetryImuClient = null;
+        }
         updateConfirmedLiveMode(null);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setScreenSaverVisible(false);
@@ -1402,6 +1407,7 @@ public class MainActivity extends Activity {
         }
         telemetryRunning = true;
         telemetryThread = new Thread(() -> {
+            telemetryImuClient = GlassesImuClient.start(MainActivity.this, false);
             while (telemetryRunning) {
                 StringBuilder sb = new StringBuilder();
                 try {
@@ -1424,6 +1430,14 @@ public class MainActivity extends Activity {
                     }
                 } catch (Exception e) {
                     sb.append("グラス情報: 取得できません (").append(e.getMessage()).append(")");
+                }
+                GlassesImuClient imu = telemetryImuClient;
+                if (imu != null) {
+                    Float imuTemp = imu.getTemperatureC();
+                    if (imuTemp != null) {
+                        if (sb.length() > 0) sb.append(" / ");
+                        sb.append(String.format(Locale.US, "IMU温度 %.1f℃", imuTemp));
+                    }
                 }
                 String phoneTemp = readPhoneBatteryTemperature();
                 if (phoneTemp != null) {

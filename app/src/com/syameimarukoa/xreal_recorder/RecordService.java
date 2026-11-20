@@ -83,6 +83,7 @@ public final class RecordService extends Service {
     private int saveMode = SAVE_MODE_MP4;
     private static volatile long recordingStartedMs;
     private static volatile String thermalSummary = "";
+    private static volatile GlassesImuClient telemetryImuClient;
     private static volatile String videoLinkMessage = "";
     private static volatile int videoReconnectCount;
     private Thread telemetryThread;
@@ -334,6 +335,7 @@ public final class RecordService extends Service {
                         : "VID_" + ts + ".mp4";
             }
             imuClient = GlassesImuClient.start(this);
+            telemetryImuClient = imuClient;
             final GlassesImuClient finalImu = imuClient;
             final String finalMp4Name = mp4Name;
             final JSONObject cameraInfo = new JSONObject();
@@ -676,6 +678,7 @@ public final class RecordService extends Service {
                     imuClient.stop();
                 } catch (Throwable ignored) {
                 }
+                telemetryImuClient = null;
             }
             if (writer != null) {
                 try {
@@ -834,6 +837,14 @@ public final class RecordService extends Service {
                         sb.append(String.format(Locale.US, "グラス %.1f℃", snap.temperatureC));
                     }
                 } catch (Exception ignored) {
+                }
+                GlassesImuClient imu = telemetryImuClient;
+                if (imu != null) {
+                    Float imuTemp = imu.getTemperatureC();
+                    if (imuTemp != null) {
+                        if (sb.length() > 0) sb.append(" / ");
+                        sb.append(String.format(Locale.US, "IMU %.1f℃", imuTemp));
+                    }
                 }
                 try {
                     Intent battery = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
