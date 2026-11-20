@@ -452,7 +452,7 @@ public final class RecordService extends Service {
                                         } catch (Throwable t) {
                                             Log.e(TAG, "gcsv write failed", t);
                                         }
-                                        if (!fmp4Mode && !rawMode) {
+                                        if (!rawMode) {
                                             try {
                                                 List<GyroflowProto.ImuSample> imuSamples =
                                                         finalImu.getSamples();
