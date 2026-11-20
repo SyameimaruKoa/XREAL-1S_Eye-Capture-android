@@ -358,9 +358,10 @@ final class TcpSource implements VideoSource {
                         ptsNs = monotonic(lastPtsNs);
                         cameraPtsAnchorNs = ptsNs;
                         lastPtsNs = ptsNs;
-                        // The camera clock jumped during the link-down gap; keep the
-                        // old PTS anchor for a while instead of reanchoring to arrival.
-                        skipReanchorFrames = 300;
+                        // The camera clock jumped during the link-down gap; the anchor
+                        // no longer matches arrival time. Lock it permanently so the
+                        // drift gate cannot jump the PTS back to real time.
+                        skipReanchorFrames = Integer.MAX_VALUE;
                     } else {
                         cameraPtsAnchorNs = arrivalNs;
                         ptsNs = arrivalNs;
