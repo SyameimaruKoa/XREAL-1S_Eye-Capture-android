@@ -110,7 +110,7 @@ final class GlassesImuClient {
                     input.readFully(body);
                     parse(body);
                 }
-            } catch (EOFException | IOException ignored) {
+            } catch (IOException ignored) {
             }
             if (!running) {
                 break;
