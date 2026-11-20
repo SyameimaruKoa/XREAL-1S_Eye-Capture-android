@@ -133,6 +133,9 @@ final class GlassesImuClient {
                 firstTimestampNs = sample.timestampNs;
             }
             long timeMs = (sample.timestampNs - firstTimestampNs) / 1_000_000L;
+            // Store raw sensor values unchanged (only rad/s -> deg/s unit conversion
+            // in GyroflowProto). Axis/roll correction is left to Gyroflow via the
+            // embedded orientation and imu_rotation metadata — no double negation.
             rows.add(GyroCsvFormatter.row(timeMs, sample.gyro, sample.accel));
             samples.add(new GyroflowProto.ImuSample(sample.timestampNs / 1000.0,
                     sample.gyro[0], sample.gyro[1], sample.gyro[2],
