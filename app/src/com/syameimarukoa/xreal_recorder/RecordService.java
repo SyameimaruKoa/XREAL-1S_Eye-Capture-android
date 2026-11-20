@@ -487,9 +487,18 @@ public final class RecordService extends Service {
                                                 }
                                                 if (fps <= 0) fps = finalVideo.getFrameRate();
                                                 if (fps <= 0) fps = 30f;
-                                                int rate = durationUs > 0
-                                                        ? (int) (imuSamples.size() * 1_000_000L
-                                                        / durationUs) : 1000;
+                                                // Derive the IMU rate from the sensor's own
+                                                // timestamps, not the video timeline.
+                                                int rate = 1000;
+                                                if (imuSamples.size() > 1) {
+                                                    double spanUs = imuSamples.get(
+                                                            imuSamples.size() - 1).timeUs
+                                                            - imuSamples.get(0).timeUs;
+                                                    if (spanUs > 0) {
+                                                        rate = (int) (imuSamples.size()
+                                                                * 1_000_000.0 / spanUs);
+                                                    }
+                                                }
                                                 embedded = finalOutput.injectTelemetry(
                                                         finalVideo.getWidth(),
                                                         finalVideo.getHeight(), fps,
