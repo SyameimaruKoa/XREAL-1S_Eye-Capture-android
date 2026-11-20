@@ -262,7 +262,7 @@ final class RecordingOutput {
                     copy.write(buffer, 0, count);
                 }
             }
-            Mp4TelemetryInjector.inject(source, temporary, width, height,
+            Mp4TelemetryInjector.inject(context, source, temporary, width, height,
                     fps, durationUs, imuRateHz, orientation, samples, firstImuTimeUs);
             if (!temporary.exists() || temporary.length() == 0) {
                 throw new IOException("Telemetry injection produced an empty file");

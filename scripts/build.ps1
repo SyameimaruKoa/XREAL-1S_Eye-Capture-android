@@ -129,6 +129,8 @@ if ($libPackages.Count -gt 0) {
     $aaptArgs += @("--extra-packages", (($libPackages | Select-Object -Unique) -join ':'))
 }
 foreach ($z in $resZips) { $aaptArgs += @("-R", $z) }
+$assetsDir = Join-Path $root "app\assets"
+if (Test-Path $assetsDir) { $aaptArgs += @("-A", $assetsDir) }
 & (Join-Path $bt "aapt2.exe") $aaptArgs
 if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed" }
 

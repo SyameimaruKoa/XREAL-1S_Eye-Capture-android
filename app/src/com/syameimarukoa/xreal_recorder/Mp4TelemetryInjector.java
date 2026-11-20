@@ -1,6 +1,9 @@
 package com.syameimarukoa.xreal_recorder;
 
+import android.content.Context;
+
 import org.mp4parser.Container;
+import org.mp4parser.PropertyBoxParserImpl;
 import org.mp4parser.muxer.Movie;
 import org.mp4parser.muxer.Track;
 import org.mp4parser.muxer.builder.DefaultMp4Builder;
@@ -8,7 +11,9 @@ import org.mp4parser.muxer.container.mp4.MovieCreator;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Properties;
 import java.util.Collections;
 import java.util.List;
 
@@ -17,10 +22,17 @@ final class Mp4TelemetryInjector {
     private Mp4TelemetryInjector() {
     }
 
-    static void inject(File input, File output, int width, int height, float fps,
-                       long durationUs, int imuRateHz, String orientation,
+    static void inject(Context context, File input, File output, int width, int height,
+                       float fps, long durationUs, int imuRateHz, String orientation,
                        List<GyroflowProto.ImuSample> samples, long firstImuTimeUs)
             throws Exception {
+        if (context != null && PropertyBoxParserImpl.BOX_MAP_CACHE == null) {
+            Properties mapping = new Properties();
+            try (InputStream stream = context.getAssets().open("isoparser2-default.properties")) {
+                mapping.load(stream);
+            }
+            PropertyBoxParserImpl.BOX_MAP_CACHE = mapping;
+        }
         Movie movie = MovieCreator.build(input.getAbsolutePath());
         Track video = null;
         for (Track track : movie.getTracks()) {
