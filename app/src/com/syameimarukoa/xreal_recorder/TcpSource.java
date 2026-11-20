@@ -289,7 +289,8 @@ final class TcpSource implements VideoSource {
         candidateLastNs = 0;
         arrivalLastNs = 0;
         cameraPtsAnchorNs = 0;
-        lastPtsNs = 0;
+        // Keep lastPtsNs: the post-reconnect first frame continues from it so the
+        // link-down gap is removed from the timeline.
         if (listener != null) {
             listener.onStreamReset();
         }
