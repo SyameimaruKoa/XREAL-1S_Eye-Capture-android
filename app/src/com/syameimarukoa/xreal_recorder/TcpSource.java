@@ -272,7 +272,7 @@ final class TcpSource implements VideoSource {
                 Log.w(TAG, "reconnect attempt " + attempt + " failed: " + e.getMessage());
             }
             try {
-                Thread.sleep(1000);
+                Thread.sleep(250);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return false;
@@ -347,9 +347,18 @@ final class TcpSource implements VideoSource {
                 if (accessUnits == 0) {
                     candidateFirstNs = candidateNs;
                     arrivalFirstNs = arrivalNs;
-                    cameraPtsAnchorNs = arrivalNs;
-                    ptsNs = arrivalNs;
-                    lastPtsNs = ptsNs;
+                    // After a reconnect, continue from the last presentation time so the
+                    // muxer sees no gap; a gap would be written as frozen/NULL frames and
+                    // breaks seeking in post-processing tools.
+                    if (lastPtsNs > 0) {
+                        ptsNs = monotonic(lastPtsNs);
+                        cameraPtsAnchorNs = ptsNs;
+                        lastPtsNs = ptsNs;
+                    } else {
+                        cameraPtsAnchorNs = arrivalNs;
+                        ptsNs = arrivalNs;
+                        lastPtsNs = ptsNs;
+                    }
                 } else {
                     long candidateStep = candidateNs - candidateLastNs;
                     long arrivalStep = arrivalNs - arrivalLastNs;
