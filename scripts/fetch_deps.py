@@ -33,6 +33,7 @@ ISO_PARSER = [
     (CENTRAL, "org.mp4parser", "isoparser", "1.9.56", "jar", "isoparser.jar"),
     (CENTRAL, "org.mp4parser", "muxer", "1.9.56", "jar", "muxer.jar"),
     (CENTRAL, "org.slf4j", "slf4j-api", "1.7.36", "jar", "slf4j-api.jar"),
+    (CENTRAL, "org.aspectj", "aspectjrt", "1.9.7", "jar", "aspectjrt.jar"),
 ]
 
 
