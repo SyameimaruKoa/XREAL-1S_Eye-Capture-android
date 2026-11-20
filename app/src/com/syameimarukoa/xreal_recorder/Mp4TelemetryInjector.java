@@ -7,7 +7,6 @@ import org.mp4parser.Container;
 import org.mp4parser.PropertyBoxParserImpl;
 import org.mp4parser.boxes.iso14496.part12.EditBox;
 import org.mp4parser.boxes.iso14496.part12.EditListBox;
-import org.mp4parser.boxes.iso14496.part12.FreeSpaceBox;
 import org.mp4parser.boxes.iso14496.part12.MovieBox;
 import org.mp4parser.boxes.iso14496.part12.TrackBox;
 import org.mp4parser.muxer.Movie;
@@ -30,7 +29,8 @@ final class Mp4TelemetryInjector {
 
     static void inject(Context context, File input, File output, int width, int height,
                        float fps, long durationUs, int imuRateHz, String orientation,
-                       List<GyroflowProto.ImuSample> samples) throws Exception {
+                       List<GyroflowProto.ImuSample> samples, long firstImuTimeUs)
+            throws Exception {
         if (context != null && PropertyBoxParserImpl.BOX_MAP_CACHE == null) {
             Properties mapping = new Properties();
             try (InputStream stream = context.getAssets().open("isoparser2-default.properties")) {
@@ -60,7 +60,7 @@ final class Mp4TelemetryInjector {
         double stepUs = durations[0] * 1_000_000.0 / timescale;
         List<byte[]> payloads = new ArrayList<>(durations.length);
         for (int i = 0; i < durations.length; i++) {
-            double startUs = i * stepUs;
+            double startUs = firstImuTimeUs + i * stepUs;
             double endUs = startUs + stepUs;
             List<GyroflowProto.ImuSample> frameSamples = i == 0
                     ? samples : Collections.<GyroflowProto.ImuSample>emptyList();
@@ -73,18 +73,9 @@ final class Mp4TelemetryInjector {
         Container container = builder.build(movie);
         long movieTimescale = builder.getTimescale(movie);
         fixTiming(container, movie, movieTimescale, movie.getTimescale());
-        addDetectionBeacon(container);
         try (FileOutputStream stream = new FileOutputStream(output)) {
             container.writeContainer(stream.getChannel());
         }
-    }
-
-    /** Put the format magic at the end so detection never misses telemetry samples. */
-    private static void addDetectionBeacon(Container container) {
-        byte[] magic = "GyroflowProtobuf".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
-        FreeSpaceBox beacon = new FreeSpaceBox();
-        beacon.setData(magic);
-        container.getBoxes().add(beacon);
     }
 
     /** mp4parser uses GCD for edit lists but LCM for mvhd; align both to mvhd. */
@@ -94,9 +85,6 @@ final class Mp4TelemetryInjector {
             if (!(box instanceof MovieBox)) {
                 continue;
             }
-            FreeSpaceBox beacon = new FreeSpaceBox();
-            beacon.setData("GyroflowProtobuf".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
-            ((MovieBox) box).addBox(beacon);
             for (TrackBox trackBox : ((MovieBox) box).getBoxes(TrackBox.class)) {
                 if (editTimescale > 0 && editTimescale != movieTimescale) {
                     for (EditBox edit : trackBox.getBoxes(EditBox.class)) {

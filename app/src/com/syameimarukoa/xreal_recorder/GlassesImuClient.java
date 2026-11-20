@@ -134,7 +134,7 @@ final class GlassesImuClient {
             }
             long timeMs = (sample.timestampNs - firstTimestampNs) / 1_000_000L;
             rows.add(GyroCsvFormatter.row(timeMs, sample.gyro, sample.accel));
-            samples.add(new GyroflowProto.ImuSample(timeMs * 1000.0,
+            samples.add(new GyroflowProto.ImuSample(sample.timestampNs / 1000.0,
                     sample.gyro[0], sample.gyro[1], sample.gyro[2],
                     sample.accel[0], sample.accel[1], sample.accel[2]));
             imuFrames++;
@@ -174,6 +174,12 @@ final class GlassesImuClient {
         }
     }
 
+
+    long getFirstTimestampNs() {
+        synchronized (rows) {
+            return samples.isEmpty() ? 0L : (long) (samples.get(0).timeUs * 1000.0);
+        }
+    }
 
     String getSummary() {
         synchronized (rows) {

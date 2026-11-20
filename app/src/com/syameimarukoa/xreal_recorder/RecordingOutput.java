@@ -243,7 +243,8 @@ final class RecordingOutput {
      */
     boolean injectTelemetry(int width, int height, float fps, long durationUs,
                             int imuRateHz, String orientation,
-                            List<GyroflowProto.ImuSample> samples) throws Exception {
+                            List<GyroflowProto.ImuSample> samples, long firstImuTimeUs)
+            throws Exception {
         if (tree != null) {
             return false;
         }
@@ -263,7 +264,7 @@ final class RecordingOutput {
                 }
             }
             Mp4TelemetryInjector.inject(context, source, result, width, height, fps,
-                    durationUs, imuRateHz, orientation, samples);
+                    durationUs, imuRateHz, orientation, samples, firstImuTimeUs);
             try (FileInputStream injected = new FileInputStream(result);
                  OutputStream destination = resolver.openOutputStream(uri, "w")) {
                 if (destination == null) {
