@@ -58,12 +58,20 @@ final class Mp4TelemetryInjector {
         byte[] header = GyroflowProto.header(width, height, fps, durationUs,
                 imuRateHz, orientation);
         double stepUs = durations[0] * 1_000_000.0 / timescale;
+        List<GyroflowProto.ImuSample> ordered =
+                new ArrayList<>(samples);
+        Collections.sort(ordered, (a, b) -> Double.compare(a.timeUs, b.timeUs));
         List<byte[]> payloads = new ArrayList<>(durations.length);
+        int sampleIndex = 0;
         for (int i = 0; i < durations.length; i++) {
             double startUs = firstImuTimeUs + i * stepUs;
             double endUs = startUs + stepUs;
-            List<GyroflowProto.ImuSample> frameSamples = i == 0
-                    ? samples : Collections.<GyroflowProto.ImuSample>emptyList();
+            List<GyroflowProto.ImuSample> frameSamples = new ArrayList<>();
+            while (sampleIndex < ordered.size()
+                    && ordered.get(sampleIndex).timeUs < endUs) {
+                frameSamples.add(ordered.get(sampleIndex));
+                sampleIndex++;
+            }
             byte[] frame = GyroflowProto.frame(i + 1, startUs, endUs, frameSamples);
             payloads.add(GyroflowProto.main(i == 0 ? header : null, frame));
         }

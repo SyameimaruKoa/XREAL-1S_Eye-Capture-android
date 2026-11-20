@@ -133,10 +133,15 @@ final class GlassesImuClient {
                 firstTimestampNs = sample.timestampNs;
             }
             long timeMs = (sample.timestampNs - firstTimestampNs) / 1_000_000L;
-            rows.add(GyroCsvFormatter.row(timeMs, sample.gyro, sample.accel));
+            // The glasses accelerometer reports gravity (down); Gyroflow expects
+            // specific force (up, +9.81 at rest). Negate all three axes.
+            float ax = -sample.accel[0];
+            float ay = -sample.accel[1];
+            float az = -sample.accel[2];
+            rows.add(GyroCsvFormatter.row(timeMs, sample.gyro,
+                    new float[]{ax, ay, az}));
             samples.add(new GyroflowProto.ImuSample(sample.timestampNs / 1000.0,
-                    sample.gyro[0], sample.gyro[1], sample.gyro[2],
-                    sample.accel[0], sample.accel[1], sample.accel[2]));
+                    sample.gyro[0], sample.gyro[1], sample.gyro[2], ax, ay, az));
             imuFrames++;
         }
     }

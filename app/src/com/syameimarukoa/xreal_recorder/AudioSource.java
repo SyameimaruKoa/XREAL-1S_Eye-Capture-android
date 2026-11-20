@@ -54,6 +54,7 @@ public final class AudioSource {
     private MediaCodec encoder;
     private Thread thread;
     private volatile boolean running;
+    private volatile boolean paused;
     private volatile boolean failed;
     private volatile String error = "";
     private long audioStartNs;
@@ -254,6 +255,9 @@ public final class AudioSource {
                     continue;
                 }
                 zeroReads = 0;
+                if (paused) {
+                    continue;
+                }
                 pcm.position(0);
                 pcm.limit(n);
 
@@ -520,6 +524,15 @@ public final class AudioSource {
                 throw new IllegalStateException("AAC output dequeue failed: " + index);
             }
         }
+    }
+
+    /** Pause capture while the video link is down so the audio track has no gap. */
+    public void pause() {
+        paused = true;
+    }
+
+    public void resume() {
+        paused = false;
     }
 
     public void stop() {

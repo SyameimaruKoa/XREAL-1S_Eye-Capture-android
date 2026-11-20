@@ -11,7 +11,7 @@ public final class GyroCsvFormatterTest {
 
         String csv = GyroCsvFormatter.format("VID_2026,11,20.mp4", 1763600000000L,
                 Arrays.asList(row));
-        require(csv.startsWith("GYROFLOW IMU LOG\nversion,1.3\nid,xreal_1s_imu\norientation,XyZ\n"),
+        require(csv.startsWith("GYROFLOW IMU LOG\nversion,1.3\nid,xreal_1s_imu\norientation,xYZ\n"),
                 "mandatory header");
         require(csv.contains("videofilename,VID_2026_11_20.mp4\n"), "filename sanitized");
         require(csv.contains("tscale,0.001\ngscale,1.0\nascale,0.10197162\n"), "scale fields");

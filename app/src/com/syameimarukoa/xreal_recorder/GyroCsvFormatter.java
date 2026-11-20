@@ -19,7 +19,7 @@ final class GyroCsvFormatter {
         sb.append("GYROFLOW IMU LOG\n");
         sb.append("version,1.3\n");
         sb.append("id,xreal_1s_imu\n");
-        sb.append("orientation,XyZ\n");
+        sb.append("orientation,xYZ\n");
         sb.append("note,glasses_imu\n");
         sb.append("timestamp,").append(captureTimeMs / 1000L).append('\n');
         sb.append("videofilename,").append(safeName).append('\n');
