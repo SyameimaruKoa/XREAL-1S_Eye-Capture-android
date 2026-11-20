@@ -14,7 +14,7 @@ public final class GyroCsvFormatterTest {
         require(csv.startsWith("GYROFLOW IMU LOG\nversion,1.3\nid,xreal_1s_imu\norientation,YxZ\n"),
                 "mandatory header");
         require(csv.contains("videofilename,VID_2026_11_20.mp4\n"), "filename sanitized");
-        require(csv.contains("tscale,0.001\ngscale,1.0\nascale,1.0\n"), "scale fields");
+        require(csv.contains("tscale,0.001\ngscale,1.0\nascale,0.10197162\n"), "scale fields");
         require(csv.endsWith("t,gx,gy,gz,ax,ay,az\n" + row + "\n"), "column header and data");
         System.out.println("GyroCsvFormatterTest passed");
     }

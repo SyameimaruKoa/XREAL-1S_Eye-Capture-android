@@ -292,6 +292,7 @@ public final class RecordService extends Service {
         File hevcFile = null;
         File wavFile = null;
         File adtsFile = null;
+        GlassesImuClient imuClient = null;
         final boolean rawMode = saveMode == SAVE_MODE_RAW || saveMode == SAVE_MODE_RAW_ONLY;
         final boolean rawOnly = saveMode == SAVE_MODE_RAW_ONLY;
         final boolean fmp4Mode = saveMode == SAVE_MODE_FMP4;
@@ -332,6 +333,9 @@ public final class RecordService extends Service {
                         ? hevcFile.getName().replaceFirst("(?i)\\.hevc4?$", ".mp4")
                         : "VID_" + ts + ".mp4";
             }
+            imuClient = GlassesImuClient.start(this);
+            final GlassesImuClient finalImu = imuClient;
+            final String finalMp4Name = mp4Name;
             final JSONObject cameraInfo = new JSONObject();
             cameraInfo.put("schema_version", 1);
             cameraInfo.put("file", mp4Name);
@@ -434,7 +438,14 @@ public final class RecordService extends Service {
                                     }
                                 }
                                 if (finalOutput != null) {
+                                    if (finalImu != null) {
+                                        cameraInfo.put("imu", new JSONObject(finalImu.getSummary()));
+                                    }
                                     finalOutput.writeMetadata(cameraInfo.toString(2));
+                                    if (finalImu != null && finalImu.getSampleCount() > 0) {
+                                        finalOutput.writeGyroCsv(finalImu.formatCsv(
+                                                finalMp4Name, captureTimeMs));
+                                    }
                                 }
                             } finally {
                                 if (finalOutput != null) {
@@ -657,6 +668,12 @@ public final class RecordService extends Service {
             if (videoSource != null) {
                 try {
                     videoSource.stop();
+                } catch (Throwable ignored) {
+                }
+            }
+            if (imuClient != null) {
+                try {
+                    imuClient.stop();
                 } catch (Throwable ignored) {
                 }
             }

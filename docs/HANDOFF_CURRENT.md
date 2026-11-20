@@ -4,14 +4,18 @@
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。
 - 作業ブランチ: `OptiPlex-3040-MFF_20261120`（main から作成）。開始時 main はクリーン、HEAD は origin/main と同期。
 - 実機状態（開始時）: SC-52B / Android 15 / root は SSH `root@sc-52b.bass-uaru.ts.net` で応答。画面は Dozing（mWakefulness=Dozing / mHoldingDisplaySuspendBlocker=false）。`com.syameimarukoa.xreal_recorder` インストール済み。 rakuten-mini.bass-uaru.ts.net は SSH 接続タイムアウト。この環境の PATH に adb は無く、SSH 経由の shell を使用。
-- 調査完了: #2 は `RecordingPresentation` の sideMode 縦予算超过で温度ビューがクリップ。固定モードは問題なし。#3 は `WaveformView` が全バー同色で、`AudioSource` は peak のみを渡している。#5 はアプリにモーションデータが一切無く、グラス IMU の連続データ経路も未到達（TCP 52990〜52994 は無送信で0バイト、AXR field16 は1要求1応答）。Gyroflow が同名 `.gcsv` を自動検出できることを公式 docs で確認。
-- ユーザー訂正: スマホのジャイロセンサーは使わない。使用するセンサーは XREAL グラスのみ。
+- 調査完了: #2 は `RecordingPresentation` の sideMode 縦予算超过で温度ビューがクリップ。固定モードは問題なし。#3 は `WaveformView` が全バー同色で、`AudioSource` は peak のみを渡している。#5 は **TCP 52998 の IMU ストリームで解決**。
+- ユーザー訂正: スマホのジャイロセンサーは使わない。使用するセンサーは XREAL グラスのみ。方位センサーは無く、磁気センサーはあるが6軸で十分という指示。
+- 実機測定（2026-11-20）: 52998 から 5秒で916KB（約88Hz）のレポートを受信。ヘッダ `28 36` + 4byte BE 長(128) + body 128byte。body offset 8=装置時刻ns、0x18=種別(0x0b=IMU, 0x04=磁気)、0x1c=ジャイロXYZ(rad/s)、0x28=加速度XYZ(m/s²)、0x34=磁気XYZ、0x40=温度℃。静止時に加速度(2.64, 9.15, 2.27)で重力を確認。参照実装は `kotXio/xreal-1s-lab` と `0xcaff/xr-tools` の reports.rs。
+- グラス公開センサー一覧（AXR field14/field16 の実データ）: 加速度(main/minor)=id1/3、ジャイロ(main/minor)=id2/4、磁気=id5、環境光=id7、グラス温度=id6、低遅延オフボディ検知=id10、IMU温度=id11/12、NTC温度=id13/14。方位センサーは無し。
+- AXR の経緯: gRPC `/frames.service.Frames/StartStreaming` で能力情報は取れたが、繰返し接続で CLOSE_WAIT が溜まり無応答化。ユーザーが USB を挿し直して復旧したが、52998 の方が単純なため AXR は使わない。command_service(50180) は既知フレームで root シェル実行を確認。
 - 変更内容:
   - #2: sideMode の padding 32→16、温度 48→32sp、波形 220→140px、温度を ` / ` で1行化。固定モードは据え置き。
   - #3: `WaveformView.onDraw()` で peak<4096 緑、<16384 黄、それ以上赤。振幅計算・履歴・リスナーは据え置き。
-  - #5: `GyroCsvFormatter`（Gyroflow v1.3 `.gcsv`、`id=xreal_1s_imu`）と `RecordingOutput.writeGyroCsv()`、collision チェック、CI テスト対象を追加。スマホ `SensorManager` を使う `MotionLogger` とその配線はユーザー訂正で撤去。グラス IMU の取得と `.gcsv` 書き出し配線は未実装。
-- 未検証: ローカルに Android SDK が無くビルド・テスト未実施。実機はグラス未接続のため第2画面と録画後 `.gcsv` の実機確認も未実施。
-- CI: run `44690367126` は成功。ただし成功後にスマホセンサー実装を撤去したため、現状の再実行が必要。
+  - #5: `GlassesImuClient`（52998 購読、6軸を `.gcsv` 用に行化、磁気・温度は JSON メタデータ）と `ImuReportParser`（純 Java、テスト済み）を追加。`RecordService` が録画開始時に開始し、終了時に停止して MP4 と同名 `.gcsv` を保存。`GyroCsvFormatter` の `ascale` を m/s²→g 換算(0.10197162)に修正。MP4 埋め込みは Gyroflow protobuf トラック(`hdlr=meta`/`stsd=gyrf`)とフレーム同期が必要で既存 `MediaMuxer` では大改造になるため `.gcsv` サイドカーを維持（自動検出される）。
+- 検証: `GyroCsvFormatterTest` と `ImuReportParserTest` はローカル javac で成功。ローカルに Android SDK が無いため APK ビルドは CI で実施。
+- 未検証: #2 の第2画面と #5 の録画後 `.gcsv` の実機確認。グラスを挿し直した後で端末は Awake（画面 ON）。
+- CI: run `44690367126` と `44690758478` は成功。現状の再実行が必要。
 - 作業後は画面を Dozing に戻し、結果・未解決事項を本ファイルに追記する。
 
 ## 実行中（2026-11-20、1600p/30 実測の再開）

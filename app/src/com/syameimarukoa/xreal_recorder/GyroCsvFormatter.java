@@ -25,7 +25,7 @@ final class GyroCsvFormatter {
         sb.append("videofilename,").append(safeName).append('\n');
         sb.append("tscale,0.001\n");
         sb.append("gscale,1.0\n");
-        sb.append("ascale,1.0\n");
+        sb.append("ascale,0.10197162\n");
         sb.append("t,gx,gy,gz,ax,ay,az\n");
         for (String row : rows) {
             sb.append(row).append('\n');
