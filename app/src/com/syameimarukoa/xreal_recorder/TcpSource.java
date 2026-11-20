@@ -352,6 +352,8 @@ final class TcpSource implements VideoSource {
                     // link-down gap is removed from the timeline. No duplicate frames are
                     // written: only frames that actually arrived are enqueued.
                     if (lastPtsNs > 0) {
+                        Log.i(TAG, "restart pts from last=" + (lastPtsNs / 1_000_000L)
+                                + "ms arrival=" + (arrivalNs / 1_000_000L) + "ms");
                         ptsNs = monotonic(lastPtsNs);
                         cameraPtsAnchorNs = ptsNs;
                         lastPtsNs = ptsNs;
@@ -421,6 +423,17 @@ final class TcpSource implements VideoSource {
      * the two clocks remain separated, the anchor eventually moves toward the receive clock.
      */
     private long presentationNs(long candidateNs, long arrivalNs) {
+        long pts = computePresentationNs(candidateNs, arrivalNs);
+        if (accessUnits % 300 == 0) {
+            Log.d(TAG, "pts au=" + accessUnits + " ptsMs=" + (pts / 1_000_000L)
+                    + " arrivalMs=" + (arrivalNs / 1_000_000L)
+                    + " anchorMs=" + (cameraPtsAnchorNs / 1_000_000L)
+                    + " reanchors=" + clockReanchors);
+        }
+        return pts;
+    }
+
+    private long computePresentationNs(long candidateNs, long arrivalNs) {
         if (candidateNs <= candidateLastNs) {
             driftGate.reset();
             clockRejected++;
