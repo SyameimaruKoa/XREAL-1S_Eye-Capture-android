@@ -1,5 +1,12 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
+## 目標（2026-11-21 01:59〜10:00 無人改善）
+- ロール補正 -180°に変更（`GyroflowProto` の imu_rotation quaternion を Z軸-180° = (w=0,z=-1) に。commit `c8b9be4`）
+- データ未保存の原因: `GlassesImuClient` が起動時1回しか接続せず、USB切断後に IMU ソケットが死ぬと以降のデータが欠落。`readLoop()` に60秒間の再接続ループ（250ms間隔）を追加（commit `8aed0e3`）
+- 尺余りの原因: `onStreamStalled`/`onStreamResumed` で音声の pause/resume を呼び忘れており、切断中も内蔵マイクで録音して音声が映像より長くなっていた。`finalAudioRef` 経由で pause/resume を追加（commit `8aed0e3`）
+- 実データ `VID_20261121_013234.mp4`: 映像61.6秒 / 音声72.5秒 / IMU13.5秒（IMU停止＋音声尺余りを確認）
+- ★解析前に必ず `dumpsys activity services ... | grep -c ServiceRecord` が0であることを確認。撮影放置中の解析は禁止。
+
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。
 - 作業ブランチ: `OptiPlex-3040-MFF_20261120`（main から作成）。開始時 main はクリーン、HEAD は origin/main と同期。
