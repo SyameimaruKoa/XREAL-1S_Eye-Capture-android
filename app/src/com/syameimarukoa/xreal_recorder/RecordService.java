@@ -446,12 +446,7 @@ public final class RecordService extends Service {
                                     }
                                     finalOutput.writeMetadata(cameraInfo.toString(2));
                                     if (finalImu != null && finalImu.getSampleCount() > 0) {
-                                        try {
-                                            finalOutput.writeGyroCsv(finalImu.formatCsv(
-                                                    finalMp4Name, captureTimeMs));
-                                        } catch (Throwable t) {
-                                            Log.e(TAG, "gcsv write failed", t);
-                                        }
+                                        boolean embedded = false;
                                         if (!rawMode) {
                                             try {
                                                 List<GyroflowProto.ImuSample> imuSamples =
@@ -470,13 +465,21 @@ public final class RecordService extends Service {
                                                 int rate = durationUs > 0
                                                         ? (int) (imuSamples.size() * 1_000_000L
                                                         / durationUs) : 1000;
-                                                finalOutput.injectTelemetry(
+                                                embedded = finalOutput.injectTelemetry(
                                                         finalVideo.getWidth(),
                                                         finalVideo.getHeight(), fps,
                                                         durationUs, rate, "XYZ", imuSamples,
                                                         finalImu.getFirstTimestampNs() / 1000L);
                                             } catch (Throwable t) {
                                                 Log.e(TAG, "telemetry injection failed", t);
+                                            }
+                                        }
+                                        if (!embedded) {
+                                            try {
+                                                finalOutput.writeGyroCsv(finalImu.formatCsv(
+                                                        finalMp4Name, captureTimeMs));
+                                            } catch (Throwable t) {
+                                                Log.e(TAG, "gcsv write failed", t);
                                             }
                                         }
                                     }

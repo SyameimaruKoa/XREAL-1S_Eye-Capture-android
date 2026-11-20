@@ -11,11 +11,7 @@ import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
@@ -237,54 +233,27 @@ final class RecordingOutput {
     }
 
     /**
-     * Embeds Gyroflow telemetry into the recorded MP4. Fragmented MP4 and SAF
-     * tree outputs are intentionally left untouched; those keep the .gcsv sidecar.
+     * Embeds Gyroflow telemetry into the recorded MP4 in place, without copying
+     * the file to a temporary location. SAF tree outputs are left untouched and
+     * keep the .gcsv sidecar.
      */
-    void injectTelemetry(int width, int height, float fps, long durationUs,
-                         int imuRateHz, String orientation,
-                         List<GyroflowProto.ImuSample> samples, long firstImuTimeUs)
+    boolean injectTelemetry(int width, int height, float fps, long durationUs,
+                            int imuRateHz, String orientation,
+                            List<GyroflowProto.ImuSample> samples, long firstImuTimeUs)
             throws Exception {
         if (tree != null) {
-            return;
+            return false;
         }
-        long stamp = System.currentTimeMillis();
-        File source = new File(context.getCacheDir(), "inject_source_" + stamp + ".mp4");
-        File temporary = new File(context.getCacheDir(), "inject_result_" + stamp + ".mp4");
+        ParcelFileDescriptor descriptor = resolver.openFileDescriptor(uri, "rw");
+        if (descriptor == null) {
+            throw new IOException("Could not open recording MP4 for telemetry injection");
+        }
         try {
-            try (InputStream original = resolver.openInputStream(uri);
-                 FileOutputStream copy = new FileOutputStream(source)) {
-                if (original == null) {
-                    throw new IOException("Could not open recording MP4 for telemetry injection");
-                }
-                byte[] buffer = new byte[64 * 1024];
-                int count;
-                while ((count = original.read(buffer)) >= 0) {
-                    copy.write(buffer, 0, count);
-                }
-            }
-            Mp4TelemetryInjector.inject(context, source, temporary, width, height,
+            Mp4TelemetryInjector.inject(context, descriptor, filename, width, height,
                     fps, durationUs, imuRateHz, orientation, samples, firstImuTimeUs);
-            if (!temporary.exists() || temporary.length() == 0) {
-                throw new IOException("Telemetry injection produced an empty file");
-            }
-            try (FileInputStream input = new FileInputStream(temporary);
-                 OutputStream destination = resolver.openOutputStream(uri, "w")) {
-                if (destination == null) {
-                    throw new IOException("Could not open recording MP4 for rewriting");
-                }
-                byte[] buffer = new byte[64 * 1024];
-                int count;
-                while ((count = input.read(buffer)) >= 0) {
-                    destination.write(buffer, 0, count);
-                }
-            }
+            return true;
         } finally {
-            if (source.exists() && !source.delete()) {
-                source.deleteOnExit();
-            }
-            if (temporary.exists() && !temporary.delete()) {
-                temporary.deleteOnExit();
-            }
+            descriptor.close();
         }
     }
 }
