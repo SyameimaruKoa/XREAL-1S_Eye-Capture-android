@@ -21,6 +21,7 @@
   - これで PTS 接続・drift gate 抑制・音声 pause・CSD 再送は不要になった。各ファイルは0から始まる独立した録画。
 - 11:12 実機検証（`VID_20261121_111138.mp4`）: ★成功: `video track added id=0` のみ（2トラック問題解消）。切断で保存（`finish: videoSamples=4110 audioSamples=3260 failed=false`）。★失敗: 自動再開せず、`auto_restart_on_attach=true` が残ったまま。`dumpsys activity broadcasts` で receiver は `USB_DEVICE_ATTACHED` を filter  regi しているのに onReceive が呼ばれない。原因は `RECEIVER_NOT_EXPORTED` がシステム broadcast を弾いている疑い。`RECEIVER_EXPORTED` に変更＋`XrealRec: USB attached` デバッグログ追加して再検証へ。
 - 11:17 CI `44854740201` 成功、APK は `/tmp/opencode/apkattach/xreal-recorder.apk` にダウンロード済み。しかし SSH が MagicDNS・direct IP ともタイムアウト（`sc-52b` は Tailscale relay で active だが ping 不可）。端末側 sshd/dropbear 停止またはスリープの可能性。SSH 復活次第 APK 導入→自動再開検証。別候補: receiver は呼ばれているが `findDevice()` が USB 挿し直し直後にデバイス列挙できず `device==null` でフラグが残っている可能性もあり、その場合は `findDevice()` を1.5秒遅延させる。
+- 11:20 上記の別候補対策を実装: `ACTION_USB_DEVICE_ATTACHED` 受信時に `findDevice()` を1.5秒遅延させてから実行し、権限とフラグを再確認して `startRecording()`。デバッグログ `XrealRec: USB attached` は残す。SSH 復活後にこの最新版で検証する。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。

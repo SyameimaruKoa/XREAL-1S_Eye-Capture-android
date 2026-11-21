@@ -134,12 +134,17 @@ public class MainActivity extends Activity {
                 Log.i("XrealRec", "USB attached, auto_restart="
                         + prefs.getBoolean("auto_restart_on_attach", false));
                 if (prefs.getBoolean("auto_restart_on_attach", false)) {
-                    findDevice();
-                    if (device != null && usbManager.hasPermission(device)) {
-                        prefs.edit().putBoolean("auto_restart_on_attach", false).apply();
-                        new Handler(Looper.getMainLooper()).postDelayed(
-                                () -> MainActivity.this.startRecording(), 1500);
-                    }
+                    // Let the USB device enumeration settle after a replug before
+                    // looking for the glasses and starting a fresh recording.
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        findDevice();
+                        SharedPreferences p = getSharedPreferences("recording_options", MODE_PRIVATE);
+                        if (device != null && usbManager.hasPermission(device)
+                                && p.getBoolean("auto_restart_on_attach", false)) {
+                            p.edit().putBoolean("auto_restart_on_attach", false).apply();
+                            MainActivity.this.startRecording();
+                        }
+                    }, 1500);
                 }
                 return;
             }
