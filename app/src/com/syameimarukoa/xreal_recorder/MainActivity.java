@@ -667,13 +667,18 @@ public class MainActivity extends Activity {
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setScreenSaverVisible(false);
         handler.removeCallbacksAndMessages(null);
-        if (receiverRegistered) {
-            unregisterReceiver(usbReceiver);
-            receiverRegistered = false;
-        }
         try {
             unregisterReceiver(devReceiver);
         } catch (IllegalArgumentException ignored) {
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (receiverRegistered) {
+            unregisterReceiver(usbReceiver);
+            receiverRegistered = false;
         }
     }
 

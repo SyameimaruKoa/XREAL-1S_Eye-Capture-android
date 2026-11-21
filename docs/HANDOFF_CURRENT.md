@@ -23,6 +23,10 @@
 - 11:17 CI `44854740201` 成功、APK は `/tmp/opencode/apkattach/xreal-recorder.apk` にダウンロード済み。しかし SSH が MagicDNS・direct IP ともタイムアウト（`sc-52b` は Tailscale relay で active だが ping 不可）。端末側 sshd/dropbear 停止またはスリープの可能性。SSH 復活次第 APK 導入→自動再開検証。別候補: receiver は呼ばれているが `findDevice()` が USB 挿し直し直後にデバイス列挙できず `device==null` でフラグが残っている可能性もあり、その場合は `findDevice()` を1.5秒遅延させる。
 - 11:20 上記の別候補対策を実装: `ACTION_USB_DEVICE_ATTACHED` 受信時に `findDevice()` を1.5秒遅延させてから実行し、権限とフラグを再確認して `startRecording()`。デバッグログ `XrealRec: USB attached` は残す。SSH 復活後にこの最新版で検証する。
 - 11:22 CI `44855235416` 成功（最新版は commit `b6be884`）。APK は untested。SSH は MagicDNS・direct IP・`tailscale ssh` すべてタイムアウト（11:17 から5分以上）。`sc-52b` は Tailscale で relay active だが ping 不可、端末スリープまたは sshd/dropbear 停止。★実機検証はここでブロック。ユーザーが端末を起こす／SSH を復活させてくれたら、最新版 APK を導入して「切断→保存→USB復帰→新規録画自動開始」をログ（`XrealRec: USB attached`）で確認すること。
+- 11:24 ユーザーより「スマホはシャットダウンしてるよ」「実機検証以外でできることをして」→ 実機に触れず静的改善を実施:
+  - ★自動再開の真因候補: `ACTION_USB_DEVICE_ATTACHED` 用 receiver が `onStop` で解除されていた。画面消灯／ホーム復帰中に USB を挿し直すと受信できない。`onStop` での解除をやめ `onDestroy` に移動（一度登録したら Activity 生存中は残る）。
+  - 手動停止（通知ボタン等）が `MainActivity.stopRecording()` を通らない場合 `auto_restart_on_attach` が残るため、`RecordService.ACTION_STOP` でもフラグをクリア。
+  - 実機検証は不可のまま。CI とローカルテストで確認する。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。

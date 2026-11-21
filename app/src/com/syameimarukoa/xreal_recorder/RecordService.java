@@ -275,6 +275,9 @@ public final class RecordService extends Service {
         }
 
         if (ACTION_STOP.equals(action)) {
+            // A manual stop must not leave the auto-restart flag set for the next attach.
+            getSharedPreferences("recording_options", MODE_PRIVATE)
+                    .edit().putBoolean("auto_restart_on_attach", false).apply();
             stopRequested = true;
             if (recording) {
                 status = "停止処理中...";
