@@ -63,13 +63,19 @@ final class Mp4TelemetryInjector {
         byte[] header = GyroflowProto.header(width, height, fps, durationUs,
                 imuRateHz, orientation);
         double stepUs = durations[0] * 1_000_000.0 / timescale;
-        List<GyroflowProto.ImuSample> ordered =
-                new ArrayList<>(samples);
+        // Gyroflow expects timestamps relative to the start of the clip (0-based),
+        // not the glasses' absolute device clock (tens of thousands of seconds).
+        // Feeding absolute timestamps makes it map only the tail of the IMU stream
+        // onto the video, so horizon lock tracks poorly and YPR appears late.
+        List<GyroflowProto.ImuSample> ordered = new ArrayList<>(samples.size());
+        for (GyroflowProto.ImuSample s : samples) {
+            ordered.add(s.shifted(firstImuTimeUs));
+        }
         Collections.sort(ordered, (a, b) -> Double.compare(a.timeUs, b.timeUs));
         List<byte[]> payloads = new ArrayList<>(durations.length);
         int sampleIndex = 0;
         for (int i = 0; i < durations.length; i++) {
-            double startUs = firstImuTimeUs + i * stepUs;
+            double startUs = i * stepUs;
             double endUs = startUs + stepUs;
             List<GyroflowProto.ImuSample> frameSamples = new ArrayList<>();
             while (sampleIndex < ordered.size()

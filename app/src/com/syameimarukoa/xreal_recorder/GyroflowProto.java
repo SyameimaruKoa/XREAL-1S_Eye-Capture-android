@@ -137,5 +137,10 @@ final class GyroflowProto {
             this.accelY = accelY;
             this.accelZ = accelZ;
         }
+
+        ImuSample shifted(double originUs) {
+            return new ImuSample(timeUs - originUs, gyroX, gyroY, gyroZ,
+                    accelX, accelY, accelZ);
+        }
     }
 }

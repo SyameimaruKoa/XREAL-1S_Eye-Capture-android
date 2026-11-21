@@ -65,6 +65,7 @@
   - 生 protobuf parse: `imu_orientation=xYz`、`imu_rotation quaternion (w,x,y,z)=(0,0,0,-1)`＝ロール -180° で正しい（水平線ロック -90° は Gyroflow UI 側の設定）
   - ★結論: 上限撤廃（旧 `MAX_ROWS=200000` が200秒でデータ欠落の原因）により、長回しでもモーションが欠けず MP4 に完全に埋め込まれることを実機で確認。★`gyro_verify.mp4` は検証用一時コピーなので解析後に削除する。
   - ★補足: `am broadcast` が devReceiver に届かず ServiceRecord が0のままになることがあったが、UI ボタン（`input tap 540 744`）では確実に開始し、停止は broadcast（`cmd stop`）で ServiceRecord=0 を確認できた。HeadlessReceiver の broadcast 経路は未解決。
+- ★YPR 波形が38秒以降しか出ない／水平ロック追尾不良の真因（2026-11-21 14:2x）: Gyroflow スクリーンショットでカラフルな YPR 波形（補正後姿勢）が約38秒以降のみ出現。IMU は0秒〜91.8秒まで完全に入っているのに、Gyroflow が後半しか姿勢を計算できなかった。原因は protobuf の `start_timestamp_us` と IMU `sample_timestamp_us` に**グラス側の絶対装置時刻（63,403ms〜155,205ms）**をそのまま書いていたこと。Gyroflow は動画開始を0とした相対時刻を期待しており（ドキュメント例 `startTimestampUs: 17269.0`）、絶対時刻だと正規化が破綻して後半だけマッピングされる。修正: `Mp4TelemetryInjector` で全 IMU サンプルを `firstImuTimeUs` 基準でシフト（`ImuSample.shifted()` を追加）、フレームの `startUs/endUs` も 0 から始まる相対時刻に変更。★再録画して YPR 波形が先頭から出るか／追尾が改善するかを検証する。
 - ★v0.1.26 公開（2026-11-21 13:53 JST / 04:53 UTC）: CI `44868023693`（commit `c33393e`）成功。GitHub prerelease **v0.1.26** を作成（`isPrerelease=true`）、`xreal-recorder.apk`（8,233,443 bytes、sha256 `218b6a06137212a513909b4d91f215963b50a71baaed2f9dd4633b3d7bc9bc3d`）を添付。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.26 。内容: diagnostics/生データのみでの gcsv 保存＋停止時 ack 失敗の警告ログ化。git status clean。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
