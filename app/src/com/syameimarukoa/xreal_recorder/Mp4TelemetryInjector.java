@@ -62,7 +62,6 @@ final class Mp4TelemetryInjector {
 
         byte[] header = GyroflowProto.header(width, height, fps, durationUs,
                 imuRateHz, orientation);
-        double stepUs = durations[0] * 1_000_000.0 / timescale;
         // Gyroflow expects timestamps relative to the start of the clip (0-based),
         // not the glasses' absolute device clock (tens of thousands of seconds).
         // Feeding absolute timestamps makes it map only the tail of the IMU stream
@@ -74,9 +73,14 @@ final class Mp4TelemetryInjector {
         Collections.sort(ordered, (a, b) -> Double.compare(a.timeUs, b.timeUs));
         List<byte[]> payloads = new ArrayList<>(durations.length);
         int sampleIndex = 0;
+        double cursorUs = 0;
         for (int i = 0; i < durations.length; i++) {
-            double startUs = i * stepUs;
-            double endUs = startUs + stepUs;
+            // Use each frame's real duration so metadata timestamps follow the
+            // actual (variable) video PTS instead of an assumed constant step.
+            double frameUs = durations[i] * 1_000_000.0 / timescale;
+            double startUs = cursorUs;
+            double endUs = startUs + frameUs;
+            cursorUs = endUs;
             List<GyroflowProto.ImuSample> frameSamples = new ArrayList<>();
             while (sampleIndex < ordered.size()
                     && ordered.get(sampleIndex).timeUs < endUs) {
