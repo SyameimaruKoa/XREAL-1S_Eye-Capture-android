@@ -732,6 +732,9 @@ public final class RecordService extends Service {
             audio.stop();
             imu.stop();
             writer.discard();
+            if (muxer != null) {
+                muxer.discard();
+            }
             if (hevcOut != null) {
                 try {
                     hevcOut.close();

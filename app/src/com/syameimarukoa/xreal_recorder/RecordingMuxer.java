@@ -16,6 +16,9 @@ interface RecordingMuxer {
 
     void finish();
 
+    /** Release resources without publishing the output file. */
+    void discard();
+
     boolean isFailed();
 
     String getError();

@@ -183,6 +183,19 @@ public final class MuxerSink implements RecordingMuxer {
         error = t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage());
     }
 
+    @Override
+    public void discard() {
+        synchronized (lock) {
+            finished = true;
+            try {
+                muxer.release();
+            } catch (Throwable ignored) {
+            }
+            pendingVideo.clear();
+            pendingAudio.clear();
+        }
+    }
+
     public void finish() {
         synchronized (lock) {
             if (finished) {

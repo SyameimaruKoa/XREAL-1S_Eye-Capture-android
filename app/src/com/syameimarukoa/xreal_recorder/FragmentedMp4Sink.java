@@ -157,6 +157,23 @@ final class FragmentedMp4Sink implements RecordingMuxer {
     }
 
     @Override
+    public void discard() {
+        failed = true;
+        try {
+            muxer.close();
+        } catch (Throwable ignored) {
+        }
+        try {
+            stream.close();
+        } catch (Throwable ignored) {
+        }
+        try {
+            channel.close();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @Override
     public void finish() {
         android.util.Log.i("XrealFMp4", "finish: videoSamples=" + videoSampleCount
                 + " audioSamples=" + audioSampleCount + " failed=" + failed);
