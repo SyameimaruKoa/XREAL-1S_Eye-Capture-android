@@ -56,10 +56,11 @@ public final class RecordService extends Service {
     public static final int ROUTE_TCP_HEVC = 0;
     public static final int ROUTE_REPLAY = 99;
     public static final int ROUTE_UVC_HEVC = 1;
-    public static final int SAVE_MODE_MP4 = 0;       // mode 1: convert while recording
+    // Standard post-rewrite MP4 removed: two full writes were bad for Flash and
+    // lost all motion on abnormal termination. fMP4 is the only embedded mode.
+    public static final int SAVE_MODE_FMP4 = 0;      // mode 1: fragmented MP4, single write
     public static final int SAVE_MODE_RAW = 1;       // mode 2: raw sidecars then convert
-    public static final int SAVE_MODE_FMP4 = 2;      // mode 3: fragmented MP4 (extra library)
-    public static final int SAVE_MODE_RAW_ONLY = 3;  // mode 4: raw sidecars only, no MP4
+    public static final int SAVE_MODE_RAW_ONLY = 2;  // mode 3: raw sidecars only, no MP4
     public static final String EXTRA_SAVE_MODE = "save_mode";
     public static final String PREF_SAVE_MODE = "save_mode";
 
@@ -88,7 +89,7 @@ public final class RecordService extends Service {
     private String outputLabel;
     private boolean diagnostics;
     private int videoRoute;
-    private int saveMode = SAVE_MODE_MP4;
+    private int saveMode = SAVE_MODE_FMP4;
     private static volatile long recordingStartedMs;
     private static volatile String thermalSummary = "";
     private static volatile GlassesImuClient telemetryImuClient;
@@ -233,7 +234,7 @@ public final class RecordService extends Service {
                         .getInt(PREF_SAVE_MODE, SAVE_MODE_FMP4);
             }
             saveMode = (mode == SAVE_MODE_RAW || mode == SAVE_MODE_RAW_ONLY
-                    || mode == SAVE_MODE_FMP4) ? mode : SAVE_MODE_MP4;
+                    || mode == SAVE_MODE_FMP4) ? mode : SAVE_MODE_FMP4;
             try {
                 if (Build.VERSION.SDK_INT >= 29) {
                     // Replay mode has no USB device, so connectedDevice type would be
