@@ -905,6 +905,10 @@ public final class RecordService extends Service {
         }
         dismissRecordingDisplay();
         stopRequested = true;
+        VideoSource vs = activeVideoSource;
+        if (vs != null) {
+            vs.stop();
+        }
         releaseWakeLock();
         Thread t = worker;
         if (t != null && t != Thread.currentThread()) {
