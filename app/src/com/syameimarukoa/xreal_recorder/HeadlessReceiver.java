@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
+import android.util.Log;
 
 /** Controls recording from a shell broadcast without launching any UI. */
 public final class HeadlessReceiver extends BroadcastReceiver {
@@ -26,7 +27,11 @@ public final class HeadlessReceiver extends BroadcastReceiver {
                     }
                 }
             }
-            if (device == null || manager == null || !manager.hasPermission(device)) {
+            boolean permitted = device != null && manager != null
+                    && manager.hasPermission(device);
+            Log.i("XrealRec", "headless start device=" + (device != null)
+                    + " permitted=" + permitted);
+            if (!permitted) {
                 return;
             }
             Intent start = new Intent(context, RecordService.class)
