@@ -72,19 +72,24 @@ final class Mp4TelemetryInjector {
         }
         Collections.sort(ordered, (a, b) -> Double.compare(a.timeUs, b.timeUs));
         List<byte[]> payloads = new ArrayList<>(durations.length);
+        int sampleIndex = 0;
         double cursorUs = 0;
         for (int i = 0; i < durations.length; i++) {
             // Use each frame's real duration so metadata timestamps follow the
             // actual (variable) video PTS instead of an assumed constant step.
             double frameUs = durations[i] * 1_000_000.0 / timescale;
             double startUs = cursorUs;
-            cursorUs = startUs + frameUs;
-            // Gyroflow keys every IMU sample by its own sample_timestamp_us and
-            // uses all of them for integration/smoothing, regardless of which
-            // frame's array carries it. Putting the whole stream in the first frame
-            // removes any dependency on frame-boundary arithmetic.
-            List<GyroflowProto.ImuSample> frameSamples =
-                    i == 0 ? ordered : java.util.Collections.emptyList();
+            double frameEndUs = startUs + frameUs;
+            cursorUs = frameEndUs;
+            // Gyroflow spec: one metadata sample per video frame, IMU samples
+            // distributed by their real frame window. Storing the whole stream in
+            // the first frame is non-conforming and may be rejected by readers.
+            List<GyroflowProto.ImuSample> frameSamples = new ArrayList<>();
+            while (sampleIndex < ordered.size()
+                    && ordered.get(sampleIndex).timeUs < frameEndUs) {
+                frameSamples.add(ordered.get(sampleIndex));
+                sampleIndex++;
+            }
             // XREAL corrects rolling shutter in-camera. Declare zero readout span
             // so Gyroflow does not warp rows ("jelly").
             double endUs = startUs;

@@ -275,6 +275,23 @@ final class RecordingOutput {
                 while ((count = injected.read(buffer)) >= 0) {
                     destination.write(buffer, 0, count);
                 }
+            } catch (Exception e) {
+                // Restore the original from the copy if the rewrite failed midway.
+                // Without this the recording would be left truncated like a
+                // partial fMP4 write.
+                try (FileInputStream backup = new FileInputStream(source);
+                     OutputStream restore = resolver.openOutputStream(uri, "w")) {
+                    if (restore != null) {
+                        byte[] buffer = new byte[64 * 1024];
+                        int count;
+                        while ((count = backup.read(buffer)) >= 0) {
+                            restore.write(buffer, 0, count);
+                        }
+                    }
+                } catch (Exception restoreError) {
+                    e.addSuppressed(restoreError);
+                }
+                throw e;
             }
             return true;
         } finally {

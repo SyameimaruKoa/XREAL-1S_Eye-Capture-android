@@ -13,7 +13,7 @@ final class GyroCsvFormatter {
                 timeMs, gyro[0], gyro[1], gyro[2], accel[0], accel[1], accel[2]);
     }
 
-    static String format(String videoFilename, long captureTimeMs, List<String> rows) {
+    static String header(String videoFilename, long captureTimeMs) {
         String safeName = videoFilename == null ? "video.mp4" : videoFilename.replaceAll("[^A-Za-z0-9._-]", "_");
         StringBuilder sb = new StringBuilder();
         sb.append("GYROFLOW IMU LOG\n");
@@ -27,6 +27,11 @@ final class GyroCsvFormatter {
         sb.append("gscale,1.0\n");
         sb.append("ascale,0.10197162\n");
         sb.append("t,gx,gy,gz,ax,ay,az\n");
+        return sb.toString();
+    }
+
+    static String format(String videoFilename, long captureTimeMs, List<String> rows) {
+        StringBuilder sb = new StringBuilder(header(videoFilename, captureTimeMs));
         for (String row : rows) {
             sb.append(row).append('\n');
         }

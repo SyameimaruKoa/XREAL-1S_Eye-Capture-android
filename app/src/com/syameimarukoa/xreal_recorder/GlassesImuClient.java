@@ -34,9 +34,22 @@ final class GlassesImuClient {
     private final boolean collectSamples;
     private final Context context;
 
+    interface ImuSink {
+        void onSample(long timeMs, float[] gyro, float[] accel);
+        void close();
+    }
+
+    private ImuSink sink;
+
     private GlassesImuClient(Context context, boolean collectSamples) {
         this.context = context;
         this.collectSamples = collectSamples;
+    }
+
+    void setSink(ImuSink sink) {
+        synchronized (samples) {
+            this.sink = sink;
+        }
     }
 
     static GlassesImuClient start(Context context) {
@@ -166,6 +179,13 @@ final class GlassesImuClient {
                     sample.gyro[0], sample.gyro[1], sample.gyro[2],
                     sample.accel[0], sample.accel[1], sample.accel[2]));
             imuFrames++;
+            if (sink != null) {
+                try {
+                    sink.onSample((sample.timestampNs - firstTimestampNs) / 1_000_000L,
+                            sample.gyro, sample.accel);
+                } catch (Throwable ignored) {
+                }
+            }
         }
     }
 

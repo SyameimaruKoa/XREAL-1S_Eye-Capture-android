@@ -504,6 +504,9 @@ public final class RecordService extends Service {
         }
         session.audio.stop();
         session.imu.stop();
+        if (session.gyroSink != null) {
+            session.gyroSink.close();
+        }
         telemetryImuClient = null;
     }
 
@@ -520,26 +523,28 @@ public final class RecordService extends Service {
         Uri gyroUri = null;
         if (rawMode || diagnostics) {
             hevcFile = new File(dir, "xreal_" + ts + rawExt);
-            if (rawOnly) {
-                // Only RAW_ONLY publishes to Documents. MediaStore needs no
-                // all-files-access permission. The debug dumps stay in Android/data.
-                ContentValues values = new ContentValues();
-                values.put(MediaStore.MediaColumns.DISPLAY_NAME, "xreal_" + ts + ".gcsv");
-                values.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
-                values.put(MediaStore.MediaColumns.RELATIVE_PATH,
-                        Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL");
-                values.put(MediaStore.MediaColumns.IS_PENDING, 1);
-                gyroUri = getContentResolver().insert(
-                        MediaStore.Files.getContentUri("external"), values);
-            } else {
-                gyroFile = new File(dir, "xreal_" + ts + ".gcsv");
-            }
+        }
+        if (rawOnly) {
+            // Only RAW_ONLY publishes to Documents. MediaStore needs no
+            // all-files-access permission. The debug dumps stay in Android/data.
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, "xreal_" + ts + ".gcsv");
+            values.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH,
+                    Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL");
+            values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+            gyroUri = getContentResolver().insert(
+                    MediaStore.Files.getContentUri("external"), values);
         }
         if (diagnostics) {
             wavFile = new File(dir, "xreal_" + ts + ".wav");
         }
         if (rawMode) {
             adtsFile = new File(dir, "xreal_" + ts + audioExt);
+        }
+        if (gyroUri == null) {
+            // Crash-safe backup only; the embedded MP4 track remains canonical.
+            gyroFile = new File(dir, "xreal_" + ts + ".gcsv");
         }
         long captureTimeMs = System.currentTimeMillis();
         RecordingOutput output = null;
@@ -556,6 +561,16 @@ public final class RecordService extends Service {
         }
         FileOutputStream hevcOut = hevcFile != null ? new FileOutputStream(hevcFile) : null;
         GlassesImuClient imu = GlassesImuClient.start(this);
+        GcsvStreamSink gyroSink = null;
+        if (gyroFile != null) {
+            try {
+                gyroSink = new GcsvStreamSink(new FileOutputStream(gyroFile),
+                        mp4Name, captureTimeMs);
+                imu.setSink(gyroSink);
+            } catch (Exception e) {
+                Log.w(TAG, "streamed gcsv unavailable", e);
+            }
+        }
         final String finalMp4Name = mp4Name;
         final JSONObject cameraInfo = new JSONObject();
         cameraInfo.put("schema_version", 1);
@@ -769,7 +784,7 @@ public final class RecordService extends Service {
                 });
 
         audioRef.set(audio);
-        Session session = new Session(writer, muxer, audio, imu, hevcOut,
+        Session session = new Session(writer, muxer, audio, imu, gyroSink, hevcOut,
                 new boolean[1], finalStats);
         if (!sessions.install(session, generation)) {
             // A stall retired the state while this session was being built: discard
@@ -996,17 +1011,19 @@ public final class RecordService extends Service {
         final RecordingMuxer muxer;
         final AudioSource audio;
         final GlassesImuClient imu;
+        final GcsvStreamSink gyroSink;
         final FileOutputStream hevcOut;
         final boolean[] csdSent;
         final SessionStats stats;
 
         Session(VideoWriter writer, RecordingMuxer muxer, AudioSource audio,
-                GlassesImuClient imu, FileOutputStream hevcOut,
+                GlassesImuClient imu, GcsvStreamSink gyroSink, FileOutputStream hevcOut,
                 boolean[] csdSent, SessionStats stats) {
             this.writer = writer;
             this.muxer = muxer;
             this.audio = audio;
             this.imu = imu;
+            this.gyroSink = gyroSink;
             this.hevcOut = hevcOut;
             this.csdSent = csdSent;
             this.stats = stats;

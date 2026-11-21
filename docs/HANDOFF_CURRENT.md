@@ -57,6 +57,13 @@
   - ★生データのみモードの保存先を確認: `SAVE_MODE_RAW_ONLY` は **DCIM に保存しない**。`Android/data/.../files/Movies/` に hevc/aac を書き、次回起動の `recoverPendingRawRecordings()` が同じ Android/data 内で hevc→mp4 に変換するだけ（`RawToMp4Converter.convert()` の出力先も `dir`）。今回の修正で gcsv も同ディレクトリに残る。DCIM 公開が必要なら recovery の出力先を `RecordingOutput.create()` 経由に変更する必要がある（未実施）。
 - ★ユーザー指示（2026-11-21 13:5x）: 「生データのみ保存モードの時のみドキュメントに保存するように変更して。ただ、全ファイル権限は渡さない」。→ `SAVE_MODE_RAW_ONLY` のときだけ MediaStore（`RELATIVE_PATH=Documents/XREAL/100XREAL`、`IS_PENDING`）で `.gcsv` を作成・書き出し・公開。`rawMode`（RAW）と `diagnostics` は従来どおり Android/data の `getExternalFilesDir(DIRECTORY_MOVIES)` に gcsv を保存。全ファイル管理権限は不要（MediaStore の URI 権限のみ）。
 - ★実機操作の制約（2026-11-21 13:5x）: SC-52B に XREAL 1S が接続済み。実機は **ssh シェルコマンドのみ**で制御する。別の AI エージェントが端末を使っているため、`am start`／`input` などのアプリ起動・画面操作は**禁止**。ログ確認・ファイル確認・`am broadcast` などのコマンドのみ許容。実機検証時はこの制約を守ること。ユーザーは「仮想スクリーンなどメインスクリーンに一切影響しないことが確信できるなら起動してもよい」と条件付きで許可。後に「実機は触るの禁止」と明示。
+- ★保存方式の調査結論（2026-11-21 18:0x）: ユーザー要件「MP4 埋め込みマスト（Google フォトで失われたくない）」「Flash 寿命」「異常終了耐性」を調査。
+  - Gyroflow protobuf 仕様では IMU は per-frame に分散が規定で、先頭フレームへ全件詰め込むのは非準拠 → 撤回済み。
+  - DJI/Insta360 は完成 Quaternion を MP4 に同時 mux（`Integration=None`）し後書き換えしない。我々は生 IMU のみで同時 mux 手段が無い。
+  - media3 `FragmentedMp4Muxer` を `javap` で確認: `addTrack()` は video/audio mime のみサポート、`gyrf` 独自トラック追加不可 → **録画中の meta 同時 mux は不可能**。
+  - よって MP4 埋め込みは現状の後注入方式を維持。Flash 負荷軽減は「元 URI への全書き換え」をやめ、注入結果を新規 URI へ1回書いて元を削除する方式を採用。
+  - gcsv 逐次保存は「埋め込まないと Google フォトで失う」ため単独では採用しない（ユーザー判断）。ただし **クラッシュ時の保険**として Android/data に gcsv を逐次追記する `GcsvStreamSink` を追加（埋め込みが canoncial、gcsv はバックアップ）。`GyroCsvFormatter.header()` を切り出して逐次 heading を書けるようにした。
+  - `RecordingOutput.injectTelemetry()` に書き換え失敗時の復元処理を追加（元のコピーから戻す）。元 URI への直接全書き換えは残るが、失敗でファイルが壊れるリスクは減った。
 - ★IMU データの汎用的な入れ方へ変更（2026-11-21 17:5x）: ユーザー質問「もっと汎用的なデータの入れ方無いの？」。Gyroflow 仕様（IMU は `sample_timestamp_us` で key、全サンプルを integration/smoothing に使用、隣接フレーム重複は harmless）に基づき、**全 IMU サンプルを先頭フレームの `imu` 配列に一度に入れ、後続フレームは空にする**方式へ変更。フレーム境界でサンプルを割り当てる `sampleIndex` ロジックを撤廃し、`endUs==startUs`（読み出しスパン0）でも全サンプルが確実に Gyroflow へ渡る。Gyroflow CLI で smoothing 有効時に歪まないか検証する。
 - ★Gyroflow protobuf 仕様確認（2026-11-21 17:6x）: 公式ドキュメントで以下を確認。
   - `start_timestamp_us` / `end_timestamp_us` は per-row timing の authoritative。行 r の時刻は `start + (end-start)*r/(N-1) - exposure/2`。`end==start` なら全行が同じ時刻になり rolling shutter 行歪みは消えるが、**smoothing 自体はオンのまま**（ユーザー観察と整合: 水平ロックは正しいが smoothing 有効時だけ歪む）。
