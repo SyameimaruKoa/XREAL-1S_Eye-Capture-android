@@ -142,7 +142,8 @@ final class RecordingOutput {
         }
         StreamingGyroflowMuxer muxer =
                 new StreamingGyroflowMuxer(stream, csd, width, height);
-        muxer.start();
+        // start() is deferred until addVideoTrack() supplies the real CSD, so
+        // the hvcC in moov is valid.
         return new StreamingMuxerSink(muxer);
     }
 

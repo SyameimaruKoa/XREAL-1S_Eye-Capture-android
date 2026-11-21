@@ -17,6 +17,7 @@ final class StreamingMuxerSink implements RecordingMuxer {
     private final Object lock = new Object();
     private byte[] pendingAudio;
     private byte[] header;
+    private boolean started;
     private int frameNumber;
     private int width = 1600;
     private int height = 1200;
@@ -65,6 +66,15 @@ final class StreamingMuxerSink implements RecordingMuxer {
                 byte[] bytes = new byte[csdBuf.remaining()];
                 csdBuf.duplicate().get(bytes);
                 muxer.setCsd(bytes, width, height);
+            }
+            if (!started) {
+                try {
+                    muxer.start();
+                    started = true;
+                } catch (IOException e) {
+                    failed = true;
+                    error = String.valueOf(e);
+                }
             }
         }
     }
