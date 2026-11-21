@@ -27,6 +27,9 @@ final class StreamingGyroflowMuxer {
     private int fragmentNumber;
     private long decodeTimeUs;
     private boolean closed;
+    private final java.util.List<Long> fragmentOffsets = new java.util.ArrayList<>();
+    private final java.util.List<Long> fragmentTimes = new java.util.ArrayList<>();
+    private long writeOffset;
 
     StreamingGyroflowMuxer(OutputStream out, byte[] csd, int width, int height) {
         this.out = out;
@@ -37,7 +40,9 @@ final class StreamingGyroflowMuxer {
 
     void start() throws IOException {
         writeBox(out, "ftyp", concat(ascii("isom"), u32(0), ascii("isomiso2avc1mp41")));
-        out.write(moov());
+        byte[] moov = moov();
+        out.write(moov);
+        writeOffset = 8L + moov.length;
         out.flush();
     }
 
@@ -72,11 +77,14 @@ final class StreamingGyroflowMuxer {
                 trafVideo, trafAudio, trafMeta));
         long mdatSize = 8L + video.length + audio.length + gyro.length;
         byte[] mdatHeader = boxHeader("mdat", mdatSize);
+        fragmentOffsets.add(writeOffset);
+        fragmentTimes.add(decodeTimeUs);
         out.write(moof);
         out.write(mdatHeader);
         out.write(video);
         out.write(audio);
         out.write(gyro);
+        writeOffset += moof.length + mdatSize;
         decodeTimeUs += durationUs;
         fragmentNumber++;
     }
@@ -86,8 +94,25 @@ final class StreamingGyroflowMuxer {
             return;
         }
         closed = true;
+        java.io.ByteArrayOutputStream entries = new java.io.ByteArrayOutputStream();
+        for (int i = 0; i < fragmentOffsets.size(); i++) {
+            // tfho: track-ID(4) + fragment-offset(8) + decode-time(8) + duration(8)
+            // (duration is set to 0 here; readers use trun for sample timing.)
+            entries.write(concat(u32(videoTrackId), u64(fragmentOffsets.get(i)),
+                    u64(fragmentTimes.get(i)), u64(0)));
+        }
+        byte[] tfra = fullBox("tfra", concat(
+                u32(videoTrackId), u32(0), u32(0), u32(0), u32(fragmentOffsets.size()),
+                entries.toByteArray()));
+        byte[] mfro = fullBox("mfro", u32(mfraSize(tfra.length)));
+        byte[] mfra = box("mfra", concat(tfra, mfro));
+        out.write(mfra);
         out.flush();
         out.close();
+    }
+
+    private static long mfraSize(int tfraLength) {
+        return 8L + tfraLength + 16L;  // mfra header + tfra + mfro
     }
 
     private byte[] moov() throws IOException {

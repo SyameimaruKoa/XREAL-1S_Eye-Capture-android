@@ -1,6 +1,12 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## ★現在の最優先課題（2026-11-21 20:4x）: Gyroflow の protobuf parse エラー
+## ★★決定的制約（2026-11-21 20:5x）: Gyroflow は fMP4 の gyrf を読めない
+- telemetry-parser の `util.rs::get_track_samples()` を実際に読んで確認: `mp4parse::unstable::create_sample_table(&x, ...)` を使い、**stsz/stco/stts（通常 MP4 のサンプルテーブル）のみ**を見る。`moof/trun` は読まない。ffprobe は trun を読めるが Gyroflow は読めない。
+- よって自前 fMP4 の gyrf トラックを moof に書いても Gyroflow には渡らない。
+- 解決策: **hybrid** — 映像/音声は fMP4 の moof+mdat で1回書き込み、gyrf トラックだけは `moov` 内の stsz/stco/stts にサンプルテーブルを書き、IMU protobuf を moov 直後の mdat（または moov 内）に配置する。Gyroflow は stsz 経由で読める。
+- 次: `StreamingGyroflowMuxer` を hybrid に改造。実機は禁止、エミュレーターで検証。
+
+## 旧・最優先課題（2026-11-21 20:4x）: Gyroflow の protobuf parse エラー
 - ffprobe: 先頭 ftyp・hvcC(offset514)・gyrf(offset1382)・3トラック・duration 5.43秒・**エラー無し**を確認。33MB truncation も解消。
 - Gyroflow CLI: gyrf トラックを発見し 326フレームを認識するが `Failed to parse ... as GyroflowProtobuf: InvalidData(CheckParserStateErr)`。
 - protobuf 生データ: magic + header(XREAL/1S/xYz/rotation) + frame、magic count=326 で全フレーム存在。
