@@ -94,7 +94,7 @@ final class ReplayTcpSource implements VideoSource {
                             android.util.Log.i("XrealReplay", "AU " + accessUnits
                                     + " nal=" + nal + " bytes=" + au.length);
                         }
-                        listener.onAccessUnit(au, System.nanoTime());
+                        listener.onAccessUnit(au, android.os.SystemClock.elapsedRealtimeNanos());
                     }
                     accessUnits++;
                     try {
