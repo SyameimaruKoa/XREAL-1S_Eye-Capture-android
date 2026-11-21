@@ -5,12 +5,14 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
+import android.provider.MediaStore;
 import android.hardware.display.DisplayManager;
 import android.media.MediaFormat;
 import android.os.Build;
@@ -28,6 +30,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
@@ -508,11 +512,23 @@ public final class RecordService extends Service {
         File wavFile = null;
         File adtsFile = null;
         File gyroFile = null;
+        Uri gyroUri = null;
         if (rawMode || diagnostics) {
             hevcFile = new File(dir, "xreal_" + ts + rawExt);
-            // The debug dumps (Android/data/.../files/Movies) have no MP4 telemetry
-            // track, so write the gyro sidecar next to the HEVC/WAV files.
-            gyroFile = new File(dir, "xreal_" + ts + ".gcsv");
+            if (rawOnly) {
+                // Only RAW_ONLY publishes to Documents. MediaStore needs no
+                // all-files-access permission. The debug dumps stay in Android/data.
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.MediaColumns.DISPLAY_NAME, "xreal_" + ts + ".gcsv");
+                values.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH,
+                        Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL");
+                values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+                gyroUri = getContentResolver().insert(
+                        MediaStore.Files.getContentUri("external"), values);
+            } else {
+                gyroFile = new File(dir, "xreal_" + ts + ".gcsv");
+            }
         }
         if (diagnostics) {
             wavFile = new File(dir, "xreal_" + ts + ".wav");
@@ -562,6 +578,7 @@ public final class RecordService extends Service {
         final RecordingMuxer finalMuxer = muxer;
         final FileOutputStream finalHevc = hevcOut;
         final File finalGyroFile = gyroFile;
+        final Uri finalGyroUri = gyroUri;
         final RecordingOutput finalOutput = output;
         final GlassesImuClient finalImu = imu;
         final long t0Ns = SystemClock.elapsedRealtimeNanos();
@@ -684,6 +701,23 @@ public final class RecordService extends Service {
                                             finalMp4Name, captureTimeMs));
                                 } catch (Throwable t) {
                                     Log.e(TAG, "debug gcsv write failed", t);
+                                }
+                            }
+                            if (finalGyroUri != null && finalImu != null
+                                    && finalImu.getSampleCount() > 0) {
+                                try (OutputStream gyroStream = getContentResolver()
+                                        .openOutputStream(finalGyroUri, "w")) {
+                                    if (gyroStream != null) {
+                                        gyroStream.write(finalImu.formatCsv(
+                                                finalMp4Name, captureTimeMs)
+                                                .getBytes(StandardCharsets.UTF_8));
+                                        ContentValues published = new ContentValues();
+                                        published.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                                        getContentResolver().update(finalGyroUri, published,
+                                                null, null);
+                                    }
+                                } catch (Throwable t) {
+                                    Log.e(TAG, "documents gcsv write failed", t);
                                 }
                             }
                         } finally {
