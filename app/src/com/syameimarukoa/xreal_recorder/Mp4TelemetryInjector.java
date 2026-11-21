@@ -16,6 +16,7 @@ import org.mp4parser.muxer.container.mp4.MovieCreator;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -37,6 +38,10 @@ final class Mp4TelemetryInjector {
                 mapping.load(stream);
             }
             PropertyBoxParserImpl.BOX_MAP_CACHE = mapping;
+        }
+        if (!input.exists() || input.length() < 1024) {
+            throw new IOException("Recording MP4 is empty or too short: "
+                    + (input.exists() ? input.length() : "missing"));
         }
         Movie movie = MovieCreator.build(input.getAbsolutePath());
         Track video = null;

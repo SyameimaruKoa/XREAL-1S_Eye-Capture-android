@@ -6,6 +6,7 @@
 - 尺余りの原因: `onStreamStalled`/`onStreamResumed` で音声の pause/resume を呼び忘れており、切断中も内蔵マイクで録音して音声が映像より長くなっていた。`finalAudioRef` 経由で pause/resume を追加（commit `8aed0e3`）
 - 実データ `VID_20261121_013234.mp4`: 映像61.6秒 / 音声72.5秒 / IMU13.5秒（IMU停止＋音声尺余りを確認）
 - ★解析前に必ず `dumpsys activity services ... | grep -c ServiceRecord` が0であることを確認。撮影放置中の解析は禁止。
+- 09:14 時点: Tailscale で `sc-52b`(100.121.62.116) は direct active だが SSH 22 がタイムアウト。`haven-sc-52b` は offline（12h前）。端末側 sshd/dropbear 停止またはスリープの可能性。3目標のコード修正は全て CI 成功（`44780619135`、commit `3412e55`）済みで、実機検証待ち。10時までに再接続できれば検証する。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。

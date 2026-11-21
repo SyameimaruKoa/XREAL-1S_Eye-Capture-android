@@ -615,6 +615,9 @@ public final class RecordService extends Service {
 
                 @Override
                 public void onStreamReset() {
+                    // A replugged camera sends a fresh CSD; accept it so the muxer
+                    // keeps a video track instead of finishing with zero bytes.
+                    csdSent[0] = false;
                     Log.i(TAG, "video stream reset after reconnect");
                 }
             });
