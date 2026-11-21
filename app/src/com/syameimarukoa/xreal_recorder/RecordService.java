@@ -412,11 +412,10 @@ public final class RecordService extends Service {
 
                 @Override
                 public void onStreamStalled(String reason) {
-                    // Release build: a disconnect ends the recording. The current file
-                    // is finalized and no new session is started.
-                    stopRequested = true;
-                    videoLinkMessage = "";
-                    status = "USB切断: 録画を保存して終了しました";
+                    // Atomically retire the session; a build in progress is invalidated.
+                    finishSession(sessions.retire());
+                    videoLinkMessage = "映像一時停止: 再接続待ち…";
+                    status = "USB切断: 録画を保存しました。再接続を待っています";
                     Log.w(TAG, "video stream stalled: " + reason);
                 }
 
@@ -448,10 +447,25 @@ public final class RecordService extends Service {
 
             boolean audioFailureHandled = false;
             while (!stopRequested && !finalVideo.isFailed()) {
+                // Consume the signal unconditionally so a late resume cannot be
+                // mistaken for a fresh reconnect after the next stall.
+                boolean resumeSignal = reconnectReady;
+                reconnectReady = false;
                 SessionRegistry.State current = sessions.current();
                 if (!current.active) {
-                    // Release build: no session rotation. A disconnect ends the loop.
-                    break;
+                    if (resumeSignal) {
+                        audioFailureHandled = false;
+                        if (!startSession(finalVideo, rawMode, rawOnly, fmp4Mode, dir)) {
+                            // Another stall arrived during construction. Keep the
+                            // service alive and wait for the next reconnect.
+                            Thread.sleep(50);
+                            continue;
+                        }
+                        current = sessions.current();
+                    } else {
+                        Thread.sleep(50);
+                        continue;
+                    }
                 }
                 Session session = current.session instanceof Session
                         ? (Session) current.session : null;

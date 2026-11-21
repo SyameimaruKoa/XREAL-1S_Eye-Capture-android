@@ -1,6 +1,22 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## ★★★エミュレーター実録画検証（2026-11-21 22:1x、CI `44907608081` green）
+## ★★実機検証は完了 + 次の課題（2026-11-22）
+- ユーザーが手動で実機検証済み、**fMP4 + IMU の問題は無し**。わっちがハマった「USB ネットワーク未確立」はユーザーがイーサネットを無効にしとっただけ（忘れておった）。adb 側の不具合ではない。
+- ★次の課題（ユーザー指示）: **録画中の切断時に自動再開されない**。イーサネット無効/有効の切り替えでも物理接続断でも「再開されかかった」が実際には再開しない。
+- 原因を git 履歴で確定: commit `e3d0b69 Disable reconnect rotation for release prerelease` が `onStreamStalled` を `stopRequested=true`（切断で終了）にし、worker ループのセッション回転（`reconnectReady` → `startSession()`）を削除した。`onStreamResumed` は今も `reconnectReady=true` と「映像を再開しました」を出すため「再開されかけた」ように見えるが、ループは `stopRequested` で抜ける。
+- 対策: `e3d0b69^` の再開ロジックを復元（stall で `finishSession(sessions.retire())` + 再接続待ち、resume 信号で `startSession()`）。`SessionRegistry` の race 排除は維持。
+
+## 旧・実機検証開始（2026-11-22）
+- ユーザーより「実機で検証」の許可。実機 `sc-52b.bass-uaru.ts.net:5555` の ServiceRecord=0 を確認（撮影中ではない）。
+- 実機の XREAL recorder は versionCode=25（古い v0.1.25 相当）。v0.1.27 の APK を導入してから検証する。
+- 別 AI エージェントが `com.syameimarukoa.pscam_recorder` を使用中。XREAL recorder の画面起動（`am start`）・`input` 操作は禁止。ログ／ファイル確認と `am broadcast` のみ許容。XREAL 1S は実機に上下逆さまに接続済み。
+- 検証項目: 一回書き込み fMP4 で録画 → MP4 の gyrf に IMU が入り、Gyroflow が `detected_source: XREAL 1S` + `raw_imu` を読めること。ロール -180° は metadata 側の設定（水平線ロック -90° は Gyroflow UI）。
+- 04:2x: v0.1.27 を実機へ導入（pull した base.apk の sha256 が公開 APK と一致）。XREAL 1S は USB 接続済み（product_id=1086）。ServiceRecord=0、画面はランチャー。MainActivity を起動して `DEV_CMD start` → 約25秒録画 → `DEV_CMD stop` の予定。画面は検証後にランチャーへ戻す。
+- ★04:2x-04:3x の実機検証は **XREAL の USB ネットワーク未確立でブロック**。USB デバイス自体は認識（vendor 13080 / product 1086、NCM インターフェースあり）だが、`eth0`(cdc_ncm) と `eth1`(cdc_ether) が down で IP アドレス無し、`ping 169.254.2.1` 不通。UI は「グラス情報: 取得できません (XREAL の USB ネットワークが見つかりません)」で録画開始をブロック。`GlassesImuClient` の接続先 169.254.2.1:52998 も到達不可。
+- adb shell からの復旧は不可: `adb root` は production build で拒否、`ifconfig eth0 169.254.2.2 up` と sysfs `bConfigurationValue` 書き込みは Permission denied。`DEV_CMD` は manifest の `HeadlessReceiver` がバックグラウンド実行制限で SKIPPED され、UI ボタンもネットワーク未確立で開始しない。
+- ★必要な対応: XREAL 1S の USB ケーブルを挿し直す／XREAL 本体を再起動して USB ネットワークを確立させる（物理操作が必要）。APK 導入と画面の MainActivity 起動は完了済み。検証後にランチャーへ戻すこと。
+
+## 旧・エミュレーター実録画検証（2026-11-21 22:1x、CI `44907608081` green）
 - エミュレーター `emulator-5554` で replay 録画が成功。`VID_20261121_221617.mp4`（23.4MB / 5.5秒）を pull。
 - 構造: ftyp → 先頭 moov → moof/mdat×330 → mfra → 末尾 moov(gyrf)。ffprobe は video/audio をエラーなしで認識。gyrf 330サンプル、各ペイロードに `GyroflowProtobuf` + XREAL/1S/xYz header。
 - Gyroflow CLI: `Failed to parse as GyroflowProtobuf` 消滅、`Processing done`。`--export-metadata 2:` で **`detected_source: "XREAL 1S"`**、`camera_identifier: XREAL 1S`、`calibrated_by: Gyroflow Protobuf` を確認 → gyrf を Gyroflow が正常に読み込んだ。
