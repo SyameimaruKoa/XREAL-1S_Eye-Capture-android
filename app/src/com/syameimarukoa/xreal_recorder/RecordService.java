@@ -98,6 +98,7 @@ public final class RecordService extends Service {
     private volatile VideoSource activeVideoSource;
     private final SessionRegistry sessions = new SessionRegistry();
     private volatile boolean reconnectReady;
+    private volatile byte[] pendingCsd;
     private volatile long sessionT0Ns;
     private Thread telemetryThread;
     private volatile boolean telemetryRunning;
@@ -349,6 +350,8 @@ public final class RecordService extends Service {
                 public void onCsd(byte[] csd) {
                     SessionRegistry.State state = sessions.current();
                     if (!state.active || !(state.session instanceof Session)) {
+                        // CSD can arrive before the session is installed; keep it.
+                        pendingCsd = csd;
                         return;
                     }
                     Session session = (Session) state.session;
@@ -812,6 +815,16 @@ public final class RecordService extends Service {
             }
             Log.i(TAG, "session discarded: " + mp4Name);
             return false;
+        }
+        // A CSD that arrived before the session was installed was cached; apply it now.
+        byte[] cachedCsd = pendingCsd;
+        pendingCsd = null;
+        if (cachedCsd != null && muxer != null) {
+            MediaFormat fmt = MediaFormat.createVideoFormat(
+                    MediaFormat.MIMETYPE_VIDEO_HEVC, videoSource.getWidth(),
+                    videoSource.getHeight());
+            fmt.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(cachedCsd));
+            muxer.addVideoTrack(fmt);
         }
         telemetryImuClient = imu;
         // Reset the UI mirror for the new file; per-file counters live in SessionStats.
