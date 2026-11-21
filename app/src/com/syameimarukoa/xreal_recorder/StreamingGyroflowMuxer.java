@@ -113,7 +113,7 @@ final class StreamingGyroflowMuxer {
         return fullBox("trak", concat(tkhd, mdia));
     }
 
-    private byte[] traf(int id, long decodeTimeUs, int sampleSize, int deltaUs, boolean key) {
+    private byte[] traf(int id, long decodeTimeUs, int sampleSize, long deltaUs, boolean key) {
         // tfhd flags 0x020000 = default-sample-duration present in the trex;
         // sample count is carried by trun. trun 0x020001 = data-offset present,
         // 0x000004 = sample-duration present, 0x000100 = sample-flags present.
