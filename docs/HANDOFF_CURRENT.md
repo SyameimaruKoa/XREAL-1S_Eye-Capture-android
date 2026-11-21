@@ -4,7 +4,10 @@
 - ユーザーが手動で実機検証済み、**fMP4 + IMU の問題は無し**。わっちがハマった「USB ネットワーク未確立」はユーザーがイーサネットを無効にしとっただけ（忘れておった）。adb 側の不具合ではない。
 - ★次の課題（ユーザー指示）: **録画中の切断時に自動再開されない**。イーサネット無効/有効の切り替えでも物理接続断でも「再開されかかった」が実際には再開しない。
 - 原因を git 履歴で確定: commit `e3d0b69 Disable reconnect rotation for release prerelease` が `onStreamStalled` を `stopRequested=true`（切断で終了）にし、worker ループのセッション回転（`reconnectReady` → `startSession()`）を削除した。`onStreamResumed` は今も `reconnectReady=true` と「映像を再開しました」を出すため「再開されかけた」ように見えるが、ループは `stopRequested` で抜ける。
-- 対策: `e3d0b69^` の再開ロジックを復元（stall で `finishSession(sessions.retire())` + 再接続待ち、resume 信号で `startSession()`）。`SessionRegistry` の race 排除は維持。
+- 対策: `e3d0b69^` の再開ロジックを復元（stall で `finishSession(sessions.retire())` + 再接続待ち、resume 信号で `startSession()`）。`SessionRegistry` の race 排除は維持。commit `5977072`、新ブランチ `OptiPlex-3040-MFF_20261122`。
+- 復元のポイント: `onStreamStalled` は `stopRequested=true` をやめ、原子的にセッションを retire して「再接続待ち」表示。`onStreamResumed` は `reconnectReady=true` を立てたまま。worker ループが信号を無条件に消費し、`current.active==false` なら `startSession()` で新規 MP4 を開始（再 stall なら50ms待って再試行）。fMP4 の `startSession()` も `openStreamingMuxer()` で新規セッションを作るため対応済み。
+- ローカル Java テスト22個すべて PASS。CI run `44944594582` は実行中。
+- ★実機は XREAL 1S が物理的に切断されとる（05:0x 時点で USB デバイス一覧に XREAL 無し、eth0 も消滅）。ユーザーが手動検証後に外した模様。再開の実機検証には XREAL の再接続が必要。
 
 ## 旧・実機検証開始（2026-11-22）
 - ユーザーより「実機で検証」の許可。実機 `sc-52b.bass-uaru.ts.net:5555` の ServiceRecord=0 を確認（撮影中ではない）。
