@@ -44,6 +44,10 @@ final class GyroflowProto {
         writeFloat(clip, 5, fps);
         writeFloat(clip, 6, fps);
         writeVarint(clip, 8, imuRateHz);
+        // XREAL corrects rolling shutter in-camera. Explicitly disable Gyroflow's
+        // rolling shutter correction: leaving it unset makes Gyroflow guess a
+        // readout time and warp the image ("jelly") once LensData is present.
+        writeDouble(clip, 11, 0.0);
         writeFloat(clip, 10, 1f);
 
         ByteArrayOutputStream header = new ByteArrayOutputStream();

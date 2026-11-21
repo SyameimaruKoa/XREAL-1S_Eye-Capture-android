@@ -79,8 +79,10 @@ final class Mp4TelemetryInjector {
             // actual (variable) video PTS instead of an assumed constant step.
             double frameUs = durations[i] * 1_000_000.0 / timescale;
             double startUs = cursorUs;
-            double endUs = startUs + frameUs;
-            cursorUs = endUs;
+            // XREAL corrects rolling shutter in-camera. Keep end == start so
+            // Gyroflow sees zero readout span and does not warp rows ("jelly").
+            double endUs = startUs;
+            cursorUs = startUs + frameUs;
             List<GyroflowProto.ImuSample> frameSamples = new ArrayList<>();
             while (sampleIndex < ordered.size()
                     && ordered.get(sampleIndex).timeUs < endUs) {
