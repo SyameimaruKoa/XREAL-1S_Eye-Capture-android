@@ -27,6 +27,7 @@
   - ★自動再開の真因候補: `ACTION_USB_DEVICE_ATTACHED` 用 receiver が `onStop` で解除されていた。画面消灯／ホーム復帰中に USB を挿し直すと受信できない。`onStop` での解除をやめ `onDestroy` に移動（一度登録したら Activity 生存中は残る）。
   - 手動停止（通知ボタン等）が `MainActivity.stopRecording()` を通らない場合 `auto_restart_on_attach` が残るため、`RecordService.ACTION_STOP` でもフラグをクリア。
   - 実機検証は不可のまま。CI とローカルテストで確認する。
+- 11:46 ユーザーがスマホを起動 → SSH 復活、CI `44857451837`（commit `d2f8cab`）成功を確認し最新 APK を導入。USB権限ダイアログが出たが、ユーザーが**「録画は再開しない」**と明示したため録画検証は一切行わない。残っていた `auto_restart_on_attach=true` を `false` にクリアし（次に USB を挿しても自動再開しないように）、ServiceRecord=0 を確認。★自動再開の実機検証は未実施。ユーザーが再度「録画してよい」と許可した時点で、最新 APK で「切断→保存→USB復帰→新規録画自動開始」をログ（`XrealRec: USB attached`）と複数 MP4 の生成で確認すること。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。
