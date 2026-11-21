@@ -89,16 +89,9 @@ public final class RecordService extends Service {
     private static volatile String videoLinkMessage = "";
     private static volatile int videoReconnectCount;
     private volatile VideoSource activeVideoSource;
-    private final AtomicReference<VideoWriter> sessionWriter = new AtomicReference<>();
-    private final AtomicReference<RecordingMuxer> sessionMuxer = new AtomicReference<>();
-    private final AtomicReference<AudioSource> sessionAudio = new AtomicReference<>();
-    private final AtomicReference<GlassesImuClient> sessionImu = new AtomicReference<>();
-    private volatile boolean sessionActive;
+    private final SessionRegistry sessions = new SessionRegistry();
     private volatile boolean reconnectReady;
     private volatile long sessionT0Ns;
-    private final AtomicReference<SessionStats> sessionStats = new AtomicReference<>();
-    private final AtomicReference<boolean[]> sessionCsdSent = new AtomicReference<>();
-    private final AtomicReference<FileOutputStream> sessionHevcOut = new AtomicReference<>();
     private Thread telemetryThread;
     private volatile boolean telemetryRunning;
     private DisplayManager displayManager;
@@ -342,12 +335,17 @@ public final class RecordService extends Service {
             videoSource.start(new UvcSource.Listener() {
                 @Override
                 public void onCsd(byte[] csd) {
-                    boolean[] csdState = sessionCsdSent.get();
-                    if (csdState == null || csdState[0]) {
+                    SessionRegistry.State state = sessions.current();
+                    if (!state.active || !(state.session instanceof Session)) {
+                        return;
+                    }
+                    Session session = (Session) state.session;
+                    boolean[] csdState = session.csdSent;
+                    if (csdState[0]) {
                         return;
                     }
                     csdState[0] = true;
-                    FileOutputStream hevc = sessionHevcOut.get();
+                    FileOutputStream hevc = session.hevcOut;
                     if (rawMode && hevc != null && csd != null) {
                         try {
                             hevc.write(csd);
@@ -361,19 +359,20 @@ public final class RecordService extends Service {
                             finalVideo.getWidth(), finalVideo.getHeight());
                     fmt.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(csd));
                     fmt.setInteger(MediaFormat.KEY_FRAME_RATE, finalVideo.getFrameRate());
-                    RecordingMuxer currentMuxer = sessionMuxer.get();
-                    if (currentMuxer != null) {
-                        currentMuxer.addVideoTrack(fmt);
+                    if (session.muxer != null) {
+                        session.muxer.addVideoTrack(fmt);
                     }
                 }
 
                 @Override
                 public void onAccessUnit(byte[] annexB, long timestampNs) {
-                    VideoWriter currentWriter = sessionWriter.get();
-                    SessionStats stats = sessionStats.get();
-                    if (currentWriter == null || stats == null) {
-                        return; // session rotation in progress
+                    SessionRegistry.State state = sessions.current();
+                    if (!state.active || !(state.session instanceof Session)) {
+                        return; // no active session
                     }
+                    Session session = (Session) state.session;
+                    VideoWriter currentWriter = session.writer;
+                    SessionStats stats = session.stats;
                     try {
                         long receivedNs = SystemClock.elapsedRealtimeNanos();
                         long ptsUs = Math.max(0L, (timestampNs - sessionT0Ns) / 1000L);
@@ -398,10 +397,8 @@ public final class RecordService extends Service {
 
                 @Override
                 public void onStreamStalled(String reason) {
-                    // Save only the current session. Keep the service and TcpSource
-                    // alive so the reconnect can finish locally.
-                    sessionActive = false;
-                    finishSession();
+                    // Atomically retire the session; a build in progress is invalidated.
+                    finishSession(sessions.retire());
                     videoLinkMessage = "映像一時停止: 再接続待ち…";
                     status = "USB切断: 録画を保存しました。再接続を待っています";
                     Log.w(TAG, "video stream stalled: " + reason);
@@ -439,22 +436,25 @@ public final class RecordService extends Service {
                 // mistaken for a fresh reconnect after the next stall.
                 boolean resumeSignal = reconnectReady;
                 reconnectReady = false;
-                if (!sessionActive) {
+                SessionRegistry.State current = sessions.current();
+                if (!current.active) {
                     if (resumeSignal) {
                         audioFailureHandled = false;
                         if (!startSession(finalVideo, rawMode, rawOnly, fmp4Mode, dir)) {
                             break;
                         }
+                        current = sessions.current();
                     } else {
                         Thread.sleep(50);
                         continue;
                     }
                 }
-                AudioSource a = sessionAudio.get();
+                Session session = current.session instanceof Session
+                        ? (Session) current.session : null;
+                AudioSource a = session != null ? session.audio : null;
                 if (a != null && a.isFailed()) {
-                    RecordingMuxer m = sessionMuxer.get();
-                    if (m != null) {
-                        m.startVideoOnly();
+                    if (session.muxer != null) {
+                        session.muxer.startVideoOnly();
                     }
                     if (!audioFailureHandled) {
                         audioFailureHandled = true;
@@ -467,13 +467,11 @@ public final class RecordService extends Service {
                 Thread.sleep(200);
             }
 
-            if (sessionActive) {
-                finishSession();
-            }
+            finishSession(sessions.retire());
         } catch (Throwable t) {
             Log.e(TAG, "recording failed", t);
             status = "録画エラー: " + t.getMessage();
-            finishSession();
+            finishSession(sessions.retire());
         } finally {
             displayHandler.post(new Runnable() {
                 @Override
@@ -493,34 +491,26 @@ public final class RecordService extends Service {
         }
     }
 
-    private void finishSession() {
-        VideoWriter w = sessionWriter.getAndSet(null);
-        if (w != null) {
-            w.finish();
+    private void finishSession(Object retired) {
+        if (!(retired instanceof Session)) {
+            return;
         }
-        sessionMuxer.set(null);
-        sessionCsdSent.set(null);
-        sessionStats.set(null);
-        FileOutputStream hevc = sessionHevcOut.getAndSet(null);
-        if (hevc != null) {
+        Session session = (Session) retired;
+        session.writer.finish();
+        if (session.hevcOut != null) {
             try {
-                hevc.close();
+                session.hevcOut.close();
             } catch (Throwable ignored) {
             }
         }
-        AudioSource a = sessionAudio.getAndSet(null);
-        if (a != null) {
-            a.stop();
-        }
-        GlassesImuClient imu = sessionImu.getAndSet(null);
-        if (imu != null) {
-            imu.stop();
-        }
+        session.audio.stop();
+        session.imu.stop();
         telemetryImuClient = null;
     }
 
     private boolean startSession(VideoSource videoSource, boolean rawMode,
             boolean rawOnly, boolean fmp4Mode, File dir) throws Exception {
+        long generation = sessions.generation();
         String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
         String rawExt = rawOnly ? ".hevc4" : ".hevc";
         String audioExt = rawOnly ? ".aac4" : ".aac";
@@ -582,6 +572,7 @@ public final class RecordService extends Service {
         final long t0Ns = SystemClock.elapsedRealtimeNanos();
         sessionT0Ns = t0Ns;
         final SessionStats finalStats = new SessionStats();
+        final AtomicReference<AudioSource> audioRef = new AtomicReference<>();
         VideoWriter writer = new VideoWriter(new VideoWriter.Output() {
             @Override
             public void write(byte[] annexB, long ptsUs, boolean keyFrame, int auIndex)
@@ -624,7 +615,7 @@ public final class RecordService extends Service {
                                 cameraInfo.put("received_average_bitrate_bps",
                                         finalStats.averageBitrateBps());
                             }
-                            AudioSource capturedAudio = sessionAudio.get();
+                            AudioSource capturedAudio = audioRef.get();
                             if (capturedAudio != null) {
                                 cameraInfo.put("audio_capture_status",
                                         capturedAudio.isFailed() ? "failed" : "completed");
@@ -699,7 +690,7 @@ public final class RecordService extends Service {
             }
         });
 
-        AudioSource audio = new AudioSource(this, t0Ns, muxer, wavFile, adtsFile,
+        final AudioSource audio = new AudioSource(this, t0Ns, muxer, wavFile, adtsFile,
                 new AudioSource.Listener() {
                     @Override
                     public void onError(String message) {
@@ -729,20 +720,30 @@ public final class RecordService extends Service {
                     }
                 });
 
-        sessionWriter.set(writer);
-        sessionMuxer.set(muxer);
-        sessionAudio.set(audio);
-        sessionImu.set(imu);
-        sessionHevcOut.set(hevcOut);
-        sessionCsdSent.set(new boolean[1]);
-        sessionStats.set(finalStats);
+        audioRef.set(audio);
+        Session session = new Session(writer, muxer, audio, imu, hevcOut,
+                new boolean[1], finalStats);
+        if (!sessions.install(session, generation)) {
+            // A stall retired the state while this session was being built: discard
+            // the half-built resources instead of leaving a stale active session.
+            audio.stop();
+            imu.stop();
+            writer.finish();
+            if (hevcOut != null) {
+                try {
+                    hevcOut.close();
+                } catch (Throwable ignored) {
+                }
+            }
+            Log.i(TAG, "session discarded: " + mp4Name);
+            return false;
+        }
         telemetryImuClient = imu;
         // Reset the UI mirror for the new file; per-file counters live in SessionStats.
         videoFrames = 0;
         videoBytes = 0;
         firstVideoNs = 0;
         lastVideoNs = 0;
-        sessionActive = true;
         audio.start();
         status = "録画中: " + mp4Name;
         videoReconnectCount = 0;
@@ -937,5 +938,27 @@ public final class RecordService extends Service {
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    private static final class Session {
+        final VideoWriter writer;
+        final RecordingMuxer muxer;
+        final AudioSource audio;
+        final GlassesImuClient imu;
+        final FileOutputStream hevcOut;
+        final boolean[] csdSent;
+        final SessionStats stats;
+
+        Session(VideoWriter writer, RecordingMuxer muxer, AudioSource audio,
+                GlassesImuClient imu, FileOutputStream hevcOut,
+                boolean[] csdSent, SessionStats stats) {
+            this.writer = writer;
+            this.muxer = muxer;
+            this.audio = audio;
+            this.imu = imu;
+            this.hevcOut = hevcOut;
+            this.csdSent = csdSent;
+            this.stats = stats;
+        }
     }
 }
