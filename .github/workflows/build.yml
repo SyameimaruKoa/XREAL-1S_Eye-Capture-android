@@ -78,7 +78,7 @@ jobs:
           $names = @('AudioSilenceDetector','GlassesCommandProtocol','GlassesLivePlan',
                      'GlassesRecoveryPlan','GlassesStartupPlan','GyroCsvFormatter','GyroflowProto',
                      'ImuReportParser','SessionRegistry','SessionStats','TcpDriftGate',
-                     'TcpReadProgress','TcpTimestampRecovery','UsbMicrophoneSelector','VideoFrameHeader',
+                     'TcpReadProgress','TcpTimestampRecovery','UsbMicrophoneSelector',
                      'VideoProgressWatchdog','VideoWriter')
           $src = $names | ForEach-Object { "app\src\com\syameimarukoa\xreal_recorder\$_.java" }
           $tests = Get-ChildItem tests\*Test.java | ForEach-Object { $_.FullName }
