@@ -49,7 +49,8 @@ final class ReplayTcpSource implements VideoSource {
     private void runReplay() {
         try {
             File video = new File(DIR, "replay_52995.bin");
-            try (InputStream in = new BufferedInputStream(new FileInputStream(video))) {
+            while (running) {
+              try (InputStream in = new BufferedInputStream(new FileInputStream(video))) {
                 byte[] header = new byte[6];
                 while (running) {
                     if (!readFully(in, header)) {
@@ -97,6 +98,10 @@ final class ReplayTcpSource implements VideoSource {
                         return;
                     }
                 }
+              }
+              if (running) {
+                  csdSent = false; // replay the clip from the beginning
+              }
             }
         } catch (Throwable t) {
             failed = true;
