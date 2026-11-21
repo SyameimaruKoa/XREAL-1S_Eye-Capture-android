@@ -27,12 +27,14 @@ public final class GyroflowProtoTest {
         require(Math.abs(readFloat(imu, 2) - (float) (0.5 * 180.0 / Math.PI)) < 0.001,
                 "gyro X in deg/s");
 
-        // Header -> CameraMetadata -> imu_rotation quaternion must be roll -180 deg.
+        // Header -> CameraMetadata -> imu_rotation quaternion must be roll -90 deg.
         byte[] header = GyroflowProto.header(1920, 1080, 30f, 33333333L, 1000, "xYz");
         byte[] camera = readBytes(header, 1);
         byte[] rotation = readBytes(camera, 14);
-        require(readFloat(rotation, 1) == 0f, "roll quaternion w = 0");
-        require(readFloat(rotation, 4) == -1f, "roll quaternion z = -1");
+        require(Math.abs(readFloat(rotation, 1) - 0.70710678f) < 1e-6f,
+                "roll quaternion w");
+        require(Math.abs(readFloat(rotation, 4) + 0.70710678f) < 1e-6f,
+                "roll quaternion z");
         System.out.println("GyroflowProtoTest passed");
     }
 
