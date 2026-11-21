@@ -441,7 +441,10 @@ public final class RecordService extends Service {
                     if (resumeSignal) {
                         audioFailureHandled = false;
                         if (!startSession(finalVideo, rawMode, rawOnly, fmp4Mode, dir)) {
-                            break;
+                            // Another stall arrived during construction. Keep the
+                            // service alive and wait for the next reconnect.
+                            Thread.sleep(50);
+                            continue;
                         }
                         current = sessions.current();
                     } else {
