@@ -236,9 +236,13 @@ public final class RecordService extends Service {
                     || mode == SAVE_MODE_FMP4) ? mode : SAVE_MODE_MP4;
             try {
                 if (Build.VERSION.SDK_INT >= 29) {
-                    startForeground(NOTIFICATION_ID, buildNotification(),
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-                                    | ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+                    // Replay mode has no USB device, so connectedDevice type would be
+                    // rejected on devices without the USB/Bluetooth runtime permissions.
+                    int fgType = videoRoute == ROUTE_REPLAY
+                            ? ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                            : ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                                    | ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+                    startForeground(NOTIFICATION_ID, buildNotification(), fgType);
                 } else {
                     startForeground(NOTIFICATION_ID, buildNotification());
                 }
