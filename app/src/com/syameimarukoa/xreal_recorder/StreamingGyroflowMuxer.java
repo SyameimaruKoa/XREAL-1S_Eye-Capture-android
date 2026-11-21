@@ -145,8 +145,8 @@ final class StreamingGyroflowMuxer {
         byte[] trun = fullBox("trun", 0, flags, concat(
                 u32(1),               // sample_count
                 u32(dataOffset),
-                u32(sampleSize),
-                u32(deltaUs),
+                u32(deltaUs),         // sample_duration (per spec order)
+                u32(sampleSize),      // sample_size
                 u32(key ? 0x02000000 : 0x01010000)));
         return box("traf", concat(tfhd, tfdt, trun));
     }
