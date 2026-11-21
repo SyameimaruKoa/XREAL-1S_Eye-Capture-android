@@ -98,7 +98,16 @@ final class FragmentedMp4Sink implements RecordingMuxer {
 
     private void flushPendingIfReady() {
         synchronized (lock) {
-            if (tracksReady || videoTrack < 0 || audioTrack < 0) {
+            if (tracksReady || videoTrack < 0) {
+                return;
+            }
+            // Audio may never arrive (no microphone, replay). Flush video anyway.
+            if (audioTrack < 0) {
+                tracksReady = true;
+                for (Sample s : pendingVideo) {
+                    writeNow(videoTrack, s);
+                }
+                pendingVideo.clear();
                 return;
             }
             tracksReady = true;
