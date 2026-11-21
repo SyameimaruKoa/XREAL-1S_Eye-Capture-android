@@ -44,6 +44,7 @@
 - リソース破棄も finalize から分離（commit `7357cb6`）: `RecordingMuxer.discard()` を追加し、`MuxerSink`（`muxer.release()`＋キュークリア）と `FragmentedMp4Sink`（`muxer.close()`＋stream/channel close）に実装。`startSession()` の discard パスから呼び、無効化セッションは MP4 を公開せずリソースもリークしない。 RecordingMuxer の実装は2つのみで両方対応済み。
 - 13:1x 最終確認: CI run `44860779674` 成功（Java tests / Build APK / Upload APK すべて ✓、commit `3192a33`）。ローカル Java テスト6つすべて成功（GyroCsvFormatter / ImuReportParser / GyroflowProto / SessionStats / SessionRegistry / VideoWriterDiscard）。git status clean。静的な完成度は上げ切った。
 - ★ユーザーに end-to-end 実機検証の許可を求めたが**「まだしない」**と回答。実機検証は実行しない。残る「stall→reconnect→新規 MP4 自動開始」の end-to-end 確認はユーザーが許可した時点で実施すること（その際は APK を最新 CI から導入し、切断→保存→再接続→複数 MP4 生成を `session started:` / `video stream resumed` ログで確認）。実機を触る前に必ず `dumpsys activity services ... | grep -c ServiceRecord` が0であることを確認。
+- ★プレリリース方針（2026-11-21 13:2x ユーザー指示）: 「Release に切断を除いて普通に録画してモーションも記録できる APK をプレリリースに上げて」。`onStreamStalled` で `stopRequested=true`（切断で録画終了・再開しない）、worker ループのセッション回転を削除。通常録画（映像＋音声）と IMU モーション記録（Gyroflow protobuf 埋め込み、ロール -180°）は維持。CI ビルド後に GitHub prerelease として公開する。再開ロジック自体は git 履歴／`app/legacy/` に残る。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。
