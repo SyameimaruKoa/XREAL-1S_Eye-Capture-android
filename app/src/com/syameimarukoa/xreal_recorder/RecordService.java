@@ -390,10 +390,6 @@ public final class RecordService extends Service {
                         currentWriter.enqueue(annexB, ptsUs, UvcSource.isKeyFrame(annexB),
                                 finalVideo.getAccessUnits());
                         stats.observe(receivedNs, annexB.length);
-                        if (stats.frames == 1 || stats.frames % 1000 == 0) {
-                            Log.i(TAG, "video frames=" + stats.frames
-                                    + " lastNs=" + stats.lastNs + " nowNs=" + receivedNs);
-                        }
                         // Mirror the active session into the static fields used by the UI.
                         videoFrames = stats.frames;
                         videoBytes = stats.bytes;

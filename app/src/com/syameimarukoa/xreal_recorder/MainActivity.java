@@ -1314,15 +1314,27 @@ public class MainActivity extends Activity {
         throw last;
     }
 
+    private boolean isRecordServiceRunning() {
+        android.app.ActivityManager manager =
+                (android.app.ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        if (manager == null) {
+            return false;
+        }
+        for (android.app.ActivityManager.RunningServiceInfo info
+                : manager.getRunningServices(Integer.MAX_VALUE)) {
+            if (RecordService.class.getName().equals(info.service.getClassName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void pollStatus() {
         String s = RecordService.getStatus();
-        boolean recording = RecordService.isRecording();
+        boolean recording = RecordService.isRecording() || isRecordServiceRunning();
         boolean recordingBusy = RecordService.isRecordingOrStarting();
         boolean stopping = RecordService.isStopping();
         boolean videoStalled = RecordService.isVideoStalled();
-        if (recordingBusy && !recording) {
-            android.util.Log.i("XrealRec", "pollStatus busy but recording=false");
-        }
         int audioPeak = recording ? RecordService.getAudioPeak() : 0;
         boolean keepScreen = recording && keepScreenCheck.isChecked();
         if (keepScreen) {
