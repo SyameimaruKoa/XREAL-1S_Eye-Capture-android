@@ -18,9 +18,9 @@ final class StreamingGyroflowMuxer {
     private static final int TIMESCALE = 1_000_000;
 
     private final OutputStream out;
-    private final byte[] csd;
-    private final int width;
-    private final int height;
+    private byte[] csd;
+    private int width;
+    private int height;
     private int videoTrackId = 1;
     private int audioTrackId = 2;
     private int metaTrackId = 3;
@@ -41,27 +41,31 @@ final class StreamingGyroflowMuxer {
         out.flush();
     }
 
+    void setCsd(byte[] csd, int w, int h) {
+        this.csd = csd;
+        this.width = w;
+        this.height = h;
+    }
+
     /** Append one video, audio and gyro sample as a new fragment. */
     void writeSample(byte[] video, byte[] audio, byte[] gyro, long durationUs)
             throws IOException {
         if (closed) {
             return;
         }
-        // One moof with three traf, one mdat with the three sample payloads.
+        // One moof with three traf, one mdat holding the three payloads in order.
+        // With default-base-is-moof, each trun data_offset is relative to the
+        // start of the moof box, NOT to the trun itself.
         long baseDecode = decodeTimeUs;
-        long deltaUs = durationUs;
-        // trun starts at: 8 (moof hdr) + 16 (mfhd) + 8*n (traf hdrs)
-        //   + sum of preceding tfhd(24)+tfdt(24)+trun(28)
-        int moofSize = 8 + 16 + 3 * (8 + 24 + 24 + 32);
-        int videoTrunStart = 8 + 16 + 8 + 24 + 24;
-        int audioTrunStart = videoTrunStart + 88 + 8 + 24 + 24;
-        int metaTrunStart = audioTrunStart + 88 + 8 + 24 + 24;
-        byte[] trafVideo = traf(videoTrackId, baseDecode, video.length, deltaUs,
-                moofSize - videoTrunStart + 8, true);
-        byte[] trafAudio = traf(audioTrackId, baseDecode, audio.length, deltaUs,
-                moofSize - audioTrunStart + 8, false);
-        byte[] trafMeta = traf(metaTrackId, baseDecode, gyro.length, deltaUs,
-                moofSize - metaTrunStart + 8, false);
+        // Actual sizes: tfhd=16, tfdt=24 (version 1), trun=32, traf=80, mfhd=16.
+        int moofSize = 8 + 16 + 3 * 80; // 272
+        int dataStart = moofSize + 8; // skip mdat header
+        byte[] trafVideo = traf(videoTrackId, baseDecode, video.length, durationUs,
+                dataStart, true);
+        byte[] trafAudio = traf(audioTrackId, baseDecode, audio.length, durationUs,
+                dataStart + video.length, false);
+        byte[] trafMeta = traf(metaTrackId, baseDecode, gyro.length, durationUs,
+                dataStart + video.length + audio.length, false);
         byte[] moof = box("moof", concat(
                 fullBox("mfhd", u32(fragmentNumber)),
                 trafVideo, trafAudio, trafMeta));
@@ -89,7 +93,7 @@ final class StreamingGyroflowMuxer {
         byte[] mvhd = fullBox("mvhd", concat(
                 u32(0), u32(0), u32(TIMESCALE), u32(0),
                 u32(0x00010000), u16(0x0100), u16(0), u32(0), u32(0),
-                matrix(), new byte[24], u32(0), u32(videoTrackId + 1)));
+                matrix(), new byte[24], u32(0), u32(metaTrackId + 1)));
         byte[] trakVideo = trak(videoTrackId, "vide", videoSampleEntry(), 0);
         byte[] trakAudio = trak(audioTrackId, "soun", audioSampleEntry(), 0);
         byte[] trakMeta = trak(metaTrackId, "meta", metaSampleEntry(), 0);
@@ -132,14 +136,16 @@ final class StreamingGyroflowMuxer {
         // tfhd flags 0x020000 = default-sample-duration present in the trex;
         // sample count is carried by trun. trun 0x020001 = data-offset present,
         // 0x000004 = sample-duration present, 0x000100 = sample-flags present.
-        byte[] tfhd = fullBox("tfhd", concat(u32(id), u32(0x020000), u32(1)));
-        byte[] tfdt = fullBox("tfdt", concat(u32(1), u64(decodeTimeUs * 1000L)));
-        int flags = key ? 0x020305 : 0x020301;
-        byte[] trun = fullBox("trun", concat(
-                u32(1), u32(flags),
+        // default-base-is-moof: offsets are relative to the moof start.
+        byte[] tfhd = fullBox("tfhd", 0, 0x020000, u32(id));
+        // timescale is 1,000,000 (microseconds), so no *1000 here. version 1 = 64-bit.
+        byte[] tfdt = fullBox("tfdt", 1, 0, u64(decodeTimeUs));
+        int flags = key ? 0x000305 : 0x000301;
+        byte[] trun = fullBox("trun", 0, flags, concat(
+                u32(1),               // sample_count
                 u32(dataOffset),
                 u32(sampleSize),
-                u32(deltaUs * 1000L),
+                u32(deltaUs),
                 u32(key ? 0x02000000 : 0x01010000)));
         return box("traf", concat(tfhd, tfdt, trun));
     }
@@ -220,6 +226,11 @@ final class StreamingGyroflowMuxer {
     }
 
     private static byte[] fullBox(String type, byte[] body) {
-        return box(type, concat(new byte[]{0, 0, 0, 0}, body));
+        return fullBox(type, 0, 0, body);
+    }
+
+    private static byte[] fullBox(String type, int version, int flags, byte[] body) {
+        return box(type, concat(new byte[]{(byte) version,
+                (byte) (flags >> 16), (byte) (flags >> 8), (byte) flags}, body));
     }
 }

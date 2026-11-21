@@ -11,11 +11,17 @@ public final class StreamingMuxerGen {
             muxer.start();
             byte[] video = new byte[]{0, 0, 0, 1, 0x26, 0x01};
             byte[] audio = new byte[]{0x21, 0x10, 0x04};
-            byte[] gyro = GyroflowProto.main(GyroflowProto.header(1600, 1200, 60f,
-                    16_666L, 1000, "xYz"),
-                    GyroflowProto.frame(1, 0, 16_666,
-                            java.util.Collections.emptyList(), 1600, 1200));
             for (int i = 0; i < 30; i++) {
+                java.util.List<GyroflowProto.ImuSample> imu = new java.util.ArrayList<>();
+                for (int k = 0; k < 16; k++) {
+                    long t = i * 16_666L + k * 1000L;
+                    imu.add(new GyroflowProto.ImuSample((double) t, 0.01f, -0.02f, 0.03f,
+                            0.1f, 9.8f, 0.2f));
+                }
+                byte[] gyro = GyroflowProto.main(i == 0 ? GyroflowProto.header(1600, 1200, 60f,
+                        500_000L, 1000, "xYz") : null,
+                        GyroflowProto.frame(i + 1, i * 16_666.0, (i + 1) * 16_666.0,
+                                imu, 1600, 1200));
                 muxer.writeSample(video, audio, gyro, 16_666L);
             }
             muxer.stop();

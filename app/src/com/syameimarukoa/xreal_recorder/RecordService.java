@@ -554,7 +554,9 @@ public final class RecordService extends Service {
         if (!rawMode) {
             output = RecordingOutput.create(this, outputTree, captureTimeMs);
             mp4Name = output.getFilename();
-            muxer = fmp4Mode ? output.openFragmentedMuxer() : output.openMuxer();
+            // fMP4: single write with the gyrf track embedded from the first byte.
+            muxer = fmp4Mode ? output.openStreamingMuxer(new byte[0], 1600, 1200)
+                    : output.openMuxer();
         } else {
             mp4Name = hevcFile != null
                     ? hevcFile.getName().replaceFirst("(?i)\\.hevc4?$", ".mp4")
@@ -571,6 +573,12 @@ public final class RecordService extends Service {
             } catch (Exception e) {
                 Log.w(TAG, "streamed gcsv unavailable", e);
             }
+        }
+        if (muxer instanceof StreamingMuxerSink) {
+            byte[] header = GyroflowProto.header(videoSource.getWidth(),
+                    videoSource.getHeight(), 60f, 0L, 1000, "xYz");
+            ((StreamingMuxerSink) muxer).setHeader(header);
+            imu.addSink(((StreamingMuxerSink) muxer).imuSink());
         }
         final String finalMp4Name = mp4Name;
         final JSONObject cameraInfo = new JSONObject();
@@ -669,8 +677,8 @@ public final class RecordService extends Service {
                                 }
                                 finalOutput.writeMetadata(cameraInfo.toString(2));
                                 if (finalImu != null && finalImu.getSampleCount() > 0) {
-                                    boolean embedded = false;
-                                    if (!rawMode) {
+                                    boolean embedded = fmp4Mode; // already embedded during recording
+                                    if (!rawMode && !fmp4Mode) {
                                         try {
                                             List<GyroflowProto.ImuSample> imuSamples =
                                                     finalImu.getSamples();

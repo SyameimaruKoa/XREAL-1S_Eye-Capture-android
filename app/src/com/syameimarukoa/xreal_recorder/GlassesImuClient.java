@@ -39,7 +39,7 @@ final class GlassesImuClient {
         void close();
     }
 
-    private ImuSink sink;
+    private final java.util.List<ImuSink> sinks = new ArrayList<>();
 
     private GlassesImuClient(Context context, boolean collectSamples) {
         this.context = context;
@@ -47,8 +47,12 @@ final class GlassesImuClient {
     }
 
     void setSink(ImuSink sink) {
+        addSink(sink);
+    }
+
+    void addSink(ImuSink sink) {
         synchronized (samples) {
-            this.sink = sink;
+            sinks.add(sink);
         }
     }
 
@@ -179,9 +183,9 @@ final class GlassesImuClient {
                     sample.gyro[0], sample.gyro[1], sample.gyro[2],
                     sample.accel[0], sample.accel[1], sample.accel[2]));
             imuFrames++;
-            if (sink != null) {
+            for (ImuSink s : sinks) {
                 try {
-                    sink.onSample((sample.timestampNs - firstTimestampNs) / 1_000_000L,
+                    s.onSample((sample.timestampNs - firstTimestampNs) / 1_000_000L,
                             sample.gyro, sample.accel);
                 } catch (Throwable ignored) {
                 }

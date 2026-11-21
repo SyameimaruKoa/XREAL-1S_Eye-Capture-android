@@ -133,6 +133,19 @@ final class RecordingOutput {
         }
     }
 
+    /** Open a single-write fMP4 sink with an embedded Gyroflow metadata track. */
+    StreamingMuxerSink openStreamingMuxer(byte[] csd, int width, int height)
+            throws IOException {
+        java.io.OutputStream stream = resolver.openOutputStream(uri, "rw");
+        if (stream == null) {
+            throw new IOException("Could not open fMP4 in the selected location");
+        }
+        StreamingGyroflowMuxer muxer =
+                new StreamingGyroflowMuxer(stream, csd, width, height);
+        muxer.start();
+        return new StreamingMuxerSink(muxer);
+    }
+
     /** Open a fragmented MP4 sink (mode 3). The sink owns and closes the channel. */
     FragmentedMp4Sink openFragmentedMuxer() throws IOException {
         java.io.OutputStream stream = resolver.openOutputStream(uri, "rw");
