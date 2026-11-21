@@ -33,6 +33,11 @@
 - ★新設計（commit `2074812`/`92138f7`/`2160a40`）: **RecordService 内で完結**。切断時に `onStreamStalled` が現在のセッションだけを保存して `sessionActive=false`、service と TcpSource は生かしたまま。TcpSource が再接続し `onStreamResumed` が `reconnectReady=true` を立てる。worker スレッドのループがそれを見て `startSession()` で新しいファイルのセッションを開始する。USB attach／権限／デバイス列挙／サービス停止待ちは不要になり、MainActivity の旧 auto-restart コードは全削除。セッション状態は `sessionWriter/sessionMuxer/sessionAudio/sessionImu/sessionCsdSent/sessionHevcOut`（AtomicReference）と `sessionT0Ns` で管理。`startSession()`／`finishSession()` を追加。onDestroy で `activeVideoSource.stop()`。
 - ★教訓: ユーザーの「〜しない」は「仕様がそうなっている」ではなく「仕様どおり動かない（バグ）」の意味だった。文脈を確認せず正反対に実装するのは絶対にダメ。
 - 12:0x 最終確認: CI run `44858823749` 成功（Java tests / Build APK / Upload APK すべて ✓、commit `077a35b`）。ローカル Java テスト3つ成功（GyroCsvFormatterTest / ImuReportParserTest / GyroflowProtoTest、ロール -180° quaternion 検証含む）。git status clean。`startSession()` の checked exception 宣言漏れで1度ビルド失敗したが修正済み。★実機検証はユーザーが「まだだめ／安易に実機を使わずに解析しろ」と指示したため未実施。ユーザーが再度録画を許可した時点で、切断→保存→再接続→新規 MP4 Auto 開始を複数ファイル生成とログ（`session started:` / `video stream resumed`）で確認すること。
+- ★完成度向上（2026-11-21 12:2x、commit `d328227`）:
+  - セッション間で `videoFrames/firstVideoNs/lastVideoNs/videoBytes` が static 共有だった問題を修正。`SessionStats` を独立ファイルに切り出し、セッションごとにインスタンスを生成。static フィールドは UI 表示用ミラーにのみ使用。writer の finish コールバックは捕捉した `finalStats` を参照するため、再接続でセッションが切り替わっても旧ファイルのメタデータが汚染されない。
+  - 回帰テスト `tests/SessionStatsTest.java` を追加（セッション間独立性、参照差し替え時に旧 stats が不変、fps 計算、単一フレーム）。CI のテスト対象リストに `SessionStats` を追加。ローカル4テストすべて成功。
+  - スレッド監査: `onStreamStalled`（TcpSource スレッド）→ `finishSession()` は writer スレッドを join して同期待ち。`onStreamResumed` は `reconnectReady` を立てるだけ。worker スレッドがループ先頭で `resumeSignal = reconnectReady; reconnectReady = false;` と**無条件に消費**するよう修正し、遅延した resume が次の切断後に誤って新セッションを開始する stale-signal 競合を解消。
+  - 既知の残りリスク: `startSession()` 実行中に次の `onStreamStalled` が来ると、writer set と sessionActive=true の間に割り込まれる稀な race がある。再接続直後はデータが流れているため通常は発生しないが、完全に排除するには全セッション状態を単一の AtomicReference<Session> にまとめる必要がある。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。
