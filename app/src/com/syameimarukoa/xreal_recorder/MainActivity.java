@@ -1320,6 +1320,9 @@ public class MainActivity extends Activity {
         boolean recordingBusy = RecordService.isRecordingOrStarting();
         boolean stopping = RecordService.isStopping();
         boolean videoStalled = RecordService.isVideoStalled();
+        if (recordingBusy && !recording) {
+            android.util.Log.i("XrealRec", "pollStatus busy but recording=false");
+        }
         int audioPeak = recording ? RecordService.getAudioPeak() : 0;
         boolean keepScreen = recording && keepScreenCheck.isChecked();
         if (keepScreen) {
