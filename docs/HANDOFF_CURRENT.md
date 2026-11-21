@@ -38,6 +38,7 @@
   - 回帰テスト `tests/SessionStatsTest.java` を追加（セッション間独立性、参照差し替え時に旧 stats が不変、fps 計算、単一フレーム）。CI のテスト対象リストに `SessionStats` を追加。ローカル4テストすべて成功。
   - スレッド監査: `onStreamStalled`（TcpSource スレッド）→ `finishSession()` は writer スレッドを join して同期待ち。`onStreamResumed` は `reconnectReady` を立てるだけ。worker スレッドがループ先頭で `resumeSignal = reconnectReady; reconnectReady = false;` と**無条件に消費**するよう修正し、遅延した resume が次の切断後に誤って新セッションを開始する stale-signal 競合を解消。
   - 既知の残りリスク: `startSession()` 実行中に次の `onStreamStalled` が来ると、writer set と sessionActive=true の間に割り込まれる稀な race がある。再接続直後はデータが流れているため通常は発生しないが、完全に排除するには全セッション状態を単一の AtomicReference<Session> にまとめる必要がある。
+- ★★race を完全排除（2026-11-21 12:4x、commit `fdc539c`/`4181706`/`9350651`）: Android 非依存の `SessionRegistry` を追加。単一の `AtomicReference<State>` が session / active / generation を保持し、`install(session, expectedGeneration)` は generation が変わっていれば拒否、`retire()` は現在のセッションを原子的に取り出して返す。RecordService は writer/muxer/audio/imu/stats/csd/hevc を1つの `Session` にまとめ、registry 経由でのみ参照する。`onStreamStalled` は `finishSession(sessions.retire())` で原子的に終了。`startSession` は生成開始時に generation を取り、install が拒否されれば half-built リソースを捨てて false を返す。worker ループは false でも `break` せず、次の reconnect を待つ（「再開しない」バグの再発防止）。回帰テスト `tests/SessionRegistryTest.java` で正常フロー・stall インターリーブ・無効化後の再接続・並列 retire を検証。ローカル5テスト成功。CI テスト対象に `SessionRegistry` を追加。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。
