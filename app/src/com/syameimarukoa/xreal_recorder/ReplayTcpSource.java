@@ -28,8 +28,12 @@ final class ReplayTcpSource implements VideoSource {
     public void open() throws Exception {
         File video = new File(DIR, "replay_52995.bin");
         File imu = new File(DIR, "replay_52998.bin");
-        if (!video.exists() || !imu.exists()) {
-            throw new java.io.IOException("Replay dump not found in " + DIR);
+        android.util.Log.i("XrealReplay", "video exists=" + video.exists()
+                + " len=" + video.length() + " path=" + video.getAbsolutePath());
+        android.util.Log.i("XrealReplay", "imu exists=" + imu.exists()
+                + " len=" + imu.length() + " path=" + imu.getAbsolutePath());
+        if (!video.exists()) {
+            throw new java.io.IOException("Replay dump not found: " + video.getAbsolutePath());
         }
     }
 
