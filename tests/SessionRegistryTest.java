@@ -26,6 +26,13 @@ public final class SessionRegistryTest {
         require(registry.current().session == null, "stale session must not survive");
         require(!registry.current().active, "stale session must stay inactive");
 
+        // A later reconnect must still install and run normally.
+        long nextGeneration = registry.generation();
+        Object third = new Object();
+        require(registry.install(third, nextGeneration), "install after invalidation");
+        require(registry.current().session == third, "fresh session after invalidation");
+        require(registry.retire() == third, "retire fresh session");
+
         // Concurrent stalls must retire the session exactly once.
         Object second = new Object();
         require(registry.install(second, registry.generation()), "second install");
