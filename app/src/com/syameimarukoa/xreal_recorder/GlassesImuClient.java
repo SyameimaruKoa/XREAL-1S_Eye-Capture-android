@@ -21,9 +21,6 @@ final class GlassesImuClient {
     private static final String HOST = "169.254.2.1";
     private static final int PORT = 52998;
     private static final int HEADER_SIZE = 6;
-    private static final int MAX_ROWS = 200000;
-
-    private final List<String> rows = new ArrayList<>();
     private final List<GyroflowProto.ImuSample> samples = new ArrayList<>();
     private volatile boolean running;
     private Thread thread;
@@ -147,7 +144,7 @@ final class GlassesImuClient {
         if (sample == null) {
             return;
         }
-        synchronized (rows) {
+        synchronized (samples) {
             if (sample.reportType == ImuReportParser.REPORT_MAGNETOMETER) {
                 magnetometerFrames++;
                 System.arraycopy(sample.magnetometer, 0, lastMagnetometer, 0, 3);
@@ -156,18 +153,15 @@ final class GlassesImuClient {
             if (Float.isFinite(sample.temperature)) {
                 lastTemperature = sample.temperature;
             }
-            if (!collectSamples || rows.size() >= MAX_ROWS
-                    || !allFinite(sample.gyro) || !allFinite(sample.accel)) {
+            if (!collectSamples || !allFinite(sample.gyro) || !allFinite(sample.accel)) {
                 return;
             }
             if (firstTimestampNs < 0) {
                 firstTimestampNs = sample.timestampNs;
             }
-            long timeMs = (sample.timestampNs - firstTimestampNs) / 1_000_000L;
             // Store raw sensor values unchanged (only rad/s -> deg/s unit conversion
             // in GyroflowProto). Axis/roll correction is left to Gyroflow via the
             // embedded orientation and imu_rotation metadata — no double negation.
-            rows.add(GyroCsvFormatter.row(timeMs, sample.gyro, sample.accel));
             samples.add(new GyroflowProto.ImuSample(sample.timestampNs / 1000.0,
                     sample.gyro[0], sample.gyro[1], sample.gyro[2],
                     sample.accel[0], sample.accel[1], sample.accel[2]));
@@ -185,38 +179,47 @@ final class GlassesImuClient {
     }
 
     String formatCsv(String videoFilename, long captureTimeMs) {
-        synchronized (rows) {
-            return GyroCsvFormatter.format(videoFilename, captureTimeMs, new ArrayList<>(rows));
+        synchronized (samples) {
+            // Build CSV rows only for the fallback path; keeping them for every
+            // sample would double memory use for no benefit on a successful embed.
+            List<String> csvRows = new ArrayList<>(samples.size());
+            long firstUs = samples.isEmpty() ? 0L : (long) samples.get(0).timeUs;
+            for (GyroflowProto.ImuSample s : samples) {
+                csvRows.add(GyroCsvFormatter.row((long) s.timeUs - firstUs,
+                        new float[]{s.gyroX, s.gyroY, s.gyroZ},
+                        new float[]{s.accelX, s.accelY, s.accelZ}));
+            }
+            return GyroCsvFormatter.format(videoFilename, captureTimeMs, csvRows);
         }
     }
 
     int getSampleCount() {
-        synchronized (rows) {
+        synchronized (samples) {
             return imuFrames;
         }
     }
 
     Float getTemperatureC() {
-        synchronized (rows) {
+        synchronized (samples) {
             return Float.isFinite(lastTemperature) ? lastTemperature : null;
         }
     }
 
     List<GyroflowProto.ImuSample> getSamples() {
-        synchronized (rows) {
+        synchronized (samples) {
             return new ArrayList<>(samples);
         }
     }
 
 
     long getFirstTimestampNs() {
-        synchronized (rows) {
+        synchronized (samples) {
             return samples.isEmpty() ? 0L : (long) (samples.get(0).timeUs * 1000.0);
         }
     }
 
     String getSummary() {
-        synchronized (rows) {
+        synchronized (samples) {
             String temperature = Float.isFinite(lastTemperature)
                     ? Float.toString(lastTemperature) : "null";
             return "{\"source\":\"xreal_1s_glasses_imu\",\"imu_frames\":" + imuFrames
