@@ -419,7 +419,7 @@ public class MainActivity extends Activity {
         keepScreenCheck = checkBox("録画中はスマホを点灯", preferences.getBoolean("keep_screen", true),
                 (button, checked) -> preferences.edit().putBoolean("keep_screen", checked).apply());
         addRow(settingsCard, keepScreenCheck, 0);
-        diagnosticsCheck = checkBox("診断用 HEVC・WAV を別保存",
+        diagnosticsCheck = checkBox("診断用 HEVC・WAV・ジャイロを別保存",
                 preferences.getBoolean("diagnostics", false),
                 (button, checked) -> preferences.edit().putBoolean("diagnostics", checked).apply());
         addRow(settingsCard, diagnosticsCheck, dp(4));

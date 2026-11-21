@@ -2123,6 +2123,7 @@
 - v0.1.4 をビルドし実機へ上書きインストール、起動とオフ設定の保持を確認。録画は停止済み。Git 記録とリリース公開を進行中。
 - v0.1.4 を GitHub Release に公開済み。master の 3c59933、APK は実機へインストール済み。録画停止・第二画面オフ（通常複製）・XREAL 接続中。残課題は本书記載の DP 復旧、画角、音声など。
 - ★レンズプロファイル警告と焦点距離（2026-11-21 15:2x）: Gyroflow の「レンズプロファイルが読み込まれていない」警告は XREAL 1S のプロファイルが `profiles.cbor.gz`（12409件）に存在しないため。正しい消し方は protobuf の `FrameMetadata.lens` に `LensData`（NoDistortion＋intrinsics）を入れること。 Gyroflow の `LensProfile::from_focal_length()` の式 `fx = focal_length_35mm × √(w²+h²)/√(36²+24²)` を確認。ユーザーが「正しい値を知りたい」「他の解像度でも計算して」と要望したため、**FOV を定数（水平77.3°、1600x1200 で fx≈1000 になる実測値）として保持し、`fx = w/(2·tan(FOV/2))` で解像度から計算**する方式に変更。これで 720p(1280x720) でも 1600p でも fx が正しくスケールする。`GyroflowProtoTest` に LensData の no_distortion 宣言と fx の解像度比例（1600→800 で2倍）を検証するテストを追加。6テスト成功。
+- 15:18 実機検証（`VID_20261121_151729.mp4`）: 生 protobuf を parse して **quaternion (w=0.7071, z=0.7071)=+90°**（Rotation=0 で水平が出る値）、**LensData 47バイト・no_distortion 宣言あり・fx=1000.4**（1600x1200 の期待値 ~1000 に一致）を確認。CI `44874512985` green。★ユーザーが Gyroflow で警告が消えた／水平が正しいか目視確認すれば完了。
 - 細かなバグ潰し（2026-11-21 15:0x）:
   - ★「停止処理中...」が UI に残るバグ: `runRecording()` の finally が `status` を戻さず、`stopSelf()` → `onDestroy()` の `t.join(3000)` がタイムアウトすると `recording=false` にならず `pollStatus()` が「停止処理中...」を取得し続けていた。修正: finally で `status="待機中"` に戻し、`recording=false` を `destroyed` 条件なしで確実に設定。fMP4 なので停止処理が途中でもファイルは再生可能なため、データ自体は無伤だった（ユーザー指摘）。
   - HeadlessReceiver の start broadcast が enqueued のまま receiver に届かないことがある（`headless start` ログ無し、stop は効いた）。UI タップは確実に動く。broadcast 経路は未解決。
