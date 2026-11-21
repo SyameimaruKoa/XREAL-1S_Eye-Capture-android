@@ -165,6 +165,12 @@ final class TcpSource implements VideoSource {
         videoThread.start();
         startSent = true;
         try {
+            // Apply the recorded live mode before starting the camera. A stale mode
+            // (e.g. after a replug reset to 720p) makes Start return an unexpected
+            // acknowledgement and leaves the recording empty.
+            if (reconnectHook != null) {
+                reconnectHook.run();
+            }
             transact(0x2781, 1);
         } catch (Exception e) {
             fail("TCP camera start failed: " + e.getMessage());
