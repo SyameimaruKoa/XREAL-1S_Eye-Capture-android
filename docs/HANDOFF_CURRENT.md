@@ -17,7 +17,7 @@
 - ★残る作業: XREAL を再接続して実機で新版を録画し、Gyroflow の `IMU duration vs video duration` 警告が消えることを確認（旧ファイルでは 152867 vs 150860 の2秒差だった）。
 
 ## 旧・実機検証は完了 + 次の課題（2026-11-22）
-- ユーザーが手動で実機検証済み、**fMP4 + IMU の問題は無し**。わっちがハマった「USB ネットワーク未確立」はユーザーがイーサネットを無効にしとっただけ（忘れておった）。adb 側の不具合ではない。
+- ~~ユーザーが手動で実機検証済み、fMP4 + IMU の問題は無し~~ **←ユーザーが「大嘘」と訂正。fMP4 に2秒のタイムラインズレがあった（下記「ゴミカスファイルの真因」セクション参照）**。わっちがハマった「USB ネットワーク未確立」はユーザーがイーサネットを無効にしとっただけ（忘れておった）。adb 側の不具合ではない。
 - ★次の課題（ユーザー指示）: **録画中の切断時に自動再開されない**。イーサネット無効/有効の切り替えでも物理接続断でも「再開されかかった」が実際には再開しない。
 - 原因を git 履歴で確定: commit `e3d0b69 Disable reconnect rotation for release prerelease` が `onStreamStalled` を `stopRequested=true`（切断で終了）にし、worker ループのセッション回転（`reconnectReady` → `startSession()`）を削除した。`onStreamResumed` は今も `reconnectReady=true` と「映像を再開しました」を出すため「再開されかけた」ように見えるが、ループは `stopRequested` で抜ける。
 - 対策: `e3d0b69^` の再開ロジックを復元（stall で `finishSession(sessions.retire())` + 再接続待ち、resume 信号で `startSession()`）。`SessionRegistry` の race 排除は維持。commit `5977072`、新ブランチ `OptiPlex-3040-MFF_20261122`。
