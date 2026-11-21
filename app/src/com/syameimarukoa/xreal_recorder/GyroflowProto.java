@@ -21,15 +21,16 @@ final class GyroflowProto {
         writeString(camera, 5, "XREAL");
         writeString(camera, 6, "1S");
         writeString(camera, 13, orientation);
-        // imu_rotation: glasses-to-camera body alignment (roll -180 deg about Z).
-        // The -90 deg the user enters is Gyroflow's Horizon Lock (stabilization
-        // UI), a separate setting. The metadata quaternion stays at -180.
+        // imu_rotation: glasses-to-camera body alignment. Device-verified by the
+        // user: field14 -180 deg needed a further -90 deg in Gyroflow's
+        // Motion data -> Rotation to level the horizon, so the total correction
+        // is -270 deg == +90 deg about Z. Baking +90 here lets Rotation stay 0.
         // Gyroflow applies this after the axis permutation. Quaternion (w,0,0,z).
         ByteArrayOutputStream rotation = new ByteArrayOutputStream();
-        writeFloat(rotation, 1, 0f);
+        writeFloat(rotation, 1, 0.70710678f);
         writeFloat(rotation, 2, 0f);
         writeFloat(rotation, 3, 0f);
-        writeFloat(rotation, 4, -1f);
+        writeFloat(rotation, 4, 0.70710678f);
         writeBytes(camera, 14, rotation.toByteArray());
 
         ByteArrayOutputStream clip = new ByteArrayOutputStream();
