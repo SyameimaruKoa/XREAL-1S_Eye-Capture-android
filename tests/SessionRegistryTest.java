@@ -60,7 +60,53 @@ public final class SessionRegistryTest {
         require(retired.get() == second, "exactly one thread retires the session");
         require(registry.current().session == null, "registry empty after concurrent retire");
 
+        // Integration-style: a mocked video listener drives stall -> reconnect -> install.
+        MockVideoListener listener = new MockVideoListener();
+        require(listener.onResumed(), "first reconnect installs a session");
+        require(listener.published != null, "first session published");
+        listener.onStalled();
+        require(listener.published == null, "stall retires the published session");
+        require(listener.onResumed(), "second reconnect installs a session");
+        require(listener.connects == 2, "two successful connects");
+        listener.onStalled();
+
+        // Interleave a second stall while the next session is being built.
+        long buildGeneration = listener.registry.generation();
+        listener.onStalled();
+        require(!listener.installCandidate(buildGeneration), "candidate invalidated by stall");
+        require(listener.discarded != null, "invalidated candidate discarded, not published");
+        require(listener.published == null, "no stray published session");
+        require(listener.onResumed(), "later reconnect still works");
+        require(listener.connects == 3, "three successful connects");
+
         System.out.println("SessionRegistryTest passed");
+    }
+
+    static final class MockVideoListener {
+        final SessionRegistry registry = new SessionRegistry();
+        Object published;
+        Object discarded;
+        int connects;
+
+        void onStalled() {
+            published = null;
+            registry.retire();
+        }
+
+        boolean onResumed() {
+            return installCandidate(registry.generation());
+        }
+
+        boolean installCandidate(long generation) {
+            Object candidate = new Object();
+            if (!registry.install(candidate, generation)) {
+                discarded = candidate;
+                return false;
+            }
+            published = candidate;
+            connects++;
+            return true;
+        }
     }
 
     private static void require(boolean condition, String message) {

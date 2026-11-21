@@ -731,7 +731,7 @@ public final class RecordService extends Service {
             // the half-built resources instead of leaving a stale active session.
             audio.stop();
             imu.stop();
-            writer.finish();
+            writer.discard();
             if (hevcOut != null) {
                 try {
                     hevcOut.close();
