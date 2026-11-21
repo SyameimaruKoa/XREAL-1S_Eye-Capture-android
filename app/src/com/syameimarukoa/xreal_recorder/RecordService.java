@@ -514,7 +514,7 @@ public final class RecordService extends Service {
     }
 
     private boolean startSession(VideoSource videoSource, boolean rawMode,
-            boolean rawOnly, boolean fmp4Mode, File dir) {
+            boolean rawOnly, boolean fmp4Mode, File dir) throws Exception {
         String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
         String rawExt = rawOnly ? ".hevc4" : ".hevc";
         String audioExt = rawOnly ? ".aac4" : ".aac";
