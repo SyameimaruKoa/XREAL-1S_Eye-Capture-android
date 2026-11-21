@@ -90,7 +90,7 @@ final class StreamingMuxerSink implements RecordingMuxer {
                     return;
                 }
             }
-            byte[] audio = pendingAudio != null ? pendingAudio : new byte[0];
+            byte[] audio = pendingAudio != null ? pendingAudio : new byte[]{0};
             pendingAudio = null;
             byte[] gyro = nextGyroPayload(ptsUs);
             try {
