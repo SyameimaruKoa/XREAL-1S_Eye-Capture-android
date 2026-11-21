@@ -88,6 +88,16 @@ public final class RecordService extends Service {
     private static volatile GlassesImuClient telemetryImuClient;
     private static volatile String videoLinkMessage = "";
     private static volatile int videoReconnectCount;
+    private volatile VideoSource activeVideoSource;
+    private final AtomicReference<VideoWriter> sessionWriter = new AtomicReference<>();
+    private final AtomicReference<RecordingMuxer> sessionMuxer = new AtomicReference<>();
+    private final AtomicReference<AudioSource> sessionAudio = new AtomicReference<>();
+    private final AtomicReference<GlassesImuClient> sessionImu = new AtomicReference<>();
+    private volatile boolean sessionActive;
+    private volatile boolean reconnectReady;
+    private volatile long sessionT0Ns;
+    private final AtomicReference<boolean[]> sessionCsdSent = new AtomicReference<>();
+    private final AtomicReference<FileOutputStream> sessionHevcOut = new AtomicReference<>();
     private Thread telemetryThread;
     private volatile boolean telemetryRunning;
     private DisplayManager displayManager;
@@ -275,9 +285,6 @@ public final class RecordService extends Service {
         }
 
         if (ACTION_STOP.equals(action)) {
-            // A manual stop must not leave the auto-restart flag set for the next attach.
-            getSharedPreferences("recording_options", MODE_PRIVATE)
-                    .edit().putBoolean("auto_restart_on_attach", false).apply();
             stopRequested = true;
             if (recording) {
                 status = "停止処理中...";
@@ -288,20 +295,10 @@ public final class RecordService extends Service {
     }
 
     private void runRecording() {
-        VideoSource videoSource = null;
-        AudioSource audio = null;
-        RecordingMuxer muxer = null;
-        FileOutputStream hevcOut = null;
-        VideoWriter writer = null;
-        RecordingOutput output = null;
-        String mp4Name = null;
-        File hevcFile = null;
-        File wavFile = null;
-        File adtsFile = null;
-        GlassesImuClient imuClient = null;
         final boolean rawMode = saveMode == SAVE_MODE_RAW || saveMode == SAVE_MODE_RAW_ONLY;
         final boolean rawOnly = saveMode == SAVE_MODE_RAW_ONLY;
         final boolean fmp4Mode = saveMode == SAVE_MODE_FMP4;
+        VideoSource videoSource = null;
 
         try {
             File dir = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
@@ -311,22 +308,11 @@ public final class RecordService extends Service {
             if (!dir.exists() && !dir.mkdirs()) {
                 throw new IllegalStateException("cannot create output directory");
             }
-            String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-            String rawExt = rawOnly ? ".hevc4" : ".hevc";
-            String audioExt = rawOnly ? ".aac4" : ".aac";
-            if (rawMode || diagnostics) {
-                hevcFile = new File(dir, "xreal_" + ts + rawExt);
-            }
-            if (diagnostics) {
-                wavFile = new File(dir, "xreal_" + ts + ".wav");
-            }
-            if (rawMode) {
-                adtsFile = new File(dir, "xreal_" + ts + audioExt);
-            }
 
             UsbManager um = (UsbManager) getSystemService(Context.USB_SERVICE);
             videoSource = videoRoute == ROUTE_TCP_HEVC ? new TcpSource(this)
                     : new UvcSource(um, device);
+            activeVideoSource = videoSource;
             if (videoSource instanceof TcpSource) {
                 final String liveToken = java.util.UUID.randomUUID().toString().replace("-", "");
                 String liveMode = getSharedPreferences("recording_options", MODE_PRIVATE)
@@ -350,209 +336,21 @@ public final class RecordService extends Service {
                 });
             }
             videoSource.open();
-
-            long captureTimeMs = System.currentTimeMillis();
-            if (!rawMode) {
-                output = RecordingOutput.create(this, outputTree, captureTimeMs);
-                mp4Name = output.getFilename();
-                muxer = fmp4Mode ? output.openFragmentedMuxer() : output.openMuxer();
-            } else {
-                mp4Name = hevcFile != null
-                        ? hevcFile.getName().replaceFirst("(?i)\\.hevc4?$", ".mp4")
-                        : "VID_" + ts + ".mp4";
-            }
-            imuClient = GlassesImuClient.start(this);
-            telemetryImuClient = imuClient;
-            final GlassesImuClient finalImu = imuClient;
-            final String finalMp4Name = mp4Name;
-            final JSONObject cameraInfo = new JSONObject();
-            cameraInfo.put("schema_version", 1);
-            cameraInfo.put("file", mp4Name);
-            cameraInfo.put("recording_start_time", new SimpleDateFormat(
-                    "yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(new Date(captureTimeMs)));
-            cameraInfo.put("usb_product", device.getProductName());
-            cameraInfo.put("usb_manufacturer", device.getManufacturerName());
-            cameraInfo.put("usb_vendor_id", device.getVendorId());
-            cameraInfo.put("usb_product_id", device.getProductId());
-            cameraInfo.put("video_source", videoRoute == ROUTE_TCP_HEVC
-                    ? "USB Ethernet HEVC passthrough" : "USB UVC HEVC passthrough");
-            if (videoRoute == ROUTE_TCP_HEVC) {
-                cameraInfo.put("requested_width", JSONObject.NULL);
-                cameraInfo.put("requested_height", JSONObject.NULL);
-                cameraInfo.put("requested_frames_per_second", JSONObject.NULL);
-                cameraInfo.put("requested_video_note", "TCP format is determined by the glasses");
-            } else {
-                cameraInfo.put("requested_width", videoSource.getWidth());
-                cameraInfo.put("requested_height", videoSource.getHeight());
-                cameraInfo.put("requested_frames_per_second", videoSource.getFrameRate());
-            }
-            cameraInfo.put("audio", "USB microphone, mono AAC, 48000 Hz");
-            if (hevcFile != null) {
-                hevcOut = new FileOutputStream(hevcFile);
-            }
-
-            final RecordingMuxer finalMuxer = muxer;
-            final FileOutputStream finalHevc = hevcOut;
-            final RecordingOutput finalOutput = output;
             final VideoSource finalVideo = videoSource;
-            final AtomicReference<AudioSource> finalAudioRef = new AtomicReference<>();
-            final long t0Ns = SystemClock.elapsedRealtimeNanos();
-            final VideoWriter finalWriter = new VideoWriter(new VideoWriter.Output() {
-                @Override
-                public void write(byte[] annexB, long ptsUs, boolean keyFrame, int auIndex)
-                        throws Exception {
-                    long writeStartNs = SystemClock.elapsedRealtimeNanos();
-                    if (finalHevc != null) {
-                        finalHevc.write(annexB);
-                    }
-                    long rawEndNs = SystemClock.elapsedRealtimeNanos();
-                    if (finalMuxer != null) {
-                        finalMuxer.writeVideo(annexB, ptsUs, keyFrame);
-                    }
-                    long muxEndNs = SystemClock.elapsedRealtimeNanos();
-                    long rawMs = (rawEndNs - writeStartNs) / 1_000_000L;
-                    long muxMs = (muxEndNs - rawEndNs) / 1_000_000L;
-                    if (rawMs >= 50 || muxMs >= 50) {
-                        Log.w(TAG, "video sink timing auIndex=" + auIndex
-                                + " rawMs=" + rawMs + " muxMs=" + muxMs
-                                + " bytes=" + annexB.length);
-                    }
-                }
 
-                @Override
-                public void finish() throws Exception {
-                    try {
-                        if (finalMuxer != null) {
-                            finalMuxer.finish();
-                        }
-                    } finally {
-                        try {
-                            if (finalHevc != null) {
-                                finalHevc.close();
-                            }
-                        } finally {
-                            try {
-                                long spanNs = lastVideoNs - firstVideoNs;
-                                cameraInfo.put("received_video_frames", videoFrames);
-                                cameraInfo.put("received_video_bytes", videoBytes);
-                                if (videoFrames > 0) {
-                                    cameraInfo.put("received_video_width", finalVideo.getWidth());
-                                    cameraInfo.put("received_video_height", finalVideo.getHeight());
-                                }
-                                cameraInfo.put("video_rate_basis", "host receive timestamps");
-                                if (finalVideo instanceof TcpSource) {
-                                    ((TcpSource) finalVideo).appendTimingMetadata(cameraInfo);
-                                }
-                                if (videoFrames > 1 && spanNs > 0) {
-                                    double seconds = spanNs / 1_000_000_000.0;
-                                    cameraInfo.put("received_average_fps", (videoFrames - 1) / seconds);
-                                    cameraInfo.put("received_average_bitrate_bps", videoBytes * 8.0 / seconds);
-                                }
-                                AudioSource capturedAudio = finalAudioRef.get();
-                                if (capturedAudio != null) {
-                                    cameraInfo.put("audio_capture_status",
-                                            capturedAudio.isFailed() ? "failed" : "completed");
-                                    if (capturedAudio.isFailed()) {
-                                        cameraInfo.put("audio_error", capturedAudio.getError());
-                                    }
-                                    cameraInfo.put("audio_input_sample_rate_hz", 48000);
-                                    cameraInfo.put("audio_output_channels", 1);
-                                    cameraInfo.put("aac_encoded_bytes", capturedAudio.getEncodedBytes());
-                                    cameraInfo.put("aac_encoded_samples", capturedAudio.getEncodedSamples());
-                                    long audioSpanUs = capturedAudio.getLastEncodedPtsUs()
-                                            - capturedAudio.getFirstEncodedPtsUs();
-                                    if (capturedAudio.getEncodedSamples() > 1 && audioSpanUs > 0) {
-                                        cameraInfo.put("aac_average_bitrate_bps",
-                                                capturedAudio.getEncodedBytes() * 8_000_000.0 / audioSpanUs);
-                                    }
-                                }
-                                if (finalOutput != null) {
-                                    if (finalImu != null) {
-                                        cameraInfo.put("imu", new JSONObject(finalImu.getSummary()));
-                                    }
-                                    finalOutput.writeMetadata(cameraInfo.toString(2));
-                                    if (finalImu != null && finalImu.getSampleCount() > 0) {
-                                        boolean embedded = false;
-                                        if (!rawMode) {
-                                            try {
-                                                List<GyroflowProto.ImuSample> imuSamples =
-                                                        finalImu.getSamples();
-                                                long telemetrySpanNs =
-                                                        lastVideoNs - firstVideoNs;
-                                                // Use the IMU timeline as the clip clock: a USB
-                                                // link-down gap is removed from the video PTS,
-                                                // so the receive-time span is too long.
-                                                double imuSpanUs = imuSamples.size() > 1
-                                                        ? imuSamples.get(imuSamples.size() - 1).timeUs
-                                                        - imuSamples.get(0).timeUs : 0.0;
-                                                long durationUs = imuSpanUs > 0
-                                                        ? (long) imuSpanUs : (telemetrySpanNs > 0
-                                                        ? telemetrySpanNs / 1000L : 0L);
-                                                // TCP HEVC reports a fixed placeholder fps, so
-                                                // derive the real rate from frames over that span.
-                                                float fps = 0f;
-                                                if (durationUs > 0 && videoFrames > 1) {
-                                                    fps = (float) ((videoFrames - 1)
-                                                            * 1_000_000.0 / durationUs);
-                                                }
-                                                if (fps <= 0) fps = finalVideo.getFrameRate();
-                                                if (fps <= 0) fps = 30f;
-                                                // Derive the IMU rate from the sensor's own
-                                                // timestamps, not the video timeline.
-                                                int rate = 1000;
-                                                if (imuSamples.size() > 1) {
-                                                    double spanUs = imuSamples.get(
-                                                            imuSamples.size() - 1).timeUs
-                                                            - imuSamples.get(0).timeUs;
-                                                    if (spanUs > 0) {
-                                                        rate = (int) (imuSamples.size()
-                                                                * 1_000_000.0 / spanUs);
-                                                    }
-                                                }
-                                                embedded = finalOutput.injectTelemetry(
-                                                        finalVideo.getWidth(),
-                                                        finalVideo.getHeight(), fps,
-                                                        durationUs, rate, "xYz", imuSamples,
-                                                        finalImu.getFirstTimestampNs() / 1000L);
-                                            } catch (Throwable t) {
-                                                Log.e(TAG, "telemetry injection failed", t);
-                                            }
-                                        }
-                                        if (!embedded) {
-                                            try {
-                                                finalOutput.writeGyroCsv(finalImu.formatCsv(
-                                                        finalMp4Name, captureTimeMs));
-                                            } catch (Throwable t) {
-                                                Log.e(TAG, "gcsv write failed", t);
-                                            }
-                                        }
-                                    }
-                                }
-                            } finally {
-                                if (finalOutput != null) {
-                                    finalOutput.complete();
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-            writer = finalWriter;
-
-            final boolean[] csdSent = {false};
             videoSource.start(new UvcSource.Listener() {
                 @Override
                 public void onCsd(byte[] csd) {
-                    if (csdSent[0]) {
+                    boolean[] csdState = sessionCsdSent.get();
+                    if (csdState == null || csdState[0]) {
                         return;
                     }
-                    csdSent[0] = true;
-                    // Raw-save mode needs the parameter sets in the HEVC sidecar;
-                    // the converter rebuilds csd-0 from them on stop.
-                    if (rawMode && finalHevc != null && csd != null) {
+                    csdState[0] = true;
+                    FileOutputStream hevc = sessionHevcOut.get();
+                    if (rawMode && hevc != null && csd != null) {
                         try {
-                            finalHevc.write(csd);
-                            finalHevc.flush();
+                            hevc.write(csd);
+                            hevc.flush();
                         } catch (Exception e) {
                             Log.w(TAG, "could not write CSD to raw HEVC", e);
                         }
@@ -562,17 +360,22 @@ public final class RecordService extends Service {
                             finalVideo.getWidth(), finalVideo.getHeight());
                     fmt.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(csd));
                     fmt.setInteger(MediaFormat.KEY_FRAME_RATE, finalVideo.getFrameRate());
-                    if (finalMuxer != null) {
-                        finalMuxer.addVideoTrack(fmt);
+                    RecordingMuxer currentMuxer = sessionMuxer.get();
+                    if (currentMuxer != null) {
+                        currentMuxer.addVideoTrack(fmt);
                     }
                 }
 
                 @Override
                 public void onAccessUnit(byte[] annexB, long timestampNs) {
+                    VideoWriter currentWriter = sessionWriter.get();
+                    if (currentWriter == null) {
+                        return; // session rotation in progress
+                    }
                     try {
                         long receivedNs = SystemClock.elapsedRealtimeNanos();
-                        long ptsUs = Math.max(0L, (timestampNs - t0Ns) / 1000L);
-                        finalWriter.enqueue(annexB, ptsUs, UvcSource.isKeyFrame(annexB),
+                        long ptsUs = Math.max(0L, (timestampNs - sessionT0Ns) / 1000L);
+                        currentWriter.enqueue(annexB, ptsUs, UvcSource.isKeyFrame(annexB),
                                 finalVideo.getAccessUnits());
                         if (videoFrames == 0) {
                             firstVideoNs = receivedNs;
@@ -593,11 +396,10 @@ public final class RecordService extends Service {
 
                 @Override
                 public void onStreamStalled(String reason) {
-                    // A disconnected link starts a new file. Save the current one and
-                    // let MainActivity auto-start a fresh recording when USB returns.
-                    getSharedPreferences("recording_options", MODE_PRIVATE)
-                            .edit().putBoolean("auto_restart_on_attach", true).apply();
-                    stopRequested = true;
+                    // Save only the current session. Keep the service and TcpSource
+                    // alive so the reconnect can finish locally.
+                    sessionActive = false;
+                    finishSession();
                     videoLinkMessage = "映像一時停止: 再接続待ち…";
                     status = "USB切断: 録画を保存しました。再接続を待っています";
                     Log.w(TAG, "video stream stalled: " + reason);
@@ -609,74 +411,49 @@ public final class RecordService extends Service {
                     if (finalVideo instanceof TcpSource) {
                         videoReconnectCount = ((TcpSource) finalVideo).getReconnectCount();
                     }
+                    reconnectReady = true;
                     status = "映像を再開しました";
                     Log.i(TAG, "video stream resumed");
                 }
 
                 @Override
                 public void onStreamReset() {
-                    // Keep the existing video track. Re-adding it on reconnect splits
-                    // samples across two tracks and drops the post-reconnect frames.
                     Log.i(TAG, "video stream reset after reconnect");
                 }
             });
 
-            // Preserve the previously validated UVC start order. TCP does not
-            // need the UVC negotiation delay before starting the microphone.
             if (videoRoute != ROUTE_TCP_HEVC) {
                 Thread.sleep(2000);
             }
 
-            final AudioSource finalAudio = new AudioSource(this, t0Ns, muxer, wavFile, adtsFile,
-                    new AudioSource.Listener() {
-                        @Override
-                        public void onError(String message) {
-                            status = "音声エラー: " + message;
-                            Log.e(TAG, "audio error: " + message);
-                        }
-
-                        @Override
-                        public void onAudioLevel(int peak, boolean exactZero) {
-                            audioPeak.accumulateAndGet(peak, Math::max);
-                            audioExactZero = exactZero;
-                            phonePeak.accumulateAndGet(peak, Math::max);
-                            phoneExactZero = exactZero;
-                            phoneAudioSeen = true;
-                        }
-
-                        @Override
-                        public void onSilenceChanged(boolean silent) {
-                            audioSilenceDetected = silent;
-                            phoneQuiet = silent;
-                            if (silent) {
-                                audioSilenceEverDetected = true;
-                            }
-                            status = silent ? "録画中: USB音声の入力を検出"
-                                    : "録画中: USB音声の入力を検出";
-                            Log.i(TAG, "USB audio low-level state=" + silent);
-                            NotificationManager nm = (NotificationManager)
-                                    getSystemService(Context.NOTIFICATION_SERVICE);
-                            nm.notify(NOTIFICATION_ID, buildNotification());
-                        }
-                    });
-            audio = finalAudio;
-            finalAudioRef.set(finalAudio);
-            audio.start();
-            status = "録画中: " + mp4Name;
-            videoLinkMessage = "";
-            videoReconnectCount = 0;
+            if (!startSession(finalVideo, rawMode, rawOnly, fmp4Mode, dir)) {
+                throw new IllegalStateException("could not start recording session");
+            }
             startTelemetry();
 
             boolean audioFailureHandled = false;
-            while (!stopRequested && !videoSource.isFailed()
-                    && (muxer == null || !muxer.isFailed()) && !finalWriter.isFailed()) {
-                if (audio.isFailed()) {
-                    if (muxer != null) {
-                        muxer.startVideoOnly();
+            while (!stopRequested && !finalVideo.isFailed()) {
+                if (!sessionActive) {
+                    if (reconnectReady) {
+                        reconnectReady = false;
+                        audioFailureHandled = false;
+                        if (!startSession(finalVideo, rawMode, rawOnly, fmp4Mode, dir)) {
+                            break;
+                        }
+                    } else {
+                        Thread.sleep(50);
+                        continue;
+                    }
+                }
+                AudioSource a = sessionAudio.get();
+                if (a != null && a.isFailed()) {
+                    RecordingMuxer m = sessionMuxer.get();
+                    if (m != null) {
+                        m.startVideoOnly();
                     }
                     if (!audioFailureHandled) {
                         audioFailureHandled = true;
-                        status = "録画中: 音声停止、映像のみ継続: " + audio.getError();
+                        status = "録画中: 音声停止、映像のみ継続: " + a.getError();
                         NotificationManager nm = (NotificationManager)
                                 getSystemService(Context.NOTIFICATION_SERVICE);
                         nm.notify(NOTIFICATION_ID, buildNotification());
@@ -685,116 +462,14 @@ public final class RecordService extends Service {
                 Thread.sleep(200);
             }
 
-            audio.stop();
-            videoSource.stop();
-            if (muxer != null) {
-                muxer.startVideoOnly();
-            }
-            finishWriter(finalWriter);
-
-            String convertError = null;
-            if (rawMode && !rawOnly) {
-                File mp4File = new File(dir, mp4Name);
-                try {
-                    int fps = videoSource.getFrameRate();
-                    if (fps <= 0) fps = 30;
-                    RawToMp4Converter.Result converted = RawToMp4Converter.convert(
-                            hevcFile, adtsFile, mp4File,
-                            videoSource.getWidth(), videoSource.getHeight(), fps);
-                    Log.i(TAG, "converted raw to mp4: au=" + converted.auCount
-                            + " audio=" + converted.audioFrames);
-                    if (hevcFile != null && hevcFile.exists() && !hevcFile.delete()) {
-                        Log.w(TAG, "could not delete raw hevc");
-                    }
-                    if (adtsFile != null && adtsFile.exists() && !adtsFile.delete()) {
-                        Log.w(TAG, "could not delete raw aac");
-                    }
-                    if (wavFile != null && wavFile.exists() && !wavFile.delete()) {
-                        Log.w(TAG, "could not delete wav");
-                    }
-                } catch (Throwable t) {
-                    convertError = t.getClass().getSimpleName() + ": " + t.getMessage();
-                    Log.e(TAG, "raw conversion failed", t);
-                }
-            }
-
-            String result = String.format(Locale.US,
-                    "%s / %s\nAU=%d audioFrames=%d%s",
-                    outputLabel, mp4Name, videoSource.getAccessUnits(), audio.getFramesWritten(),
-                    "\n" + getVideoRateSummary()
-                            + (diagnostics ? "\n診断ファイル: " + dir.getAbsolutePath() : ""));
-            if (videoSource.isFailed()) {
-                status = "映像停止: " + videoSource.getError() + "\n" + result;
-            } else if (audio.isFailed()) {
-                status = "音声停止: " + audio.getError() + "\n" + result;
-            } else if (finalWriter.isFailed()) {
-                status = "映像出力エラー: " + finalWriter.getError() + "\n" + result;
-            } else if (muxer != null && muxer.isFailed()) {
-                status = "Muxerエラー: " + muxer.getError() + "\n" + result;
-            } else if (convertError != null) {
-                status = "変換エラー: " + convertError + "\n" + result;
-            } else {
-                status = "保存完了: " + result;
-            }
-            if (muxer != null && muxer.isFailed() && (videoSource.isFailed() || audio.isFailed())) {
-                status += "\nMuxerエラー: " + muxer.getError();
+            if (sessionActive) {
+                finishSession();
             }
         } catch (Throwable t) {
-            status = "録画エラー: " + t.getClass().getSimpleName() + ": " + t.getMessage();
             Log.e(TAG, "recording failed", t);
-            if (mp4Name != null) {
-                status += "\n" + outputLabel + " / " + mp4Name;
-            }
+            status = "録画エラー: " + t.getMessage();
+            finishSession();
         } finally {
-            telemetryRunning = false;
-            if (audio != null) {
-                try {
-                    audio.stop();
-                } catch (Throwable ignored) {
-                }
-            }
-            if (videoSource != null) {
-                try {
-                    videoSource.stop();
-                } catch (Throwable ignored) {
-                }
-            }
-            if (imuClient != null) {
-                try {
-                    imuClient.stop();
-                } catch (Throwable ignored) {
-                }
-                telemetryImuClient = null;
-            }
-            if (writer != null) {
-                try {
-                    if (muxer != null) {
-                        muxer.startVideoOnly();
-                    }
-                    finishWriter(writer);
-                } catch (Throwable ignored) {
-                }
-            } else if (muxer != null) {
-                try {
-                    muxer.startVideoOnly();
-                    muxer.finish();
-                } catch (Throwable ignored) {
-                }
-            }
-            if (hevcOut != null && writer == null) {
-                try {
-                    hevcOut.close();
-                } catch (Throwable ignored) {
-                }
-            }
-            if (output != null && writer == null) {
-                try {
-                    output.complete();
-                } catch (Throwable t) {
-                    status += "\n保存先への公開失敗: " + t.getMessage();
-                }
-            }
-            // Keep recording true until onDestroy so a new start cannot race stopSelf.
             displayHandler.post(new Runnable() {
                 @Override
                 public void run() {
@@ -811,6 +486,259 @@ public final class RecordService extends Service {
                 recording = false;
             }
         }
+    }
+
+    private void finishSession() {
+        VideoWriter w = sessionWriter.getAndSet(null);
+        if (w != null) {
+            w.finish();
+        }
+        sessionMuxer.set(null);
+        sessionCsdSent.set(null);
+        FileOutputStream hevc = sessionHevcOut.getAndSet(null);
+        if (hevc != null) {
+            try {
+                hevc.close();
+            } catch (Throwable ignored) {
+            }
+        }
+        AudioSource a = sessionAudio.getAndSet(null);
+        if (a != null) {
+            a.stop();
+        }
+        GlassesImuClient imu = sessionImu.getAndSet(null);
+        if (imu != null) {
+            imu.stop();
+        }
+        telemetryImuClient = null;
+    }
+
+    private boolean startSession(VideoSource videoSource, boolean rawMode,
+            boolean rawOnly, boolean fmp4Mode, File dir) {
+        String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+        String rawExt = rawOnly ? ".hevc4" : ".hevc";
+        String audioExt = rawOnly ? ".aac4" : ".aac";
+        File hevcFile = null;
+        File wavFile = null;
+        File adtsFile = null;
+        if (rawMode || diagnostics) {
+            hevcFile = new File(dir, "xreal_" + ts + rawExt);
+        }
+        if (diagnostics) {
+            wavFile = new File(dir, "xreal_" + ts + ".wav");
+        }
+        if (rawMode) {
+            adtsFile = new File(dir, "xreal_" + ts + audioExt);
+        }
+        long captureTimeMs = System.currentTimeMillis();
+        RecordingOutput output = null;
+        RecordingMuxer muxer = null;
+        String mp4Name;
+        if (!rawMode) {
+            output = RecordingOutput.create(this, outputTree, captureTimeMs);
+            mp4Name = output.getFilename();
+            muxer = fmp4Mode ? output.openFragmentedMuxer() : output.openMuxer();
+        } else {
+            mp4Name = hevcFile != null
+                    ? hevcFile.getName().replaceFirst("(?i)\\.hevc4?$", ".mp4")
+                    : "VID_" + ts + ".mp4";
+        }
+        FileOutputStream hevcOut = hevcFile != null ? new FileOutputStream(hevcFile) : null;
+        GlassesImuClient imu = GlassesImuClient.start(this);
+        final String finalMp4Name = mp4Name;
+        final JSONObject cameraInfo = new JSONObject();
+        cameraInfo.put("schema_version", 1);
+        cameraInfo.put("file", mp4Name);
+        cameraInfo.put("recording_start_time", new SimpleDateFormat(
+                "yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(new Date(captureTimeMs)));
+        cameraInfo.put("usb_product", device.getProductName());
+        cameraInfo.put("usb_manufacturer", device.getManufacturerName());
+        cameraInfo.put("usb_vendor_id", device.getVendorId());
+        cameraInfo.put("usb_product_id", device.getProductId());
+        cameraInfo.put("video_source", videoRoute == ROUTE_TCP_HEVC
+                ? "USB Ethernet HEVC passthrough" : "USB UVC HEVC passthrough");
+        if (videoRoute == ROUTE_TCP_HEVC) {
+            cameraInfo.put("requested_width", JSONObject.NULL);
+            cameraInfo.put("requested_height", JSONObject.NULL);
+            cameraInfo.put("requested_frames_per_second", JSONObject.NULL);
+            cameraInfo.put("requested_video_note", "TCP format is determined by the glasses");
+        } else {
+            cameraInfo.put("requested_width", videoSource.getWidth());
+            cameraInfo.put("requested_height", videoSource.getHeight());
+            cameraInfo.put("requested_frames_per_second", videoSource.getFrameRate());
+        }
+        cameraInfo.put("audio", "USB microphone, mono AAC, 48000 Hz");
+
+        final RecordingMuxer finalMuxer = muxer;
+        final FileOutputStream finalHevc = hevcOut;
+        final RecordingOutput finalOutput = output;
+        final GlassesImuClient finalImu = imu;
+        final long t0Ns = SystemClock.elapsedRealtimeNanos();
+        sessionT0Ns = t0Ns;
+        VideoWriter writer = new VideoWriter(new VideoWriter.Output() {
+            @Override
+            public void write(byte[] annexB, long ptsUs, boolean keyFrame, int auIndex)
+                    throws Exception {
+                if (finalHevc != null) {
+                    finalHevc.write(annexB);
+                }
+                if (finalMuxer != null) {
+                    finalMuxer.writeVideo(annexB, ptsUs, keyFrame);
+                }
+            }
+
+            @Override
+            public void finish() throws Exception {
+                try {
+                    if (finalMuxer != null) {
+                        finalMuxer.finish();
+                    }
+                } finally {
+                    try {
+                        if (finalHevc != null) {
+                            finalHevc.close();
+                        }
+                    } finally {
+                        try {
+                            long spanNs = lastVideoNs - firstVideoNs;
+                            cameraInfo.put("received_video_frames", videoFrames);
+                            cameraInfo.put("received_video_bytes", videoBytes);
+                            if (videoFrames > 0) {
+                                cameraInfo.put("received_video_width", videoSource.getWidth());
+                                cameraInfo.put("received_video_height", videoSource.getHeight());
+                            }
+                            cameraInfo.put("video_rate_basis", "host receive timestamps");
+                            if (videoSource instanceof TcpSource) {
+                                ((TcpSource) videoSource).appendTimingMetadata(cameraInfo);
+                            }
+                            if (videoFrames > 1 && spanNs > 0) {
+                                double seconds = spanNs / 1_000_000_000.0;
+                                cameraInfo.put("received_average_fps", (videoFrames - 1) / seconds);
+                                cameraInfo.put("received_average_bitrate_bps",
+                                        videoBytes * 8.0 / seconds);
+                            }
+                            AudioSource capturedAudio = sessionAudio.get();
+                            if (capturedAudio != null) {
+                                cameraInfo.put("audio_capture_status",
+                                        capturedAudio.isFailed() ? "failed" : "completed");
+                                if (capturedAudio.isFailed()) {
+                                    cameraInfo.put("audio_error", capturedAudio.getError());
+                                }
+                                cameraInfo.put("audio_input_sample_rate_hz", 48000);
+                                cameraInfo.put("audio_output_channels", 1);
+                                cameraInfo.put("aac_encoded_bytes", capturedAudio.getEncodedBytes());
+                                cameraInfo.put("aac_encoded_samples", capturedAudio.getEncodedSamples());
+                            }
+                            if (finalOutput != null) {
+                                if (finalImu != null) {
+                                    cameraInfo.put("imu", new JSONObject(finalImu.getSummary()));
+                                }
+                                finalOutput.writeMetadata(cameraInfo.toString(2));
+                                if (finalImu != null && finalImu.getSampleCount() > 0) {
+                                    boolean embedded = false;
+                                    if (!rawMode) {
+                                        try {
+                                            List<GyroflowProto.ImuSample> imuSamples =
+                                                    finalImu.getSamples();
+                                            double imuSpanUs = imuSamples.size() > 1
+                                                    ? imuSamples.get(imuSamples.size() - 1).timeUs
+                                                    - imuSamples.get(0).timeUs : 0.0;
+                                            long durationUs = imuSpanUs > 0
+                                                    ? (long) imuSpanUs
+                                                    : (spanNs > 0 ? spanNs / 1000L : 0L);
+                                            float fps = 0f;
+                                            if (durationUs > 0 && videoFrames > 1) {
+                                                fps = (float) ((videoFrames - 1)
+                                                        * 1_000_000.0 / durationUs);
+                                            }
+                                            if (fps <= 0) fps = videoSource.getFrameRate();
+                                            if (fps <= 0) fps = 30f;
+                                            int rate = 1000;
+                                            if (imuSamples.size() > 1) {
+                                                double spanUs = imuSamples.get(
+                                                        imuSamples.size() - 1).timeUs
+                                                        - imuSamples.get(0).timeUs;
+                                                if (spanUs > 0) {
+                                                    rate = (int) (imuSamples.size()
+                                                            * 1_000_000.0 / spanUs);
+                                                }
+                                            }
+                                            embedded = finalOutput.injectTelemetry(
+                                                    videoSource.getWidth(),
+                                                    videoSource.getHeight(), fps,
+                                                    durationUs, rate, "xYz", imuSamples,
+                                                    finalImu.getFirstTimestampNs() / 1000L);
+                                        } catch (Throwable t) {
+                                            Log.e(TAG, "telemetry injection failed", t);
+                                        }
+                                    }
+                                    if (!embedded) {
+                                        try {
+                                            finalOutput.writeGyroCsv(finalImu.formatCsv(
+                                                    finalMp4Name, captureTimeMs));
+                                        } catch (Throwable t) {
+                                            Log.e(TAG, "gcsv write failed", t);
+                                        }
+                                    }
+                                }
+                            }
+                        } finally {
+                            if (finalOutput != null) {
+                                finalOutput.complete();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        AudioSource audio = new AudioSource(this, t0Ns, muxer, wavFile, adtsFile,
+                new AudioSource.Listener() {
+                    @Override
+                    public void onError(String message) {
+                        status = "音声エラー: " + message;
+                        Log.e(TAG, "audio error: " + message);
+                    }
+
+                    @Override
+                    public void onAudioLevel(int peak, boolean exactZero) {
+                        audioPeak.accumulateAndGet(peak, Math::max);
+                        audioExactZero = exactZero;
+                        phonePeak.accumulateAndGet(peak, Math::max);
+                        phoneExactZero = exactZero;
+                        phoneAudioSeen = true;
+                    }
+
+                    @Override
+                    public void onSilenceChanged(boolean silent) {
+                        audioSilenceDetected = silent;
+                        phoneQuiet = silent;
+                        if (silent) {
+                            audioSilenceEverDetected = true;
+                        }
+                        status = silent ? "録画中: USB音声の入力を検出"
+                                : "録画中: USB音声の入力を検出";
+                        Log.i(TAG, "USB audio low-level state=" + silent);
+                    }
+                });
+
+        sessionWriter.set(writer);
+        sessionMuxer.set(muxer);
+        sessionAudio.set(audio);
+        sessionImu.set(imu);
+        sessionHevcOut.set(hevcOut);
+        sessionCsdSent.set(new boolean[1]);
+        telemetryImuClient = imu;
+        videoFrames = 0;
+        videoBytes = 0;
+        firstVideoNs = 0;
+        lastVideoNs = 0;
+        sessionActive = true;
+        audio.start();
+        status = "録画中: " + mp4Name;
+        videoReconnectCount = 0;
+        Log.i(TAG, "session started: " + mp4Name);
+        return true;
     }
 
     private void finishWriter(VideoWriter writer) {
