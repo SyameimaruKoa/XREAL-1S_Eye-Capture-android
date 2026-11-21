@@ -57,6 +57,13 @@
   - ★生データのみモードの保存先を確認: `SAVE_MODE_RAW_ONLY` は **DCIM に保存しない**。`Android/data/.../files/Movies/` に hevc/aac を書き、次回起動の `recoverPendingRawRecordings()` が同じ Android/data 内で hevc→mp4 に変換するだけ（`RawToMp4Converter.convert()` の出力先も `dir`）。今回の修正で gcsv も同ディレクトリに残る。DCIM 公開が必要なら recovery の出力先を `RecordingOutput.create()` 経由に変更する必要がある（未実施）。
 - ★ユーザー指示（2026-11-21 13:5x）: 「生データのみ保存モードの時のみドキュメントに保存するように変更して。ただ、全ファイル権限は渡さない」。→ `SAVE_MODE_RAW_ONLY` のときだけ MediaStore（`RELATIVE_PATH=Documents/XREAL/100XREAL`、`IS_PENDING`）で `.gcsv` を作成・書き出し・公開。`rawMode`（RAW）と `diagnostics` は従来どおり Android/data の `getExternalFilesDir(DIRECTORY_MOVIES)` に gcsv を保存。全ファイル管理権限は不要（MediaStore の URI 権限のみ）。
 - ★実機操作の制約（2026-11-21 13:5x）: SC-52B に XREAL 1S が接続済み。実機は **ssh シェルコマンドのみ**で制御する。別の AI エージェントが端末を使っているため、`am start`／`input` などのアプリ起動・画面操作は**禁止**。ログ確認・ファイル確認・`am broadcast` などのコマンドのみ許容。実機検証時はこの制約を守ること。ユーザーは「仮想スクリーンなどメインスクリーンに一切影響しないことが確信できるなら起動してもよい」と条件付きで許可。後に「実機は触るの禁止」と明示。
+- ★GoPro / DJI / Insta360 比較（2026-11-21 18:1x、公式ドキュメント base）:
+  - GoPro: 生ジャイロ＋加速度を **GPMF トラックへ録画と同時 mux**、Gyroflow が VQF で積分。レンズプロファイルはファイル内に記録（Hero11+）。同期不要（最新）。
+  - DJI: **Quaternion のみ**を記録（生 IMU なし）、Gyroflow は `Integration=None` でそのまま使用。レンズプロファイル公式内蔵。同期不要。→ 後から積分・平滑化して歪む問題が構造的に無い。
+  - Insta360: 生ジャイロを独自形式で録画と同時 mux、公式レンズプロファイル内蔵、同期不要。
+  - 我々: 生ジャイロ＋加速度を Gyroflow protobuf で**録画後に全領域書き換え**注入。レンズプロファイル無し（NoDistortion で回避）。相対時刻化で同期対応済み。
+  - 決定的差: ①3社は同時 mux（Flash 1回・異常耐性高）、我々は後書き換え（2回以上・異常時モーション全欠落）。②DJI は積分をカメラ側で完了させている。③3社はレンズプロファイル内蔵。
+  - 同時 mux は media3 `FragmentedMp4Muxer` が `gyrf` 非対応のため不可（javap 確認）。DJI 方式（Quaternion 埋め込み）が最も現実的な改善候補。
 - ★保存方式の調査結論（2026-11-21 18:0x）: ユーザー要件「MP4 埋め込みマスト（Google フォトで失われたくない）」「Flash 寿命」「異常終了耐性」を調査。
   - Gyroflow protobuf 仕様では IMU は per-frame に分散が規定で、先頭フレームへ全件詰め込むのは非準拠 → 撤回済み。
   - DJI/Insta360 は完成 Quaternion を MP4 に同時 mux（`Integration=None`）し後書き換えしない。我々は生 IMU のみで同時 mux 手段が無い。
