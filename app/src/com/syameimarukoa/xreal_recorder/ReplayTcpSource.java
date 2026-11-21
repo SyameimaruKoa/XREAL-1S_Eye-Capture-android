@@ -79,6 +79,8 @@ final class ReplayTcpSource implements VideoSource {
                         int nal = (au[4] >> 1) & 0x3f;
                         if (nal == 32 && !csdSent) {
                             byte[] csd = UvcSource.extractCsd(au);
+                            android.util.Log.i("XrealReplay", "CSD nal=32 extracted="
+                                    + (csd != null) + " len=" + (csd == null ? 0 : csd.length));
                             if (csd != null) {
                                 listener.onCsd(csd);
                                 csdSent = true;
@@ -87,6 +89,10 @@ final class ReplayTcpSource implements VideoSource {
                         }
                         if (!csdSent) {
                             continue;
+                        }
+                        if (accessUnits < 3 || accessUnits % 1000 == 0) {
+                            android.util.Log.i("XrealReplay", "AU " + accessUnits
+                                    + " nal=" + nal + " bytes=" + au.length);
                         }
                         listener.onAccessUnit(au, System.nanoTime());
                     }
