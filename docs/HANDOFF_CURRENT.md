@@ -1,5 +1,12 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
+## ★現在の最優先課題（2026-11-21 19:5x）: 自前 fMP4 のヘッダー欠落
+- ユーザー要件: **後注入（2回書き込み）禁止**。MP4 に Gyroflow protobuf を埋め込み、1回の書き込みで完了させる。
+- 実装: `StreamingGyroflowMuxer`（自前 fMP4: ftyp+moov+moof+mdat、gyrf トラック）+ `StreamingMuxerSink`（RecordingMuxer 実装）。fMP4 モードで後注入をスキップ（`embedded=fmp4Mode`）。
+- ホスト側検証: ダミー HEVC で3トラック認識・duration 正常・GyroflowProtobuf parse エラー無しを確認。
+- ★未解決: エミュレーター実録画で **ファイル先頭が ftyp/moov ではなく moof** になっており ffprobe が `trun track id unknown` を出す。`onCsd`→`addVideoTrack`→`writeVideo` の順で CSD は届いとるが、`start()` が早い段階で走って moov が正しく書けていない疑い。`StreamingMuxerSink.writeVideo()` で最初の AU 時に `start()` するよう変更済み（commit `adafbbd`、CI 実行中）。次は再ビルドして先頭が ftyp/moov になるか確認。
+- 実機（SC-52B）は使用禁止。エミュレーター（`adb -s emulator-5554`）で検証すること。
+
 ## 目標（2026-11-21 01:59〜10:00 無人改善）
 - ロール補正 -180°に変更（`GyroflowProto` の imu_rotation quaternion を Z軸-180° = (w=0,z=-1) に。commit `c8b9be4`）
 - データ未保存の原因: `GlassesImuClient` が起動時1回しか接続せず、USB切断後に IMU ソケットが死ぬと以降のデータが欠落。`readLoop()` に60秒間の再接続ループ（250ms間隔）を追加（commit `8aed0e3`）
