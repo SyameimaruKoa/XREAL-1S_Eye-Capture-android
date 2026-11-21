@@ -96,6 +96,7 @@ public final class RecordService extends Service {
     private volatile boolean sessionActive;
     private volatile boolean reconnectReady;
     private volatile long sessionT0Ns;
+    private final AtomicReference<SessionStats> sessionStats = new AtomicReference<>();
     private final AtomicReference<boolean[]> sessionCsdSent = new AtomicReference<>();
     private final AtomicReference<FileOutputStream> sessionHevcOut = new AtomicReference<>();
     private Thread telemetryThread;
@@ -369,7 +370,8 @@ public final class RecordService extends Service {
                 @Override
                 public void onAccessUnit(byte[] annexB, long timestampNs) {
                     VideoWriter currentWriter = sessionWriter.get();
-                    if (currentWriter == null) {
+                    SessionStats stats = sessionStats.get();
+                    if (currentWriter == null || stats == null) {
                         return; // session rotation in progress
                     }
                     try {
@@ -377,12 +379,12 @@ public final class RecordService extends Service {
                         long ptsUs = Math.max(0L, (timestampNs - sessionT0Ns) / 1000L);
                         currentWriter.enqueue(annexB, ptsUs, UvcSource.isKeyFrame(annexB),
                                 finalVideo.getAccessUnits());
-                        if (videoFrames == 0) {
-                            firstVideoNs = receivedNs;
-                        }
-                        lastVideoNs = receivedNs;
-                        videoFrames++;
-                        videoBytes += annexB.length;
+                        stats.observe(receivedNs, annexB.length);
+                        // Mirror the active session into the static fields used by the UI.
+                        videoFrames = stats.frames;
+                        videoBytes = stats.bytes;
+                        firstVideoNs = stats.firstNs;
+                        lastVideoNs = stats.lastNs;
                     } catch (Exception e) {
                         throw new UvcSource.RawWriteException(e);
                     }
@@ -433,9 +435,12 @@ public final class RecordService extends Service {
 
             boolean audioFailureHandled = false;
             while (!stopRequested && !finalVideo.isFailed()) {
+                // Consume the signal unconditionally so a late resume cannot be
+                // mistaken for a fresh reconnect after the next stall.
+                boolean resumeSignal = reconnectReady;
+                reconnectReady = false;
                 if (!sessionActive) {
-                    if (reconnectReady) {
-                        reconnectReady = false;
+                    if (resumeSignal) {
                         audioFailureHandled = false;
                         if (!startSession(finalVideo, rawMode, rawOnly, fmp4Mode, dir)) {
                             break;
@@ -495,6 +500,7 @@ public final class RecordService extends Service {
         }
         sessionMuxer.set(null);
         sessionCsdSent.set(null);
+        sessionStats.set(null);
         FileOutputStream hevc = sessionHevcOut.getAndSet(null);
         if (hevc != null) {
             try {
@@ -575,6 +581,7 @@ public final class RecordService extends Service {
         final GlassesImuClient finalImu = imu;
         final long t0Ns = SystemClock.elapsedRealtimeNanos();
         sessionT0Ns = t0Ns;
+        final SessionStats finalStats = new SessionStats();
         VideoWriter writer = new VideoWriter(new VideoWriter.Output() {
             @Override
             public void write(byte[] annexB, long ptsUs, boolean keyFrame, int auIndex)
@@ -600,10 +607,10 @@ public final class RecordService extends Service {
                         }
                     } finally {
                         try {
-                            long spanNs = lastVideoNs - firstVideoNs;
-                            cameraInfo.put("received_video_frames", videoFrames);
-                            cameraInfo.put("received_video_bytes", videoBytes);
-                            if (videoFrames > 0) {
+                            long spanNs = finalStats.lastNs - finalStats.firstNs;
+                            cameraInfo.put("received_video_frames", finalStats.frames);
+                            cameraInfo.put("received_video_bytes", finalStats.bytes);
+                            if (finalStats.frames > 0) {
                                 cameraInfo.put("received_video_width", videoSource.getWidth());
                                 cameraInfo.put("received_video_height", videoSource.getHeight());
                             }
@@ -611,11 +618,11 @@ public final class RecordService extends Service {
                             if (videoSource instanceof TcpSource) {
                                 ((TcpSource) videoSource).appendTimingMetadata(cameraInfo);
                             }
-                            if (videoFrames > 1 && spanNs > 0) {
+                            if (finalStats.frames > 1 && spanNs > 0) {
                                 double seconds = spanNs / 1_000_000_000.0;
-                                cameraInfo.put("received_average_fps", (videoFrames - 1) / seconds);
+                                cameraInfo.put("received_average_fps", finalStats.averageFps());
                                 cameraInfo.put("received_average_bitrate_bps",
-                                        videoBytes * 8.0 / seconds);
+                                        finalStats.averageBitrateBps());
                             }
                             AudioSource capturedAudio = sessionAudio.get();
                             if (capturedAudio != null) {
@@ -647,8 +654,8 @@ public final class RecordService extends Service {
                                                     ? (long) imuSpanUs
                                                     : (spanNs > 0 ? spanNs / 1000L : 0L);
                                             float fps = 0f;
-                                            if (durationUs > 0 && videoFrames > 1) {
-                                                fps = (float) ((videoFrames - 1)
+                                            if (durationUs > 0 && finalStats.frames > 1) {
+                                                fps = (float) ((finalStats.frames - 1)
                                                         * 1_000_000.0 / durationUs);
                                             }
                                             if (fps <= 0) fps = videoSource.getFrameRate();
@@ -728,7 +735,9 @@ public final class RecordService extends Service {
         sessionImu.set(imu);
         sessionHevcOut.set(hevcOut);
         sessionCsdSent.set(new boolean[1]);
+        sessionStats.set(finalStats);
         telemetryImuClient = imu;
+        // Reset the UI mirror for the new file; per-file counters live in SessionStats.
         videoFrames = 0;
         videoBytes = 0;
         firstVideoNs = 0;
