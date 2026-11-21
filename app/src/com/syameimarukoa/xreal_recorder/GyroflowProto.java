@@ -9,6 +9,9 @@ import java.util.List;
 /** Minimal protobuf writer for the Gyroflow telemetry schema. */
 final class GyroflowProto {
     private static final double RAD_TO_DEG = 180.0 / Math.PI;
+    // XREAL 1S horizontal FOV ~77.3 deg at 1600x1200 (fx ~1000 px). Keeping FOV
+    // as the constant makes the focal length scale correctly for any resolution.
+    private static final double HORIZONTAL_FOV_DEG = 77.3;
 
     private GyroflowProto() {
     }
@@ -50,11 +53,28 @@ final class GyroflowProto {
     }
 
     static byte[] frame(int frameNumber, double startUs, double endUs,
-                        List<ImuSample> samples) {
+                        List<ImuSample> samples, int width, int height) {
         ByteArrayOutputStream frame = new ByteArrayOutputStream();
         writeDouble(frame, 1, startUs);
         writeDouble(frame, 2, endUs);
         writeVarint(frame, 3, frameNumber);
+        // XREAL corrects lens distortion in-camera, so declare a pinhole model.
+        // Supplying LensData also avoids Gyroflow's "lens profile not loaded" warning.
+        ByteArrayOutputStream lens = new ByteArrayOutputStream();
+        double halfFovRad = Math.toRadians(HORIZONTAL_FOV_DEG) / 2.0;
+        float fx = (float) (width / (2.0 * Math.tan(halfFovRad)));
+        writeFloat(lens, 1, fx);
+        writeFloat(lens, 1, fx);
+        writeFloat(lens, 1, width / 2f);
+        writeFloat(lens, 1, 0f);
+        writeFloat(lens, 1, fx);
+        writeFloat(lens, 1, height / 2f);
+        writeFloat(lens, 1, 0f);
+        writeFloat(lens, 1, 0f);
+        writeFloat(lens, 1, 1f);
+        lens.write(0x2a); // field 5 (no_distortion), wire type 2
+        lens.write(0x00); // empty message
+        writeBytes(frame, 16, lens.toByteArray());
         for (ImuSample sample : samples) {
             writeBytes(frame, 17, imu(sample));
         }

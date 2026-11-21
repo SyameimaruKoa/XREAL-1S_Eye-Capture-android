@@ -87,7 +87,8 @@ final class Mp4TelemetryInjector {
                 frameSamples.add(ordered.get(sampleIndex));
                 sampleIndex++;
             }
-            byte[] frame = GyroflowProto.frame(i + 1, startUs, endUs, frameSamples);
+            byte[] frame = GyroflowProto.frame(i + 1, startUs, endUs, frameSamples,
+                    width, height);
             payloads.add(GyroflowProto.main(i == 0 ? header : null, frame));
         }
         movie.addTrack(new GyroflowTrack(payloads, timescale, durations));
