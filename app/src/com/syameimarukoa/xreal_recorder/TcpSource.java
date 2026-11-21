@@ -490,7 +490,9 @@ final class TcpSource implements VideoSource {
             try {
                 transact(0x2782, 2);
             } catch (Exception e) {
-                fail("TCP camera stop failed: " + e.getMessage());
+                // The camera may already be gone while stopping. A missing stop
+                // acknowledgement is not a recording error; log it and continue.
+                Log.w(TAG, "TCP camera stop acknowledgement failed: " + e);
             }
             startSent = false;
         }

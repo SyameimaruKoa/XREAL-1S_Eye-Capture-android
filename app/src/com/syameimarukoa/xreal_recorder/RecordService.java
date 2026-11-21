@@ -26,6 +26,7 @@ import android.view.Display;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -506,8 +507,12 @@ public final class RecordService extends Service {
         File hevcFile = null;
         File wavFile = null;
         File adtsFile = null;
+        File gyroFile = null;
         if (rawMode || diagnostics) {
             hevcFile = new File(dir, "xreal_" + ts + rawExt);
+            // The debug dumps (Android/data/.../files/Movies) have no MP4 telemetry
+            // track, so write the gyro sidecar next to the HEVC/WAV files.
+            gyroFile = new File(dir, "xreal_" + ts + ".gcsv");
         }
         if (diagnostics) {
             wavFile = new File(dir, "xreal_" + ts + ".wav");
@@ -556,6 +561,7 @@ public final class RecordService extends Service {
 
         final RecordingMuxer finalMuxer = muxer;
         final FileOutputStream finalHevc = hevcOut;
+        final File finalGyroFile = gyroFile;
         final RecordingOutput finalOutput = output;
         final GlassesImuClient finalImu = imu;
         final long t0Ns = SystemClock.elapsedRealtimeNanos();
@@ -667,6 +673,17 @@ public final class RecordService extends Service {
                                             Log.e(TAG, "gcsv write failed", t);
                                         }
                                     }
+                                }
+                            }
+                            // Debug/RAW dumps have no MP4 telemetry track. Save the
+                            // gyro sidecar directly next to the HEVC/WAV files.
+                            if (finalGyroFile != null && finalImu != null
+                                    && finalImu.getSampleCount() > 0) {
+                                try (FileWriter gyroWriter = new FileWriter(finalGyroFile)) {
+                                    gyroWriter.write(finalImu.formatCsv(
+                                            finalMp4Name, captureTimeMs));
+                                } catch (Throwable t) {
+                                    Log.e(TAG, "debug gcsv write failed", t);
                                 }
                             }
                         } finally {
