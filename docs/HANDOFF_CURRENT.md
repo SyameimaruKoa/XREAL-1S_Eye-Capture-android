@@ -50,6 +50,7 @@
 - ★ユーザー指示: 解析が終わったら `temp/` の撮影素材を削除する（容量節約）。→ CI `44866632585`（上限撤廃＋CSV遅延生成）成功を確認後、`temp/VID_20261121_125943.mp4`（1,222,982,133 bytes）を削除し `temp/` 自体も削除済み。git status clean。
 - ★残る確認事項: ユーザーが Gyroflow で「回転が -90°」と報告した件。protobuf 側は `(w,x,y,z)=(0,0,0,-1)`（Z軸180°＝ロール -180°）で仕様どおり埋まっており、フレーム時刻も映像と一致している。Gyroflow の UI で手動設定した -90° なのか、protobuf の `imu_rotation` が Gyroflow に読み込まれていないのかをユーザーに確認する必要がある。資料: https://docs.gyroflow.xyz/technical-details/gyroflow-protobuf/ （`imu_orientation` は軸置換＋符号、`imu_rotation` は raw IMU ベクトルへ適用する quaternion、両方とも orientation を先に適用）。
 - ★解決（2026-11-21 13:4x）: ユーザーが「UI で手動入力」と回答した直後に**「スタビライゼーションの水平線ロックで -90° にしたら正しい角度になった」**と訂正。つまり -90° は Gyroflow の **Horizon Lock（スタビライゼーション UI）** の設定であり、**protobuf の `imu_rotation` は -180° が正しい**。わっちは一旦 metadata を -90° に戻してしまったが（commit `7768532`、CI はキャンセル）、すぐに -180° `(w=0,z=-1)` へ戻し、`GyroflowProtoTest` の期待値も -180° に戻した。★教訓: 「UI で -90°」と Gyroflow の Stabilization 設定の話を、metadata の imu_rotation と混同しないこと。水平線ロックは別設定。
+- ★v0.1.25 公開（2026-11-21 13:41 JST / 04:41 UTC）: CI `44867095723`（commit `3919c12`）成功。GitHub prerelease **v0.1.25** を作成（`isPrerelease=true`）、`xreal-recorder.apk`（8,233,443 bytes、sha256 `6c09e67ab11c30709e6c94534e5280380dfa99932b72ef4c1f66b7a576367bb6`）を添付。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.25 。内容: IMU 上限撤廃＋CSV 遅延生成＋metadata -180°（水平線ロック -90° は Gyroflow UI で設定）＋切断で録画終了。v0.1.24 は IMU 上限撤廃前のビルドなので、長回しには v0.1.25 を使う。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。
