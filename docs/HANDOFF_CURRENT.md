@@ -8,6 +8,8 @@
 - 復元のポイント: `onStreamStalled` は `stopRequested=true` をやめ、原子的にセッションを retire して「再接続待ち」表示。`onStreamResumed` は `reconnectReady=true` を立てたまま。worker ループが信号を無条件に消費し、`current.active==false` なら `startSession()` で新規 MP4 を開始（再 stall なら50ms待って再試行）。fMP4 の `startSession()` も `openStreamingMuxer()` で新規セッションを作るため対応済み。
 - ローカル Java テスト22個すべて PASS。CI run `44944594582` は実行中。
 - ★実機は XREAL 1S が物理的に切断されとる（05:0x 時点で USB デバイス一覧に XREAL 無し、eth0 も消滅）。ユーザーが手動検証後に外した模様。再開の実機検証には XREAL の再接続が必要。
+- CI run `44944594582` green（commit `5977072`＋ドキュメント `16305aa`）。★v0.1.28 prerelease 公開（2026-11-22 05:11 JST / 2026-11-21 20:11 UTC）: APK sha256 `efd1f4383e96333ec5b043f6d58da2346b53140a5c7fd5dd1ff24752fff5d611`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.28
+- 残る作業: ユーザーが XREAL を再接続し、v0.1.28 で「イーサネット無効→有効」「物理 USB 切断→復帰」のたびに旧 MP4 保存＋新規 MP4 自動開始を確認すること。ログは `video stream stalled` / `video stream resumed` / `session started:` で追える。
 
 ## 旧・実機検証開始（2026-11-22）
 - ユーザーより「実機で検証」の許可。実機 `sc-52b.bass-uaru.ts.net:5555` の ServiceRecord=0 を確認（撮影中ではない）。
