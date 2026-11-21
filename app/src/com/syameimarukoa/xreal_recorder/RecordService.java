@@ -590,12 +590,13 @@ public final class RecordService extends Service {
 
                 @Override
                 public void onStreamStalled(String reason) {
+                    // A disconnected link starts a new file. Save the current one and
+                    // let MainActivity auto-start a fresh recording when USB returns.
+                    getSharedPreferences("recording_options", MODE_PRIVATE)
+                            .edit().putBoolean("auto_restart_on_attach", true).apply();
+                    stopRequested = true;
                     videoLinkMessage = "映像一時停止: 再接続待ち…";
-                    status = "録画中: USB接続が切れました。再接続を待っています";
-                    AudioSource pausedAudio = finalAudioRef.get();
-                    if (pausedAudio != null) {
-                        pausedAudio.pause();
-                    }
+                    status = "USB切断: 録画を保存しました。再接続を待っています";
                     Log.w(TAG, "video stream stalled: " + reason);
                 }
 
@@ -605,11 +606,7 @@ public final class RecordService extends Service {
                     if (finalVideo instanceof TcpSource) {
                         videoReconnectCount = ((TcpSource) finalVideo).getReconnectCount();
                     }
-                    AudioSource resumedAudio = finalAudioRef.get();
-                    if (resumedAudio != null) {
-                        resumedAudio.resume();
-                    }
-                    status = "録画中: 映像を再開しました";
+                    status = "映像を再開しました";
                     Log.i(TAG, "video stream resumed");
                 }
 

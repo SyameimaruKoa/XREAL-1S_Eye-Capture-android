@@ -68,7 +68,6 @@ final class TcpSource implements VideoSource {
     private long previousArrivalStepNs;
     private long cameraPtsAnchorNs;
     private long lastPtsNs;
-    private int skipReanchorFrames;
     private long clockReanchors;
     private long clockRejected;
     private long clockForcedSteps;
@@ -355,24 +354,9 @@ final class TcpSource implements VideoSource {
                 if (accessUnits == 0) {
                     candidateFirstNs = candidateNs;
                     arrivalFirstNs = arrivalNs;
-                    // Continue from the last presentation time after a reconnect so the
-                    // link-down gap is removed from the timeline. No duplicate frames are
-                    // written: only frames that actually arrived are enqueued.
-                    if (lastPtsNs > 0) {
-                        Log.i(TAG, "restart pts from last=" + (lastPtsNs / 1_000_000L)
-                                + "ms arrival=" + (arrivalNs / 1_000_000L) + "ms");
-                        ptsNs = monotonic(lastPtsNs);
-                        cameraPtsAnchorNs = ptsNs;
-                        lastPtsNs = ptsNs;
-                        // The camera clock jumped during the link-down gap; the anchor
-                        // no longer matches arrival time. Lock it permanently so the
-                        // drift gate cannot jump the PTS back to real time.
-                        skipReanchorFrames = Integer.MAX_VALUE;
-                    } else {
-                        cameraPtsAnchorNs = arrivalNs;
-                        ptsNs = arrivalNs;
-                        lastPtsNs = ptsNs;
-                    }
+                    cameraPtsAnchorNs = arrivalNs;
+                    ptsNs = arrivalNs;
+                    lastPtsNs = ptsNs;
                 } else {
                     long candidateStep = candidateNs - candidateLastNs;
                     long arrivalStep = arrivalNs - arrivalLastNs;
@@ -456,9 +440,7 @@ final class TcpSource implements VideoSource {
         }
         timestampRecovery.observeStep(candidateNs - candidateLastNs);
         long drift = cameraPtsAnchorNs + (candidateNs - candidateFirstNs) - arrivalNs;
-        if (skipReanchorFrames > 0) {
-            skipReanchorFrames--;
-        } else if (driftGate.shouldReanchor(drift, arrivalNs)) {
+        if (driftGate.shouldReanchor(drift, arrivalNs)) {
             cameraPtsAnchorNs -= drift;
             clockReanchors++;
         }

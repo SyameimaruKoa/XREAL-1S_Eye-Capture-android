@@ -13,6 +13,12 @@
 - 09:35 尺余りの残り対策:実ログ `09:17:08 TCP video has received no data for 30000 ms` により、ソケットが開いたまま無データだと stall 検出まで30秒かかり、その間音声が伸びる。音声 PTS は `framesWritten` 基準なので pause は効くが検出が遅い。`TcpReadProgress` の no-data timeout を 30000→5000ms に短縮（再接続自体は約5秒で、その間は音声 pause 済み）。実機効果は録画禁止のため未検証。
 - 09:37 最終確認: CI run `44844800232` 成功（Java tests / Build APK / Upload APK すべて ✓）。ローカル Java テスト3つも成功（GyroCsvFormatterTest / ImuReportParserTest / GyroflowProtoTest、ロール -180° quaternion 検証含む）。git status は clean、全コミット push 済み（最新 `0e994f2`）。3目標のコード修正は完了。★残る実機検証（ロール + データ保全 + 尺）はユーザーの録画禁止指示により実行不可。ユーザーが録画許可を出した時点で `docs/HANDOFF_CURRENT.md` の「Next Move」に従い検証すること。
 - 10:15 ユーザーが「今なら良いよ」と録画許可 → 実機検証実施（`VID_20261121_101642.mp4`、215MB）。★良い結果: IMU 57423 フレーム（全期間）、0バイトでない、再接続後 `reanchors=0` で PTS 連続、音声も USB-Audio 復帰。★発見した新バグ: 映像が624フレーム/10.5秒しか無い（受け取り3012フレーム、音声2463サンプル/52.5秒）。XrealFMp4 ログが証拠: `10:16:45 video track added id=0` → `10:17:11 video track added id=2` → `finish: videoSamples=3012`。`onStreamReset()` の `csdSent[0]=false`（commit `1f4149e`）が再接続後に2つ目の video track を作り、サンプルが2トラックに分裂して注入時に最初の624フレームだけ残った。01:33 の成功時にはこの変更は無かった。修正: `onStreamReset()` から `csdSent[0]=false` を削除し既存トラックを維持。音声 pause は効いており（約15秒の stall 分が減っている）、5秒 timeout でさらに縮む見込み。
+- ★★方針変更（2026-11-21 10:29 ユーザー指示）: 「切断による途絶は記録ファイルを変えよう。録画中に異常切断→保存→復帰→新規録画自動開始。今までのコードはアプリに入れないカタチで残しておいて」。1ファイル内で PTS を繋ぐ方式を廃止し、**切断ごとにファイルを分割**する。今までのコードは `app/legacy/`（TcpSource/RecordService/AudioSource/GlassesImuClient）に退避し APK ビルド対象外にした（git には残る）。アプリ側は以下のように単純化:
+  - `TcpSource`: `skipReanchorFrames` と再接続時 PTS 継続（`restart pts from last`）を削除、 arrival 基準に戻す。start hook と5秒 timeout は残す。
+  - `AudioSource`: `paused` フィールド／`pause()`／`resume()`／read スキップを削除。
+  - `RecordService.onStreamStalled`: `auto_restart_on_attach` フラグを立てて `stopRequested=true` → 現在のファイルを保存し service 停止。
+  - `MainActivity`: `ACTION_USB_DEVICE_ATTACHED` を受信し、フラグが立っていれば USB 権限確認後に1.5秒遅延で `startRecording()`（新規ファイル）。手動停止時はフラグをクリア。
+  - これで PTS 接続・drift gate 抑制・音声 pause・CSD 再送は不要になった。各ファイルは0から始まる独立した録画。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。

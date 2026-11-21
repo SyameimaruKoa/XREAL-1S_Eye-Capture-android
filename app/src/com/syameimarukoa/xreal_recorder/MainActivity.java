@@ -129,6 +129,18 @@ public class MainActivity extends Activity {
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
+            if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(intent.getAction())) {
+                SharedPreferences prefs = getSharedPreferences("recording_options", MODE_PRIVATE);
+                if (prefs.getBoolean("auto_restart_on_attach", false)) {
+                    findDevice();
+                    if (device != null && usbManager.hasPermission(device)) {
+                        prefs.edit().putBoolean("auto_restart_on_attach", false).apply();
+                        new Handler(Looper.getMainLooper()).postDelayed(
+                                () -> MainActivity.this.startRecording(), 1500);
+                    }
+                }
+                return;
+            }
             if (!ACTION_USB_PERMISSION.equals(intent.getAction())) {
                 return;
             }
@@ -140,6 +152,12 @@ public class MainActivity extends Activity {
                 if (pendingUvcEnable) {
                     pendingUvcEnable = false;
                     enableUvc();
+                }
+                SharedPreferences prefs = getSharedPreferences("recording_options", MODE_PRIVATE);
+                if (prefs.getBoolean("auto_restart_on_attach", false)) {
+                    prefs.edit().putBoolean("auto_restart_on_attach", false).apply();
+                    new Handler(Looper.getMainLooper()).postDelayed(
+                            () -> MainActivity.this.startRecording(), 1500);
                 }
             } else {
                 pendingUvcEnable = false;
@@ -611,6 +629,7 @@ public class MainActivity extends Activity {
         updateConfirmedLiveMode(null);
         if (!receiverRegistered) {
             IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
+            filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
             if (Build.VERSION.SDK_INT >= 33) {
                 registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
             } else {
@@ -795,6 +814,8 @@ public class MainActivity extends Activity {
     }
 
     private void stopRecording() {
+        getSharedPreferences("recording_options", MODE_PRIVATE)
+                .edit().putBoolean("auto_restart_on_attach", false).apply();
         Intent intent = new Intent(this, RecordService.class).setAction(RecordService.ACTION_STOP);
         startService(intent);
         setStatus("録画を停止しています...");
