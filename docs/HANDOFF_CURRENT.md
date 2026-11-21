@@ -54,6 +54,8 @@
 - ユーザー実機フィードバック（2026-11-21 13:4x）: 短時間録画ではジャイロ同期 OK（長時間は未検証）。水平ロックは引き続き Gyroflow UI で -90° が必要（metadata は -180° で正しい）。停止時に `TCP camera stop Failed: null` が UI に出る問題と、diagnostics（Android/data/.../files/Movies への hevc/wav 保存）経路でジャイロが保存されない問題を修正中。
   - `TcpSource.stop()`: `transact(0x2782, 2)` の ack 失敗は `fail()` で UI エラーにしていたため、警告ログに変更（`e.getMessage()` が null で「null」と表示された）。停止コマンドの ack が無くても録画は正常終了する。
   - `RecordService.startSession()`: `gyroFile`（`.gcsv`）を `rawMode || diagnostics` の両方で生成し、writer の finish コールバックで `finalImu.formatCsv()` を直接書き出す。MP4 の telemetry トラックが無い診断ダンプでもジャイロが残る。DCIM 側の gcsv は `RecordingOutput.writeGyroCsv()` が担当（MP4 がある場合）。
+  - ★生データのみモードの保存先を確認: `SAVE_MODE_RAW_ONLY` は **DCIM に保存しない**。`Android/data/.../files/Movies/` に hevc/aac を書き、次回起動の `recoverPendingRawRecordings()` が同じ Android/data 内で hevc→mp4 に変換するだけ（`RawToMp4Converter.convert()` の出力先も `dir`）。今回の修正で gcsv も同ディレクトリに残る。DCIM 公開が必要なら recovery の出力先を `RecordingOutput.create()` 経由に変更する必要がある（未実施）。
+- ★v0.1.26 公開（2026-11-21 13:53 JST / 04:53 UTC）: CI `44868023693`（commit `c33393e`）成功。GitHub prerelease **v0.1.26** を作成（`isPrerelease=true`）、`xreal-recorder.apk`（8,233,443 bytes、sha256 `218b6a06137212a513909b4d91f215963b50a71baaed2f9dd4633b3d7bc9bc3d`）を添付。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.26 。内容: diagnostics/生データのみでの gcsv 保存＋停止時 ack 失敗の警告ログ化。git status clean。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。
