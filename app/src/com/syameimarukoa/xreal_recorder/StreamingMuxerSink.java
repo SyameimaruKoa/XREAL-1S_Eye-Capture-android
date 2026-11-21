@@ -19,6 +19,10 @@ final class StreamingMuxerSink implements RecordingMuxer {
     private byte[] header;
     private boolean started;
     private int frameNumber;
+    private long firstPtsUs = -1;
+    private byte[] pendingVideo;
+    private long pendingVideoPts;
+    private boolean pendingKeyFrame;
     private int width = 1600;
     private int height = 1200;
     private volatile boolean failed;
@@ -80,25 +84,42 @@ final class StreamingMuxerSink implements RecordingMuxer {
     @Override
     public void writeVideo(byte[] data, long ptsUs, boolean keyFrame) {
         synchronized (lock) {
-            if (!started) {
-                try {
-                    muxer.start();
-                    started = true;
-                } catch (IOException e) {
-                    failed = true;
-                    error = String.valueOf(e);
-                    return;
-                }
+            if (firstPtsUs < 0) {
+                firstPtsUs = ptsUs;
             }
-            byte[] audio = pendingAudio != null ? pendingAudio : new byte[]{0};
-            pendingAudio = null;
-            byte[] gyro = nextGyroPayload(ptsUs);
+            // Hold the previous AU until the next PTS arrives; only then is its
+            // real duration known. The glasses run at ~59.4 fps, so a fixed
+            // 16,666 us drifts ~2 s over a 150 s clip and desyncs the gyrf
+            // timestamps from the MP4 timeline.
+            if (pendingVideo != null) {
+                long durationUs = Math.max(1L, ptsUs - pendingVideoPts);
+                flushVideo(pendingVideo, pendingVideoPts, pendingKeyFrame, durationUs);
+            }
+            pendingVideo = data;
+            pendingVideoPts = ptsUs;
+            pendingKeyFrame = keyFrame;
+        }
+    }
+
+    private void flushVideo(byte[] data, long ptsUs, boolean keyFrame, long durationUs) {
+        if (!started) {
             try {
-                muxer.writeSample(data, audio, gyro, 16_666L);
+                muxer.start();
+                started = true;
             } catch (IOException e) {
                 failed = true;
                 error = String.valueOf(e);
+                return;
             }
+        }
+        byte[] audio = pendingAudio != null ? pendingAudio : new byte[]{0};
+        pendingAudio = null;
+        byte[] gyro = nextGyroPayload(ptsUs - firstPtsUs);
+        try {
+            muxer.writeSample(data, audio, gyro, durationUs);
+        } catch (IOException e) {
+            failed = true;
+            error = String.valueOf(e);
         }
     }
 
@@ -130,6 +151,10 @@ final class StreamingMuxerSink implements RecordingMuxer {
     @Override
     public void finish() {
         synchronized (lock) {
+            if (pendingVideo != null) {
+                flushVideo(pendingVideo, pendingVideoPts, pendingKeyFrame, 16_666L);
+                pendingVideo = null;
+            }
             try {
                 muxer.stop();
             } catch (IOException e) {

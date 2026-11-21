@@ -1,6 +1,22 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## ★★実機検証は完了 + 次の課題（2026-11-22）
+## ★★★fMP4 の「ゴミカスファイル」の真因を発見（2026-11-22 05:2x）
+- ユーザー訂正: 先の「実機で問題なし」は誤り。fMP4 のファイルが使い物にならん（「ゴミカスファイル」）。切断再開の方は別。
+- 最新実機ファイル `VID_20261122_045942.mp4`（657MB / 150.86秒）を pull して解析。ffprobe・Gyroflow は読める（detected_source XREAL 1S、raw_imu 131,944、gyrf 9,052サンプルで video と1:1）。しかし protobuf の frame timestamp を直接デコードすると:
+  - frame 0 = 30,281 us、frame 1 = 47,123 us、frame 2 = 64,001 us … **16,842 us 刻み（≈59.4fps）**
+  - 最終 frame = 152,895,549 us（152.9秒）なのに MP4 の stts/duration は 16,666 us × 9052 = **150.86秒**
+  - `frame ts gaps unexpected: 9051`（全フレームで期待値 16,666 と不一致）
+  - Gyroflow 警告 `IMU duration 152867 vs video duration 150860` の正体はこれ。
+- **原因**: `StreamingMuxerSink.writeVideo()` が `muxer.writeSample(..., 16_666L)` と duration を固定で渡しとる一方、`nextGyroPayload(ptsUs)` は実際の video PTS（16,842 刻み、先頭 30,281）をそのまま protobuf の start_timestamp_us に書いとる。→ MP4 タイムラインと gyrf タイムラインが2秒ズレ、補正が壊れる。
+- **修正（完了）**: `StreamingMuxerSink` を以下のように変更:
+  1. **1フレーム遅延書き込み**: 次の PTS が届いてから前の AU の real duration を確定して `writeSample()` する。最初のフレームの duration も実差分になる（最後の1フレームだけ既定 16,666 us）。
+  2. protobuf の frame timestamp は先頭 PTS を 0 基準にした相対時刻（`ptsUs - firstPtsUs`）。
+- **検証（完了）**: `tests/StreamingSinkTimingGen.java` で非60fps PTS（30281/47123/64001/80843/97679）を流し、生成した MP4 の stts 累積 decode time と gyrf frame timestamp を比較 → **`[0, 16842, 33720, 50562, 67398]` で全フレーム一致**。Gyroflow も `detected_source: XREAL 1S`、`raw_imu` を読み込み。
+- 再開時は新しい `StreamingMuxerSink` インスタンスなので firstPtsUs 等は初期化される。
+- ローカル Java テスト22個すべて PASS。CI run `44946229277` は実行中。
+- ★残る作業: XREAL を再接続して実機で新版を録画し、Gyroflow の `IMU duration vs video duration` 警告が消えることを確認（旧ファイルでは 152867 vs 150860 の2秒差だった）。
+
+## 旧・実機検証は完了 + 次の課題（2026-11-22）
 - ユーザーが手動で実機検証済み、**fMP4 + IMU の問題は無し**。わっちがハマった「USB ネットワーク未確立」はユーザーがイーサネットを無効にしとっただけ（忘れておった）。adb 側の不具合ではない。
 - ★次の課題（ユーザー指示）: **録画中の切断時に自動再開されない**。イーサネット無効/有効の切り替えでも物理接続断でも「再開されかかった」が実際には再開しない。
 - 原因を git 履歴で確定: commit `e3d0b69 Disable reconnect rotation for release prerelease` が `onStreamStalled` を `stopRequested=true`（切断で終了）にし、worker ループのセッション回転（`reconnectReady` → `startSession()`）を削除した。`onStreamResumed` は今も `reconnectReady=true` と「映像を再開しました」を出すため「再開されかけた」ように見えるが、ループは `stopRequested` で抜ける。
