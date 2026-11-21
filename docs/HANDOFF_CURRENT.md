@@ -7,7 +7,9 @@
 - 実データ `VID_20261121_013234.mp4`: 映像61.6秒 / 音声72.5秒 / IMU13.5秒（IMU停止＋音声尺余りを確認）
 - ★解析前に必ず `dumpsys activity services ... | grep -c ServiceRecord` が0であることを確認。撮影放置中の解析は禁止。
 - 09:14 時点: Tailscale で `sc-52b`(100.121.62.116) は direct active だが SSH 22 がタイムアウト。`haven-sc-52b` は offline（12h前）。端末側 sshd/dropbear 停止またはスリープの可能性。3目標のコード修正は全て CI 成功（`44780619135`、commit `3412e55`）済みで、実機検証待ち。10時までに再接続できれば検証する。
-- 09:27 の 0バイト動画の真因（ログで確定）: `09:27:30 video error: TCP camera start failed: Unexpected TCP camera acknowledgement`。CSD の問題ではなく、**カメラ Start 要求(0x2781)がグラスに拒否され**、CSD・映像とも届かず muxer が空のまま finish → 0バイト。HANDOFF 既知の「モード不一致／再起動直後の Start 拒否」と一致。`onStreamReset()` の `csdSent[0]=false` 追加（commit `1f4149e`）は再接続時には有効だが、Start 自体が拒否されたこのケースは別問題。★ユーザー指示「しばらくいないので録画は許さない」により、これ以上の実機録画・検証は禁止。コード修正と記録のみ行う。
+- 09:27 の 0バイト動画の真因（ログで確定）: `09:27:30 video error: TCP camera start failed: Unexpected TCP camera acknowledgement`。CSD の問題ではなく、**カメラ Start 要求(0x2781)がグラスに拒否され**、CSD・映像とも届かず muxer が空のまま finish → 0バイト。HANDOFF 既知の「モード不一致／再起動直後の Start 拒否」と一致。`onStreamReset()` の `csdSent[0]=false` 追加（commit `1f4149e`）は再接続時には有効だが、Start 自体が拒否されたこのケースは別問題。対策として `TcpSource.start()` の `transact(0x2781,1)` 直前に reconnectHook（`confirmed_live_mode` を復元）を呼ぶよう変更（commit `7804041`）。★ユーザー指示「しばらくいないので録画は許さない」により、これ以上の実機録画・検証は禁止。コード修正と記録のみ行う。
+- 09:32「再開」指示を受けたが、録画禁止は解除されていないと解釈し実機録画はしない。CI ビルド・ローカルテスト・HANDOFF 記録で進める。3目標のコード修正は全て push 済み（ロール `c8b9be4`、IMU再接続+音声 `8aed0e3`、CSD `1f4149e`、Start前モード復元 `7804041`）。実機検証はユーザーが録画許可を出した時点で実施する。
+- 09:35 追加発見（「データが保存されていない」の直接原因）: `GlassesImuClient.start()` が起動時 `open()` 失敗で `null` を返し、readLoop の再接続ループに入らなかった → IMU データが録画全体で欠落。`start()` は常に client を返し、`readLoop()` が `socket==null` 時に `reconnect()`（60秒／250ms間隔）で待つよう修正。`stop()` の `running=false`+`interrupt()` で抜けられることを確認。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。

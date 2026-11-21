@@ -48,9 +48,8 @@ final class GlassesImuClient {
 
     static GlassesImuClient start(Context context, boolean collectSamples) {
         GlassesImuClient client = new GlassesImuClient(context, collectSamples);
-        if (!client.open(context)) {
-            return null;
-        }
+        // Do not fail when the IMU socket is not available yet. readLoop() keeps
+        // retrying so samples are collected once the glasses come online.
         client.thread = new Thread(client::readLoop, "xreal-imu");
         client.thread.setDaemon(true);
         client.thread.start();
@@ -100,6 +99,9 @@ final class GlassesImuClient {
         byte[] header = new byte[HEADER_SIZE];
         byte[] body = new byte[ImuReportParser.BODY_SIZE];
         while (running) {
+            if (socket == null && !reconnect()) {
+                return;
+            }
             try {
                 DataInputStream input = new DataInputStream(socket.getInputStream());
                 while (running) {
@@ -118,19 +120,26 @@ final class GlassesImuClient {
             // The IMU stream is cut when USB is replugged. Retry until it comes back
             // so motion data keeps being logged for the whole recording.
             closeSocket();
-            long deadline = SystemClock.elapsedRealtime() + 60000;
-            while (running && SystemClock.elapsedRealtime() < deadline) {
-                if (open(context)) {
-                    break;
-                }
-                try {
-                    Thread.sleep(250);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
+            if (!reconnect()) {
+                return;
             }
         }
+    }
+
+    private boolean reconnect() {
+        long deadline = SystemClock.elapsedRealtime() + 60000;
+        while (running && SystemClock.elapsedRealtime() < deadline) {
+            if (open(context)) {
+                return true;
+            }
+            try {
+                Thread.sleep(250);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
     }
 
     private void parse(byte[] body) {
