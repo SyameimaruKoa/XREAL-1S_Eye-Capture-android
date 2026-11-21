@@ -491,6 +491,7 @@ public final class RecordService extends Service {
     }
 
     private void finishSession(Object retired) {
+        Log.i(TAG, "finishSession retired=" + (retired != null));
         if (!(retired instanceof Session)) {
             return;
         }
