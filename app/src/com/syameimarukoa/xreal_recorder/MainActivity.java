@@ -1329,7 +1329,15 @@ public class MainActivity extends Activity {
         return false;
     }
 
+    private boolean wasRecording;
+
     private void pollStatus() {
+        if (wasRecording && !RecordService.isRecordingOrStarting()) {
+            // Recording just finished: clear the "stopping" text left by stopRecording().
+            statusView.setText("待機中");
+            lastStatus = "";
+        }
+        wasRecording = RecordService.isRecordingOrStarting();
         String s = RecordService.getStatus();
         boolean recording = RecordService.isRecording() || isRecordServiceRunning();
         boolean recordingBusy = RecordService.isRecordingOrStarting();
