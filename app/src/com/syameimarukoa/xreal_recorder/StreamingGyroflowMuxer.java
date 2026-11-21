@@ -57,8 +57,9 @@ final class StreamingGyroflowMuxer {
         // With default-base-is-moof, each trun data_offset is relative to the
         // start of the moof box, NOT to the trun itself.
         long baseDecode = decodeTimeUs;
-        // Actual sizes: tfhd=16, tfdt=24 (version 1), trun=32, traf=80, mfhd=16.
-        int moofSize = 8 + 16 + 3 * 80; // 272
+        // Actual sizes: tfhd=16, tfdt=20 (version 1, zero decode time), trun=32,
+        // traf=76, mfhd=16. (tfdt grows to 28 once decode time exceeds 32 bits.)
+        int moofSize = 8 + 16 + 3 * 76; // 252
         int dataStart = moofSize + 8; // skip mdat header
         byte[] trafVideo = traf(videoTrackId, baseDecode, video.length, durationUs,
                 dataStart, true);
