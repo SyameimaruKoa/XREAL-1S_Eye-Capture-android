@@ -28,6 +28,10 @@
   - 手動停止（通知ボタン等）が `MainActivity.stopRecording()` を通らない場合 `auto_restart_on_attach` が残るため、`RecordService.ACTION_STOP` でもフラグをクリア。
   - 実機検証は不可のまま。CI とローカルテストで確認する。
 - 11:46 ユーザーがスマホを起動 → SSH 復活、CI `44857451837`（commit `d2f8cab`）成功を確認し最新 APK を導入。USB権限ダイアログが出たが、ユーザーが**「録画は再開しない」**と明示したため録画検証は一切行わない。残っていた `auto_restart_on_attach=true` を `false` にクリアし（次に USB を挿しても自動再開しないように）、ServiceRecord=0 を確認。★自動再開の実機検証は未実施。ユーザーが再度「録画してよい」と許可した時点で、最新 APK で「切断→保存→USB復帰→新規録画自動開始」をログ（`XrealRec: USB attached`）と複数 MP4 の生成で確認すること。
+- ★★11:50 ユーザー訂正: 「再開する仕様のはずなのに再開しない」＝**仕様は再開する、バグを直せ**という意味だった。わっちは「再開しない仕様」と取り違えて自動再開コードを消したが、即 `git checkout` で戻した。さらに「実装の完成度が低すぎるから安易に実機を使わずに解析しろ」との指示で、実機を触らずコードを解析して作り直した。
+- 解析結果: `TcpSource.readVideo()` は `listener.onStreamStalled()` → `reconnect()` → `listener.onStreamResumed()` を**同一スレッドで同期して**呼ぶ（TcpSource:394-408）。旧方式は USB attach broadcast に依存し、①receiver 登録（EXPORTED/NOT_EXPORTED）②Activity lifecycle ③USB権限 ④デバイス列挙 ⑤サービス停止完了、という5つのタイミング依存があり、どれか外れると再開しなかった。
+- ★新設計（commit `2074812`/`92138f7`/`2160a40`）: **RecordService 内で完結**。切断時に `onStreamStalled` が現在のセッションだけを保存して `sessionActive=false`、service と TcpSource は生かしたまま。TcpSource が再接続し `onStreamResumed` が `reconnectReady=true` を立てる。worker スレッドのループがそれを見て `startSession()` で新しいファイルのセッションを開始する。USB attach／権限／デバイス列挙／サービス停止待ちは不要になり、MainActivity の旧 auto-restart コードは全削除。セッション状態は `sessionWriter/sessionMuxer/sessionAudio/sessionImu/sessionCsdSent/sessionHevcOut`（AtomicReference）と `sessionT0Ns` で管理。`startSession()`／`finishSession()` を追加。onDestroy で `activeVideoSource.stop()`。
+- ★教訓: ユーザーの「〜しない」は「仕様がそうなっている」ではなく「仕様どおり動かない（バグ）」の意味だった。文脈を確認せず正反対に実装するのは絶対にダメ。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。
