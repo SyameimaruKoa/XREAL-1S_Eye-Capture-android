@@ -141,7 +141,8 @@ final class StreamingGyroflowMuxer {
         byte[] tfhd = fullBox("tfhd", 0, 0x020000, u32(id));
         // timescale is 1,000,000 (microseconds), so no *1000 here. version 1 = 64-bit.
         byte[] tfdt = fullBox("tfdt", 1, 0, u64(decodeTimeUs));
-        int flags = key ? 0x000305 : 0x000301;
+        // 0x000701 = data-offset + sample-duration + sample-size + sample-flags
+        int flags = 0x000701;
         byte[] trun = fullBox("trun", 0, flags, concat(
                 u32(1),               // sample_count
                 u32(dataOffset),
