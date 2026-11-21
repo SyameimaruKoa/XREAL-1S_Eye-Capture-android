@@ -19,6 +19,7 @@
   - `RecordService.onStreamStalled`: `auto_restart_on_attach` フラグを立てて `stopRequested=true` → 現在のファイルを保存し service 停止。
   - `MainActivity`: `ACTION_USB_DEVICE_ATTACHED` を受信し、フラグが立っていれば USB 権限確認後に1.5秒遅延で `startRecording()`（新規ファイル）。手動停止時はフラグをクリア。
   - これで PTS 接続・drift gate 抑制・音声 pause・CSD 再送は不要になった。各ファイルは0から始まる独立した録画。
+- 11:12 実機検証（`VID_20261121_111138.mp4`）: ★成功: `video track added id=0` のみ（2トラック問題解消）。切断で保存（`finish: videoSamples=4110 audioSamples=3260 failed=false`）。★失敗: 自動再開せず、`auto_restart_on_attach=true` が残ったまま。`dumpsys activity broadcasts` で receiver は `USB_DEVICE_ATTACHED` を filter  regi しているのに onReceive が呼ばれない。原因は `RECEIVER_NOT_EXPORTED` がシステム broadcast を弾いている疑い。`RECEIVER_EXPORTED` に変更＋`XrealRec: USB attached` デバッグログ追加して再検証へ。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。

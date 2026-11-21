@@ -131,6 +131,8 @@ public class MainActivity extends Activity {
         public void onReceive(Context context, Intent intent) {
             if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(intent.getAction())) {
                 SharedPreferences prefs = getSharedPreferences("recording_options", MODE_PRIVATE);
+                Log.i("XrealRec", "USB attached, auto_restart="
+                        + prefs.getBoolean("auto_restart_on_attach", false));
                 if (prefs.getBoolean("auto_restart_on_attach", false)) {
                     findDevice();
                     if (device != null && usbManager.hasPermission(device)) {
@@ -631,7 +633,7 @@ public class MainActivity extends Activity {
             IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
             filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
             if (Build.VERSION.SDK_INT >= 33) {
-                registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+                registerReceiver(usbReceiver, filter, Context.RECEIVER_EXPORTED);
             } else {
                 registerReceiver(usbReceiver, filter);
             }
