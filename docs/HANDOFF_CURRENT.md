@@ -1,6 +1,12 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## ★★確定方式（2026-11-21 21:0x、ユーザー承認）: 先頭 moov ＋ 末尾 moov 追記
+## ★★★検証完了 + 実装完了（2026-11-21 21:1x）: 一回書き込み fMP4 で Gyroflow が IMU を認識
+- **CheckParserStateErr の真因を実データで確定**: `audioSampleEntry()` が `mp4a` を VisualSampleEntry 構造（body 78 bytes）で書いとり、mp4parse が AudioSampleEntry（body 28 bytes）として読んだ後に未読バイトが残っていた。注入方式の moov に差し替えても消えなかったが、audio trak を削除したら消えたことで特定。`AudioSampleEntry` 正構造（6+2+8+2+2+2+2+4=28 bytes、box 36 bytes）に修正して解消。
+- **確定実装**: 先頭 moov = video/audio + mvex（gyrf なし）／録画中 = video/audio の moof+mdat ＋ IMU protobuf の独立 mdat／停止時 = mfra ＋ 末尾 moov（gyrf trak、stsd/stts/stsc/stsz/stco が IMU mdat のオフセットを指す）。mp4parse は複数 moov をマージする（`lib.rs::read_moov` コメントで確認）ため track_id 重複なく gyrf を読める。全書き込みは追記のみ。
+- **ホスト側検証（完了）**: `StreamingMuxerGen` で生成 → ffprobe が video/audio 認識、box ツリー正しい（ftyp → moov → moof/mdat×30 → mfra → moov(gyrf)）。Gyroflow CLI で `Failed to parse as GyroflowProtobuf` 消滅、`Processing done`、さらに **`IMU duration 499.35 is different than video duration 499.98` 警告` = Gyroflow が gyrf 経由で IMU を実際に読み込んだ証拠。
+- 次: ローカルテスト → CI → エミュレーター replay 実録画 → Gyroflow 検証 → prerelease 公開。実機は禁止。
+
+## 旧・確定方式（2026-11-21 21:0x、ユーザー承認）: 先頭 moov ＋ 末尾 moov 追記
 - ユーザー要件: 「一回書き込み＝録画中の書き込み。映像/音声/センサーの異常耐性があれば良い。ファイナライズ不要ならヨシ。Gyroflow で開く必要がある」
 - 確定方式:
   1. 録画開始: `ftyp` + `moov`（映像/音声/gyrf トラック定義、gyrf 空テーブル）を書く。この時点でファイルは開ける
