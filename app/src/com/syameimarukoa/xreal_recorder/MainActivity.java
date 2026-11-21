@@ -167,6 +167,9 @@ public class MainActivity extends Activity {
                 case "stop":
                     stopRecording();
                     break;
+                case "replay":
+                    startReplayRecording();
+                    break;
                 case "permission":
                     findDevice();
                     break;
@@ -753,6 +756,23 @@ public class MainActivity extends Activity {
             return;
         }
         ensureDesiredLiveMode(this::startRecordingInternal);
+    }
+
+    private void startReplayRecording() {
+        if (RecordService.isRecordingOrStarting()) {
+            setStatus("すでに録画中です");
+            return;
+        }
+        Intent intent = new Intent(this, RecordService.class)
+                .setAction(RecordService.ACTION_START)
+                .putExtra(RecordService.EXTRA_VIDEO_ROUTE, RecordService.ROUTE_REPLAY)
+                .putExtra(RecordService.EXTRA_OUTPUT_TREE, outputTree)
+                .putExtra(RecordService.EXTRA_OUTPUT_LABEL, outputLabel)
+                .putExtra(RecordService.EXTRA_DIAGNOSTICS, diagnosticsCheck.isChecked())
+                .putExtra(RecordService.EXTRA_SAVE_MODE, RecordService.SAVE_MODE_MP4);
+        RecordService.setStartPending(true);
+        startForegroundService(intent);
+        setStatus("リプレイ録画を開始しています...");
     }
 
     private void startRecordingInternal() {

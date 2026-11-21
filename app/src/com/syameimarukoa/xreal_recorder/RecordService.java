@@ -54,6 +54,7 @@ public final class RecordService extends Service {
     public static final String EXTRA_DIAGNOSTICS = "diagnostics";
     public static final String EXTRA_VIDEO_ROUTE = "video_route";
     public static final int ROUTE_TCP_HEVC = 0;
+    public static final int ROUTE_REPLAY = 99;
     public static final int ROUTE_UVC_HEVC = 1;
     public static final int SAVE_MODE_MP4 = 0;       // mode 1: convert while recording
     public static final int SAVE_MODE_RAW = 1;       // mode 2: raw sidecars then convert
@@ -212,7 +213,8 @@ public final class RecordService extends Service {
                 return START_NOT_STICKY;
             }
             device = intent.getParcelableExtra(EXTRA_DEVICE);
-            if (device == null) {
+            videoRoute = intent.getIntExtra(EXTRA_VIDEO_ROUTE, ROUTE_TCP_HEVC);
+            if (device == null && videoRoute != ROUTE_REPLAY) {
                 startPending = false;
                 status = "エラー: USBデバイスがありません";
                 stopSelf();
@@ -225,7 +227,6 @@ public final class RecordService extends Service {
                 outputLabel = "DCIM / 100XREAL";
             }
             diagnostics = intent.getBooleanExtra(EXTRA_DIAGNOSTICS, false);
-            videoRoute = intent.getIntExtra(EXTRA_VIDEO_ROUTE, ROUTE_TCP_HEVC);
             int mode = intent.getIntExtra(EXTRA_SAVE_MODE, -1);
             if (mode < 0) {
                 mode = getSharedPreferences("recording_options", MODE_PRIVATE)
@@ -309,7 +310,8 @@ public final class RecordService extends Service {
             }
 
             UsbManager um = (UsbManager) getSystemService(Context.USB_SERVICE);
-            videoSource = videoRoute == ROUTE_TCP_HEVC ? new TcpSource(this)
+            videoSource = videoRoute == ROUTE_REPLAY ? new ReplayTcpSource()
+                    : videoRoute == ROUTE_TCP_HEVC ? new TcpSource(this)
                     : new UvcSource(um, device);
             activeVideoSource = videoSource;
             if (videoSource instanceof TcpSource) {
@@ -556,13 +558,16 @@ public final class RecordService extends Service {
         cameraInfo.put("file", mp4Name);
         cameraInfo.put("recording_start_time", new SimpleDateFormat(
                 "yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(new Date(captureTimeMs)));
-        cameraInfo.put("usb_product", device.getProductName());
-        cameraInfo.put("usb_manufacturer", device.getManufacturerName());
-        cameraInfo.put("usb_vendor_id", device.getVendorId());
-        cameraInfo.put("usb_product_id", device.getProductId());
-        cameraInfo.put("video_source", videoRoute == ROUTE_TCP_HEVC
+        if (device != null) {
+            cameraInfo.put("usb_product", device.getProductName());
+            cameraInfo.put("usb_manufacturer", device.getManufacturerName());
+            cameraInfo.put("usb_vendor_id", device.getVendorId());
+            cameraInfo.put("usb_product_id", device.getProductId());
+        }
+        cameraInfo.put("video_source", videoRoute == ROUTE_REPLAY ? "Replay dump"
+                : videoRoute == ROUTE_TCP_HEVC
                 ? "USB Ethernet HEVC passthrough" : "USB UVC HEVC passthrough");
-        if (videoRoute == ROUTE_TCP_HEVC) {
+        if (videoRoute == ROUTE_TCP_HEVC || videoRoute == ROUTE_REPLAY) {
             cameraInfo.put("requested_width", JSONObject.NULL);
             cameraInfo.put("requested_height", JSONObject.NULL);
             cameraInfo.put("requested_frames_per_second", JSONObject.NULL);
