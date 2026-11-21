@@ -67,15 +67,8 @@ final class StreamingMuxerSink implements RecordingMuxer {
                 csdBuf.duplicate().get(bytes);
                 muxer.setCsd(bytes, width, height);
             }
-            if (!started) {
-                try {
-                    muxer.start();
-                    started = true;
-                } catch (IOException e) {
-                    failed = true;
-                    error = String.valueOf(e);
-                }
-            }
+            // Do not start here: onCsd may arrive after addVideoTrack. start() is
+            // called lazily from writeVideo once the real CSD is available.
         }
     }
 
@@ -87,6 +80,16 @@ final class StreamingMuxerSink implements RecordingMuxer {
     @Override
     public void writeVideo(byte[] data, long ptsUs, boolean keyFrame) {
         synchronized (lock) {
+            if (!started) {
+                try {
+                    muxer.start();
+                    started = true;
+                } catch (IOException e) {
+                    failed = true;
+                    error = String.valueOf(e);
+                    return;
+                }
+            }
             byte[] audio = pendingAudio != null ? pendingAudio : new byte[0];
             pendingAudio = null;
             byte[] gyro = nextGyroPayload(ptsUs);
