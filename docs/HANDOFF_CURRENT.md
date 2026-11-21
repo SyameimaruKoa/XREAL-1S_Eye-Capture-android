@@ -11,6 +11,7 @@
 - 09:32「再開」指示を受けたが、録画禁止は解除されていないと解釈し実機録画はしない。CI ビルド・ローカルテスト・HANDOFF 記録で進める。3目標のコード修正は全て push 済み（ロール `c8b9be4`、IMU再接続+音声 `8aed0e3`、CSD `1f4149e`、Start前モード復元 `7804041`）。実機検証はユーザーが録画許可を出した時点で実施する。
 - 09:35 追加発見（「データが保存されていない」の直接原因）: `GlassesImuClient.start()` が起動時 `open()` 失敗で `null` を返し、readLoop の再接続ループに入らなかった → IMU データが録画全体で欠落。`start()` は常に client を返し、`readLoop()` が `socket==null` 時に `reconnect()`（60秒／250ms間隔）で待つよう修正。`stop()` の `running=false`+`interrupt()` で抜けられることを確認。
 - 09:35 尺余りの残り対策:実ログ `09:17:08 TCP video has received no data for 30000 ms` により、ソケットが開いたまま無データだと stall 検出まで30秒かかり、その間音声が伸びる。音声 PTS は `framesWritten` 基準なので pause は効くが検出が遅い。`TcpReadProgress` の no-data timeout を 30000→5000ms に短縮（再接続自体は約5秒で、その間は音声 pause 済み）。実機効果は録画禁止のため未検証。
+- 09:37 最終確認: CI run `44844800232` 成功（Java tests / Build APK / Upload APK すべて ✓）。ローカル Java テスト3つも成功（GyroCsvFormatterTest / ImuReportParserTest / GyroflowProtoTest、ロール -180° quaternion 検証含む）。git status は clean、全コミット push 済み（最新 `0e994f2`）。3目標のコード修正は完了。★残る実機検証（ロール + データ保全 + 尺）はユーザーの録画禁止指示により実行不可。ユーザーが録画許可を出した時点で `docs/HANDOFF_CURRENT.md` の「Next Move」に従い検証すること。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。
