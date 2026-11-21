@@ -2124,6 +2124,12 @@
 - v0.1.4 を GitHub Release に公開済み。master の 3c59933、APK は実機へインストール済み。録画停止・第二画面オフ（通常複製）・XREAL 接続中。残課題は本书記載の DP 復旧、画角、音声など。
 - ★レンズプロファイル警告と焦点距離（2026-11-21 15:2x）: Gyroflow の「レンズプロファイルが読み込まれていない」警告は XREAL 1S のプロファイルが `profiles.cbor.gz`（12409件）に存在しないため。正しい消し方は protobuf の `FrameMetadata.lens` に `LensData`（NoDistortion＋intrinsics）を入れること。 Gyroflow の `LensProfile::from_focal_length()` の式 `fx = focal_length_35mm × √(w²+h²)/√(36²+24²)` を確認。ユーザーが「正しい値を知りたい」「他の解像度でも計算して」と要望したため、**FOV を定数（水平77.3°、1600x1200 で fx≈1000 になる実測値）として保持し、`fx = w/(2·tan(FOV/2))` で解像度から計算**する方式に変更。これで 720p(1280x720) でも 1600p でも fx が正しくスケールする。`GyroflowProtoTest` に LensData の no_distortion 宣言と fx の解像度比例（1600→800 で2倍）を検証するテストを追加。6テスト成功。
 - 15:18 実機検証（`VID_20261121_151729.mp4`）: 生 protobuf を parse して **quaternion (w=0.7071, z=0.7071)=+90°**（Rotation=0 で水平が出る値）、**LensData 47バイト・no_distortion 宣言あり・fx=1000.4**（1600x1200 の期待値 ~1000 に一致）を確認。CI `44874512985` green。★ユーザーが Gyroflow で警告が消えた／水平が正しいか目視確認すれば完了。
+- ★エミュレーション用完全ダンプ取得（2026-11-21 15:30）: 30秒録画中に tcpdump で全 TCP ポートを捕捉。`xreal_full.pcap`（321MB）から `pcap_replay.py`（SLL2 linktype=276 対応に修正済み）で生ストリームを抽出:
+  - 映像 52995: 167,289パケット / 241,774,708 bytes / 57.24秒
+  - IMU 52998: 196,218パケット / 31,278,682 bytes / 109.72秒
+  - 制御 50180: 84パケット / 2.43秒
+  - 出力: `/tmp/opencode/replay_52995.bin`, `replay_52998.bin`, `replay_50180.bin`。映像は `0x2785` フレーム、IMU は `0x2836`(len128) で始まることを確認。★IMU は tcpdump 開始前後も流れるため映像より長い。エミュレーションでは映像タイムラインに合わせて切り詰めること。これで XREAL 1S 非接続でも録画・注入ロジックを検証可能。
+  - ★録画開始ボタン座標は UI 状態で変わる（[78,677] または [78,258]）。`uiautomator dump` で bounds を取得してから tap すること。
 - ★LensData 導入後に「ぐにゃぐにゃ動的に歪む」（2026-11-21 15:3x）: Smoothing／Rolling shutter 補正を切ると直る。原因は `FrameMetadata.start_timestamp_us` と `end_timestamp_us` の差（≈16.8ms）を Gyroflow が「フレームの読み出し時間」と解釈し、per-row 補正で各行を歪ませていた。protobuf ドキュメント曰く `start/end` が per-row timing の authoritative で、`frame_readout_time_us` は helper にすぎぬ。LensData が無い時は Gyroflow が per-row 補正をスキップしていたが、LensData 導入で補正パイプラインが走り出した。修正: `endUs = startUs`（読み出しスパン0）にして Gyroflow に行歪みをさせない。あわせて ClipMetadata field11 `frame_readout_time_us=0` も明示（helper も0）。XREAL は内部で rolling shutter 補正済み。
 - 細かなバグ潰し（2026-11-21 15:0x）:
   - ★「停止処理中...」が UI に残るバグ: `runRecording()` の finally が `status` を戻さず、`stopSelf()` → `onDestroy()` の `t.join(3000)` がタイムアウトすると `recording=false` にならず `pollStatus()` が「停止処理中...」を取得し続けていた。修正: finally で `status="待機中"` に戻し、`recording=false` を `destroyed` 条件なしで確実に設定。fMP4 なので停止処理が途中でもファイルは再生可能なため、データ自体は無伤だった（ユーザー指摘）。
