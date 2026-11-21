@@ -485,7 +485,10 @@ final class TcpSource implements VideoSource {
     }
 
     private byte[] readExact(InputStream input, int length, boolean requireVideoProgress) throws IOException {
-        return TcpReadProgress.read(input, length, requireVideoProgress ? 30000 : 0,
+        // A replug can leave the TCP socket open with no video data. Detect it in
+        // 5 s instead of 30 s so the audio pause happens sooner and the recorded
+        // file does not gain tens of seconds of extra microphone audio.
+        return TcpReadProgress.read(input, length, requireVideoProgress ? 5000 : 0,
                 () -> running);
     }
 
