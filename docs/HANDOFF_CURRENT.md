@@ -1,6 +1,14 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## ★★★検証完了 + 実装完了（2026-11-21 21:1x）: 一回書き込み fMP4 で Gyroflow が IMU を認識
+## ★★★エミュレーター実録画検証（2026-11-21 22:1x、CI `44907608081` green）
+- エミュレーター `emulator-5554` で replay 録画が成功。`VID_20261121_221617.mp4`（23.4MB / 5.5秒）を pull。
+- 構造: ftyp → 先頭 moov → moof/mdat×330 → mfra → 末尾 moov(gyrf)。ffprobe は video/audio をエラーなしで認識。gyrf 330サンプル、各ペイロードに `GyroflowProtobuf` + XREAL/1S/xYz header。
+- Gyroflow CLI: `Failed to parse as GyroflowProtobuf` 消滅、`Processing done`。`--export-metadata 2:` で **`detected_source: "XREAL 1S"`**、`camera_identifier: XREAL 1S`、`calibrated_by: Gyroflow Protobuf` を確認 → gyrf を Gyroflow が正常に読み込んだ。
+- ★replay の制約: `GlassesImuClient` は `169.254.2.1:52998` へ接続するがエミュレーターでは到達不可のため IMU サンプルが0個。fMP4 の gyrf header は入るが IMU データは空。実機では IMU ソケットが生きるため `StreamingMuxerSink.nextGyroPayload()` が `queuedImu` を frame に詰める（旧注入方式で 55,436 サンプル記録済み）。★次: IMU 入りのホスト生成で Gyroflow が raw_imu を読めることを確認してから prerelease。
+- ★IMU 入りの完全検証も完了: ホスト生成 `hybrid.mp4`（30フレーム×16 IMU=480サンプル）を Gyroflow に読み込ませ `--export-metadata 2:` で **`raw_imu len=480`**、`detected_source: XREAL 1S`、gyro/accl 値も正常に出力。つまり一回書き込み fMP4 で IMU を含む gyrf を Gyroflow が完全に読み込めることが証明された。
+- ローカル Java テスト22個すべて PASS。git commit `e3a98fd`、CI `44907608081` green。
+
+## 旧・検証完了 + 実装完了（2026-11-21 21:1x）: 一回書き込み fMP4 で Gyroflow が IMU を認識
 - **CheckParserStateErr の真因を実データで確定**: `audioSampleEntry()` が `mp4a` を VisualSampleEntry 構造（body 78 bytes）で書いとり、mp4parse が AudioSampleEntry（body 28 bytes）として読んだ後に未読バイトが残っていた。注入方式の moov に差し替えても消えなかったが、audio trak を削除したら消えたことで特定。`AudioSampleEntry` 正構造（6+2+8+2+2+2+2+4=28 bytes、box 36 bytes）に修正して解消。
 - **確定実装**: 先頭 moov = video/audio + mvex（gyrf なし）／録画中 = video/audio の moof+mdat ＋ IMU protobuf の独立 mdat／停止時 = mfra ＋ 末尾 moov（gyrf trak、stsd/stts/stsc/stsz/stco が IMU mdat のオフセットを指す）。mp4parse は複数 moov をマージする（`lib.rs::read_moov` コメントで確認）ため track_id 重複なく gyrf を読める。全書き込みは追記のみ。
 - **ホスト側検証（完了）**: `StreamingMuxerGen` で生成 → ffprobe が video/audio 認識、box ツリー正しい（ftyp → moov → moof/mdat×30 → mfra → moov(gyrf)）。Gyroflow CLI で `Failed to parse as GyroflowProtobuf` 消滅、`Processing done`、さらに **`IMU duration 499.35 is different than video duration 499.98` 警告` = Gyroflow が gyrf 経由で IMU を実際に読み込んだ証拠。
