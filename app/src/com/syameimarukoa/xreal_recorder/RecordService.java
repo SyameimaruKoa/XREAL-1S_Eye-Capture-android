@@ -467,6 +467,7 @@ public final class RecordService extends Service {
             status = "録画エラー: " + t.getMessage();
             finishSession(sessions.retire());
         } finally {
+            status = "待機中";
             displayHandler.post(new Runnable() {
                 @Override
                 public void run() {
@@ -479,9 +480,7 @@ public final class RecordService extends Service {
             } catch (Throwable ignored) {
             }
             stopSelf();
-            if (destroyed) {
-                recording = false;
-            }
+            recording = false;
         }
     }
 
