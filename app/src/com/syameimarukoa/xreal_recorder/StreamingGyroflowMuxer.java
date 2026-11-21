@@ -119,7 +119,7 @@ final class StreamingGyroflowMuxer {
         byte[] mvhd = fullBox("mvhd", concat(
                 u32(0), u32(0), u32(TIMESCALE), u32(0),
                 u32(0x00010000), u16(0x0100), u16(0), u32(0), u32(0),
-                matrix(), new byte[24], u32(0), u32(metaTrackId + 1)));
+                matrix(), new byte[24], u32(metaTrackId + 1)));
         byte[] trakVideo = trak(videoTrackId, "vide", videoSampleEntry(), 0);
         byte[] trakAudio = trak(audioTrackId, "soun", audioSampleEntry(), 0);
         byte[] trakMeta = trak(metaTrackId, "meta", metaSampleEntry(), 0);
@@ -150,8 +150,8 @@ final class StreamingGyroflowMuxer {
         byte[] header = "vide".equals(handler) ? fullBox("vmhd", concat(u16(0), u16(0), u16(0), u16(0)))
                 : "soun".equals(handler) ? fullBox("smhd", concat(u16(0), u16(0)))
                 : fullBox("nmhd", new byte[0]);
-        byte[] dinf = box("dinf", fullBox("dref", concat(u32(1),
-                fullBox("url ", u32(1)))));
+        byte[] dinf = box("dinf", fullBox("dref", 0, 0, concat(u32(1),
+                fullBox("url ", 0, 1, new byte[0]))));
         byte[] minf = box("minf", concat(header, dinf, stbl));
         byte[] mdia = box("mdia", concat(mdhd, hdlr, minf));
         return box("trak", concat(tkhd, mdia));
@@ -187,7 +187,9 @@ final class StreamingGyroflowMuxer {
     }
 
     private byte[] metaSampleEntry() {
-        return sampleEntry("gyrf", new byte[0]);
+        // Gyroflow's own injector uses an empty MpegSampleEntry (16 bytes total):
+        // 8-byte box header + 6 reserved + 2 data-reference-index.
+        return box("gyrf", concat(new byte[6], u16(1)));
     }
 
     private byte[] sampleEntry(String fourcc, byte[] config) {

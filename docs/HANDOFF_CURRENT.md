@@ -1,6 +1,16 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## ★★決定的制約（2026-11-21 20:5x）: Gyroflow は fMP4 の gyrf を読めない
+## ★★確定方式（2026-11-21 21:0x、ユーザー承認）: 先頭 moov ＋ 末尾 moov 追記
+- ユーザー要件: 「一回書き込み＝録画中の書き込み。映像/音声/センサーの異常耐性があれば良い。ファイナライズ不要ならヨシ。Gyroflow で開く必要がある」
+- 確定方式:
+  1. 録画開始: `ftyp` + `moov`（映像/音声/gyrf トラック定義、gyrf 空テーブル）を書く。この時点でファイルは開ける
+  2. 録画中: 映像・音声・IMU を `moof+mdat` に逐次追記（3データ同時、異常終了でも残る）
+  3. 正常停止: **末尾に完全な moov を追記**（gyrf の stsz/stco/stts 確定）。先頭 moov は書き換えない
+- ★「書き換え」ではなく「追記」のみ。Flash への全領域再書き込みなし。
+- ★異常終了時: 末尾 moov が無く Gyroflow は gyrf を読めぬが、先頭 moov + フラグメントは残る。次回起動時に末尾 moov を書き足す修復で正しいファイルになる（ユーザー理解と一致）。
+- 未検証: mp4parse が先頭/末尾 moov のどちらを採用するか。末尾 moov を足した fMP4 で Gyroflow が gyrf を読めるか確認してから実装確定。
+
+## 旧・決定的制約（2026-11-21 20:5x）: Gyroflow は fMP4 の gyrf を読めない
 - telemetry-parser の `util.rs::get_track_samples()` を実際に読んで確認: `mp4parse::unstable::create_sample_table(&x, ...)` を使い、**stsz/stco/stts（通常 MP4 のサンプルテーブル）のみ**を見る。`moof/trun` は読まない。ffprobe は trun を読めるが Gyroflow は読めない。
 - よって自前 fMP4 の gyrf トラックを moof に書いても Gyroflow には渡らない。
 - 解決策: **hybrid** — 映像/音声は fMP4 の moof+mdat で1回書き込み、gyrf トラックだけは `moov` 内の stsz/stco/stts にサンプルテーブルを書き、IMU protobuf を moov 直後の mdat（または moov 内）に配置する。Gyroflow は stsz 経由で読める。
