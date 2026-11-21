@@ -1,6 +1,13 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## ★現在の最優先課題（2026-11-21 19:5x）: 自前 fMP4 のヘッダー欠落
+## ★現在の最優先課題（2026-11-21 20:4x）: Gyroflow の protobuf parse エラー
+- ffprobe: 先頭 ftyp・hvcC(offset514)・gyrf(offset1382)・3トラック・duration 5.43秒・**エラー無し**を確認。33MB truncation も解消。
+- Gyroflow CLI: gyrf トラックを発見し 326フレームを認識するが `Failed to parse ... as GyroflowProtobuf: InvalidData(CheckParserStateErr)`。
+- protobuf 生データ: magic + header(XREAL/1S/xYz/rotation) + frame、magic count=326 で全フレーム存在。
+- 残る原因候補: ① fMP4 の正式終端 `mfra` が無く Gyroflow が不完全と判定、② サンプル境界/trun の最後のフレーム、③ quaternion rotation の field 形式。
+- 次: `mfra`/`mfro` を書いて Gyroflow が完全と判定するようにする。その後プレリリース。
+
+## 旧・最優先課題（2026-11-21 19:5x）: 自前 fMP4 のヘッダー欠落（解消済み）
 - ユーザー要件: **後注入（2回書き込み）禁止**。MP4 に Gyroflow protobuf を埋め込み、1回の書き込みで完了させる。
 - 実装: `StreamingGyroflowMuxer`（自前 fMP4: ftyp+moov+moof+mdat、gyrf トラック）+ `StreamingMuxerSink`（RecordingMuxer 実装）。fMP4 モードで後注入をスキップ（`embedded=fmp4Mode`）。
 - ホスト側検証: ダミー HEVC で3トラック認識・duration 正常・GyroflowProtobuf parse エラー無しを確認。
