@@ -32,6 +32,7 @@
 - 解析結果: `TcpSource.readVideo()` は `listener.onStreamStalled()` → `reconnect()` → `listener.onStreamResumed()` を**同一スレッドで同期して**呼ぶ（TcpSource:394-408）。旧方式は USB attach broadcast に依存し、①receiver 登録（EXPORTED/NOT_EXPORTED）②Activity lifecycle ③USB権限 ④デバイス列挙 ⑤サービス停止完了、という5つのタイミング依存があり、どれか外れると再開しなかった。
 - ★新設計（commit `2074812`/`92138f7`/`2160a40`）: **RecordService 内で完結**。切断時に `onStreamStalled` が現在のセッションだけを保存して `sessionActive=false`、service と TcpSource は生かしたまま。TcpSource が再接続し `onStreamResumed` が `reconnectReady=true` を立てる。worker スレッドのループがそれを見て `startSession()` で新しいファイルのセッションを開始する。USB attach／権限／デバイス列挙／サービス停止待ちは不要になり、MainActivity の旧 auto-restart コードは全削除。セッション状態は `sessionWriter/sessionMuxer/sessionAudio/sessionImu/sessionCsdSent/sessionHevcOut`（AtomicReference）と `sessionT0Ns` で管理。`startSession()`／`finishSession()` を追加。onDestroy で `activeVideoSource.stop()`。
 - ★教訓: ユーザーの「〜しない」は「仕様がそうなっている」ではなく「仕様どおり動かない（バグ）」の意味だった。文脈を確認せず正反対に実装するのは絶対にダメ。
+- 12:0x 最終確認: CI run `44858823749` 成功（Java tests / Build APK / Upload APK すべて ✓、commit `077a35b`）。ローカル Java テスト3つ成功（GyroCsvFormatterTest / ImuReportParserTest / GyroflowProtoTest、ロール -180° quaternion 検証含む）。git status clean。`startSession()` の checked exception 宣言漏れで1度ビルド失敗したが修正済み。★実機検証はユーザーが「まだだめ／安易に実機を使わずに解析しろ」と指示したため未実施。ユーザーが再度録画を許可した時点で、切断→保存→再接続→新規 MP4 Auto 開始を複数ファイル生成とログ（`session started:` / `video stream resumed`）で確認すること。
 
 ## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
 - ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。
