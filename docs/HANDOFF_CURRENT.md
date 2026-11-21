@@ -6,6 +6,7 @@
 - Gyroflow CLI: `Failed to parse as GyroflowProtobuf` 消滅、`Processing done`。`--export-metadata 2:` で **`detected_source: "XREAL 1S"`**、`camera_identifier: XREAL 1S`、`calibrated_by: Gyroflow Protobuf` を確認 → gyrf を Gyroflow が正常に読み込んだ。
 - ★replay の制約: `GlassesImuClient` は `169.254.2.1:52998` へ接続するがエミュレーターでは到達不可のため IMU サンプルが0個。fMP4 の gyrf header は入るが IMU データは空。実機では IMU ソケットが生きるため `StreamingMuxerSink.nextGyroPayload()` が `queuedImu` を frame に詰める（旧注入方式で 55,436 サンプル記録済み）。★次: IMU 入りのホスト生成で Gyroflow が raw_imu を読めることを確認してから prerelease。
 - ★IMU 入りの完全検証も完了: ホスト生成 `hybrid.mp4`（30フレーム×16 IMU=480サンプル）を Gyroflow に読み込ませ `--export-metadata 2:` で **`raw_imu len=480`**、`detected_source: XREAL 1S`、gyro/accl 値も正常に出力。つまり一回書き込み fMP4 で IMU を含む gyrf を Gyroflow が完全に読み込めることが証明された。
+- ★v0.1.27 prerelease 公開完了（2026-11-21 13:20 UTC / 22:20 JST）: CI `44907608081`（commit `e3a98fd`）の APK を添付。sha256 `f92e2f8a6b7030167a84bfd90020b771f817407e21c478f1184a0c30b42cbb8f`、8,241,634 bytes。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.27
 - ローカル Java テスト22個すべて PASS。git commit `e3a98fd`、CI `44907608081` green。
 
 ## 旧・検証完了 + 実装完了（2026-11-21 21:1x）: 一回書き込み fMP4 で Gyroflow が IMU を認識
