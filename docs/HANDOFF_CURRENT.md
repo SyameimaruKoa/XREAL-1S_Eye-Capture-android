@@ -15,6 +15,7 @@
 - 再開時は新しい `StreamingMuxerSink` インスタンスなので firstPtsUs 等は初期化される。
 - ローカル Java テスト22個すべて PASS。CI run `44946229277` は実行中。
 - ★残る作業: XREAL を再接続して実機で新版を録画し、Gyroflow の `IMU duration vs video duration` 警告が消えることを確認（旧ファイルでは 152867 vs 150860 の2秒差だった）。
+- 2026-11-22 05:3x: ユーザー指示で v0.1.29 を実機へ導入完了。pull した base.apk の sha256 が公開 APK と一致（`f57e05d6...`）。ServiceRecord=0。実機検証はユーザーが行う。
 - CI run `44946229277` green（commit `0db95d8`＋ドキュメント `443e5be`）。★v0.1.29 prerelease 公開（2026-11-22 05:29 JST / 2026-11-21 20:29 UTC）: APK sha256 `f57e05d6023f6406037e3f7e092ce19b07704e0e5ee122cc7a0d917396ae77ff`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.29
 
 ## 旧・実機検証は完了 + 次の課題（2026-11-22）
