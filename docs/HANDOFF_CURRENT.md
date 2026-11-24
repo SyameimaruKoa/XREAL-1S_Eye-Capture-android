@@ -1,6 +1,15 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## ★★★fMP4 の「ゴミカスファイル」の真因を発見（2026-11-22 05:2x）
+## ★★★★「ゴリゴリ破損」の真因 = trun flags バグ（2026-11-24）
+- ユーザーが v0.1.29 で録画した2ファイル（`VID_20261124_183910.mp4` 583MB / `VID_20261124_195317.mp4` 551MB）を解析。
+- **決定的発見**: `StreamingGyroflowMuxer.traf()` の `trun` flags が `0x000701`。これは data-offset(0x1) + sample-size(0x100) + sample-flags(0x400) で、**sample-duration(0x4) が欠落**。body には duration を書いとるのに flags が無いので、ffprobe/プレイヤーは duration を飛ばして sample_size として読む → フレームサイズが 33,505 バイトと解釈され映像が「ゴリゴリ破損」する。
+- 原因は commit `8118bbd Fix trun flags...` がコメントで「0x000701 = data-offset + sample-duration + sample-size + sample-flags」と誤記し、元の正しい `0x000305`（= data-offset + sample-duration + sample-size）を `0x701` に壊したため。**正しくは `0x000505`**（0x1 + 0x4 + 0x100 + 0x400）。
+- 直接解析で確認: 先頭 moof の trun を読むと `sample_count=16666`、`sample_size=33554432` 等、完全にフィールドがズレておる。
+- ★修正: flags を `0x000505` に変更。ホスト検証で trun が `sample_count=1 / data_offset=184 / sample_duration=16842 / sample_size=6` と正しく読めることを確認。
+- ★端末の扱い: 2026-11-24 時点で adb から `sc-52b.bass-uaru.ts.net:5555` は接続不可（環境リセット）。ユーザーが検証してる実機は別で、ユーザーがアップロードした MP4 のみを解析する。APK は prerelease 経由でユーザーが導入する。
+- v0.1.29 のタイムライン修正（実 PTS duration / 相対 gyrf timestamp）は、今回のファイルでは stts が 16666 固定、gyrf 先頭 779,612 us で反映されとらんように見える。trun バグを直した新版で再確認する。
+
+## 旧・fMP4 の「ゴミカスファイル」の真因を発見（2026-11-22 05:2x）
 - ユーザー訂正: 先の「実機で問題なし」は誤り。fMP4 のファイルが使い物にならん（「ゴミカスファイル」）。切断再開の方は別。
 - 最新実機ファイル `VID_20261122_045942.mp4`（657MB / 150.86秒）を pull して解析。ffprobe・Gyroflow は読める（detected_source XREAL 1S、raw_imu 131,944、gyrf 9,052サンプルで video と1:1）。しかし protobuf の frame timestamp を直接デコードすると:
   - frame 0 = 30,281 us、frame 1 = 47,123 us、frame 2 = 64,001 us … **16,842 us 刻み（≈59.4fps）**
