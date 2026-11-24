@@ -1,6 +1,13 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## ★★★★「ゴリゴリ破損」の真因 = trun flags バグ（2026-11-24）
+## ★★★★★決定版（2026-11-24 夜）: 真因はタイムラインズレ、trun は 0x701 が正しかった
+- 実機を確保し、v0.1.30 を導入して録画（`VID_20261124_203259.mp4`、136MB）を解析。
+- **FFmpeg isom.h の公式定義で判明**: `DATA_OFFSET=0x1, SAMPLE_DURATION=0x100, SAMPLE_SIZE=0x200, SAMPLE_FLAGS=0x400`。つまり **`0x701` が正しく**、わっちが「バグ」と決めつけて `0x505` に変えたのが誤り（0x505 は SAMPLE_SIZE を欠落させ、ffprobe が `error reading header` を出す）。
+- **v0.1.30 ファイルの解析でタイムライン修正は効いとることを確認**: gyrf frame ts `[0, 16835, 33704, ...]`、stts runs も実 PTS 差分（16835/16869/16813…）、MP4 decode time と gyrf ts が全サンプル一致。
+- つまりユーザーが見た「ゴリゴリ破損」は **v0.1.27 のタイムラインズレ**（ffprobe avg_frame_rate=59.99 なのに gyrf が 33,505us 刻み＝実質30fps、2倍速再生/補正ズレ）が真因で、v0.1.29 の修正で直っとった。v0.1.30 は trun を壊しただけの後退。
+- **対応**: trun flags を `0x701` に戻す（commit 予定）。これで v0.1.29 のタイムライン修正 + 正しい trun の両方が揃う。
+
+## 旧（誤り）・「ゴリゴリ破損」の真因 = trun flags バグ（2026-11-24）
 - ユーザーが v0.1.29 で録画した2ファイル（`VID_20261124_183910.mp4` 583MB / `VID_20261124_195317.mp4` 551MB）を解析。
 - **決定的発見**: `StreamingGyroflowMuxer.traf()` の `trun` flags が `0x000701`。これは data-offset(0x1) + sample-size(0x100) + sample-flags(0x400) で、**sample-duration(0x4) が欠落**。body には duration を書いとるのに flags が無いので、ffprobe/プレイヤーは duration を飛ばして sample_size として読む → フレームサイズが 33,505 バイトと解釈され映像が「ゴリゴリ破損」する。
 - 原因は commit `8118bbd Fix trun flags...` がコメントで「0x000701 = data-offset + sample-duration + sample-size + sample-flags」と誤記し、元の正しい `0x000305`（= data-offset + sample-duration + sample-size）を `0x701` に壊したため。**正しくは `0x000505`**（0x1 + 0x4 + 0x100 + 0x400）。

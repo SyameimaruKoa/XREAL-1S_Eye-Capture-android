@@ -251,11 +251,10 @@ final class StreamingGyroflowMuxer {
                         int dataOffset, boolean key) {
         byte[] tfhd = fullBox("tfhd", 0, 0x020000, u32(id));
         byte[] tfdt = fullBox("tfdt", 1, 0, u64(decodeTimeUs));
-        // 0x000505 = data-offset(0x1) + sample-duration(0x4) + sample-size(0x100)
-        // + sample-flags(0x400). The body writes all four fields in this order;
-        // omitting 0x4 makes readers treat duration as sample_size and corrupt
-        // every frame.
-        int flags = 0x000505;
+        // FFmpeg isom.h: DATA_OFFSET=0x1, SAMPLE_DURATION=0x100,
+        // SAMPLE_SIZE=0x200, SAMPLE_FLAGS=0x400. The body writes exactly these
+        // four fields in order. 0x701 is the correct combination.
+        int flags = 0x000701;
         byte[] trun = fullBox("trun", 0, flags, concat(
                 u32(1), u32(dataOffset), u32(deltaUs), u32(sampleSize),
                 u32(key ? 0x02000000 : 0x01010000)));
