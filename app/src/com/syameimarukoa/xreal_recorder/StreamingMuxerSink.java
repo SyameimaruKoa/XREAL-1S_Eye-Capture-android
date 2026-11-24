@@ -112,7 +112,10 @@ final class StreamingMuxerSink implements RecordingMuxer {
                 return;
             }
         }
-        byte[] audio = pendingAudio != null ? pendingAudio : new byte[]{0};
+        // An all-zero single byte is not a valid AAC frame. When no audio is
+        // available, omit the audio traf entirely instead of writing a bogus
+        // sample that makes readers report "Input buffer exhausted".
+        byte[] audio = pendingAudio != null ? pendingAudio : new byte[0];
         pendingAudio = null;
         byte[] gyro = nextGyroPayload(ptsUs - firstPtsUs);
         try {

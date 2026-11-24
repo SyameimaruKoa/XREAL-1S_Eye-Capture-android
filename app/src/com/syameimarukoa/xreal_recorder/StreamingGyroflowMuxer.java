@@ -77,20 +77,27 @@ final class StreamingGyroflowMuxer {
             gyro = new byte[0];
         }
         long baseDecode = decodeTimeUs;
+        boolean hasAudio = audio != null && audio.length > 0;
         // With default-base-is-moof, trun data offsets are relative to the moof start.
-        int moofSize = 8 + MFHD_SIZE + 2 * TRAF_SIZE;
+        int moofSize = 8 + MFHD_SIZE + (hasAudio ? 2 : 1) * TRAF_SIZE;
         int dataStart = moofSize + 8; // skip mdat header
         byte[] trafVideo = traf(videoTrackId, baseDecode, video.length, durationUs,
                 dataStart, true);
-        byte[] trafAudio = traf(audioTrackId, baseDecode, audio.length, durationUs,
-                dataStart + video.length, false);
-        byte[] moof = box("moof", concat(
-                fullBox("mfhd", u32(fragmentNumber)), trafVideo, trafAudio));
-        long mediaSize = 8L + video.length + audio.length;
+        byte[] moofBody = concat(fullBox("mfhd", u32(fragmentNumber)), trafVideo);
+        long mediaSize = 8L + video.length;
+        if (hasAudio) {
+            byte[] trafAudio = traf(audioTrackId, baseDecode, audio.length, durationUs,
+                    dataStart + video.length, false);
+            moofBody = concat(moofBody, trafAudio);
+            mediaSize += audio.length;
+        }
+        byte[] moof = box("moof", moofBody);
         out.write(moof);
         out.write(boxHeader("mdat", mediaSize));
         out.write(video);
-        out.write(audio);
+        if (hasAudio) {
+            out.write(audio);
+        }
         fragmentOffsets.add(writeOffset);
         fragmentTimes.add(decodeTimeUs);
         writeOffset += moof.length + mediaSize;
