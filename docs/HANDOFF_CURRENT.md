@@ -15,7 +15,14 @@
 - ★修正: flags を `0x000505` に変更。ホスト検証で trun が `sample_count=1 / data_offset=184 / sample_duration=16842 / sample_size=6` と正しく読めることを確認。
 - ★端末の扱い: 2026-11-24 時点で adb から `sc-52b.bass-uaru.ts.net:5555` は接続不可（環境リセット）。ユーザーが検証してる実機は別で、ユーザーがアップロードした MP4 のみを解析する。APK は prerelease 経由でユーザーが導入する。
 - ローカル Java テスト22個すべて PASS、CI run `45383159854` green（commit `358f95f`）。★v0.1.30 prerelease 公開（2026-11-24 20:23 JST / 11:23 UTC）: APK sha256 `41a675315c5dc6051defdc97d64ea71448c4ef29a708215eddd80e556b2140a9`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.30
-- ★次の確認: ユーザーが v0.1.30 で録画し、アップロードしたファイルの先頭 moof の trun が `flags=0x505 / sample_count=1 / sample_duration=実PTS / sample_size=実AUサイズ` になっとるか＋GYRO のタイムラインが一致しとるかを解析する。v0.1.29 で反映されとらんように見えた stts/gyrf も合わせて確認。
+- ★★最終検証完了（2026-11-24 20:47 JST / 11:47 UTC、v0.1.31 実機ファイル `VID_20261124_204628.mp4` 144MB / 35.41秒）:
+  - ffprobe が **警告なし** で video/audio/duration を読む（PPS/Input-buffer 警告なし）。
+  - trun: `flags=0x701 / sample_count=1 / data_offset=108 / duration=16840 / size=26624` — FFmpeg isom.h 定義どおり。
+  - タイムライン: gyrf frame ts `[0, 16840, 33679, ..., 35210489]` と MP4 decode time が **全サンプル一致（ALL MATCH True）**。stts 1918 runs、2087サンプル。
+  - trun flags は 0x701 が正解（わっちが 0x505 に変えたのが後退で、commit `04c48c8` で戻した）。 audio が無いときの不正1バイト AAC も廃止（commit `e7fd11e`）。
+  - ローカル Java テスト22個すべて PASS、CI `45386454523` green。
+  - ★v0.1.31 prerelease 公開（2026-11-24 20:45 JST / 11:45 UTC）: APK sha256 `fd56e9c238aa8c4ef550ec73ef95ae31d17702d8516c8a9ad8ec3ec97ee7b199`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.31
+  - 実機は v0.1.31 を導入済み。画面ロック操作はユーザー指定の `lockctl status/bfu/normal/lock`（`/data/adb/tailscale`）を使う（現在 Screen: on / Keyguard: unlocked）。
 
 ## 旧・fMP4 の「ゴミカスファイル」の真因を発見（2026-11-22 05:2x）
 - ユーザー訂正: 先の「実機で問題なし」は誤り。fMP4 のファイルが使い物にならん（「ゴミカスファイル」）。切断再開の方は別。
