@@ -1,6 +1,14 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## ★★★★★決定版（2026-11-24 夜）: 真因はタイムラインズレ、trun は 0x701 が正しかった
+## ★★★★★★破損ファイルの事後修復完了（2026-11-24 21:0x JST）
+- ユーザーから破損ファイル3つの修復を依頼。`/tmp/opencode/repair_fmp4.py` を作成して全ファイルを修復。
+- **uploads の2つ**（v0.1.27 世代、固定 16,666us で gyrf だけ可変 PTS）: 全 gyrf サンプルの frame ts を読み、各 video サンプルの real duration を算出。全 moof の video traf の tfdt（累積 decode time）と trun sample_duration、tail moov の stts（run-length）と mvhd duration を再構築。
+  - `repaired_VID_20261124_183910.mp4`: 583MB、duration 266.95秒、tfdt と gyrf が全サンプル一致（差分0）。
+  - `repaired_VID_20261124_195317.mp4`: 551MB、duration 136.19秒、同様に全サンプル一致（差分0）。
+- **v0130_device.mp4**（trun flags が 0x505 に後退していたもの）: 全 trun の flags を 0x701 に patch（3,802個）。`v0130_fixed2.mp4` として ffprobe が duration 32.16秒で読めるようになった（audio の Input-buffer 警告のみ残るが再生可）。
+- 修復は追記元の MP4 を直接書き換えるもので、アプリの「一回書き込み」要件とは無関係（事後修復ツール）。
+
+## 旧・決定版（2026-11-24 夜）: 真因はタイムラインズレ、trun は 0x701 が正しかった
 - 実機を確保し、v0.1.30 を導入して録画（`VID_20261124_203259.mp4`、136MB）を解析。
 - **FFmpeg isom.h の公式定義で判明**: `DATA_OFFSET=0x1, SAMPLE_DURATION=0x100, SAMPLE_SIZE=0x200, SAMPLE_FLAGS=0x400`。つまり **`0x701` が正しく**、わっちが「バグ」と決めつけて `0x505` に変えたのが誤り（0x505 は SAMPLE_SIZE を欠落させ、ffprobe が `error reading header` を出す）。
 - **v0.1.30 ファイルの解析でタイムライン修正は効いとることを確認**: gyrf frame ts `[0, 16835, 33704, ...]`、stts runs も実 PTS 差分（16835/16869/16813…）、MP4 decode time と gyrf ts が全サンプル一致。
