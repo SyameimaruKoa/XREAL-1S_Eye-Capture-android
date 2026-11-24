@@ -7,7 +7,8 @@
 - 直接解析で確認: 先頭 moof の trun を読むと `sample_count=16666`、`sample_size=33554432` 等、完全にフィールドがズレておる。
 - ★修正: flags を `0x000505` に変更。ホスト検証で trun が `sample_count=1 / data_offset=184 / sample_duration=16842 / sample_size=6` と正しく読めることを確認。
 - ★端末の扱い: 2026-11-24 時点で adb から `sc-52b.bass-uaru.ts.net:5555` は接続不可（環境リセット）。ユーザーが検証してる実機は別で、ユーザーがアップロードした MP4 のみを解析する。APK は prerelease 経由でユーザーが導入する。
-- v0.1.29 のタイムライン修正（実 PTS duration / 相対 gyrf timestamp）は、今回のファイルでは stts が 16666 固定、gyrf 先頭 779,612 us で反映されとらんように見える。trun バグを直した新版で再確認する。
+- ローカル Java テスト22個すべて PASS、CI run `45383159854` green（commit `358f95f`）。★v0.1.30 prerelease 公開（2026-11-24 20:23 JST / 11:23 UTC）: APK sha256 `41a675315c5dc6051defdc97d64ea71448c4ef29a708215eddd80e556b2140a9`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.30
+- ★次の確認: ユーザーが v0.1.30 で録画し、アップロードしたファイルの先頭 moof の trun が `flags=0x505 / sample_count=1 / sample_duration=実PTS / sample_size=実AUサイズ` になっとるか＋GYRO のタイムラインが一致しとるかを解析する。v0.1.29 で反映されとらんように見えた stts/gyrf も合わせて確認。
 
 ## 旧・fMP4 の「ゴミカスファイル」の真因を発見（2026-11-22 05:2x）
 - ユーザー訂正: 先の「実機で問題なし」は誤り。fMP4 のファイルが使い物にならん（「ゴミカスファイル」）。切断再開の方は別。
