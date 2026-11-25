@@ -71,7 +71,9 @@
 - ローカル22テスト PASS、CI `45602946323` green（commit `be7a426`）。★v0.1.37 prerelease 公開: APK sha256 `e60a4e5bf4a3f191a230d1d9f0a40aebaaed8ae738459c41b0850dc6c1945a1a`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.37 。実機にも導入済み。
 - ★次の検証: v0.1.37 で実機録画 → DCIM/100XREAL に MP4 と同名の .gcsv ができること → MP4 を Gyroflow（`gyro2bb --dump` または実アプリ）で開いて `Detected camera: XREAL 1S` とジャイロが出ることを確認。
 - ★gcsv が出ん真因を実機ログで確定（20:43 JST）: `telemetry injection embedded=true samples=7737` は成功。しかし `gcsv write failed` → `java.lang.IllegalArgumentException: Primary directory DCIM not allowed for content://media/external/file; allowed directories are [Download, Documents]`。**MediaStore.Files は DCIM への gcsv insert を拒否**。RELATIVE_PATH を DCIM に変えたのが原因。
-- 対策: Gyroflow は MP4 と同名の gcsv を**同じディレクトリ**で探す。DCIM に gcsv を置けんなら、**MP4 と gcsv の両方を Documents/XREAL/100XREAL に保存する** 必要がある（Gallery/Photos は MediaStore.Video 登録されれば Documents でも読める）。MP4 の gyrf も残す。まず RELATIVE_PATH を Documents に戻す。
+- 対策: Gyroflow は MP4 と同名の gcsv を**同じディレクトリ**で探す。DCIM に gcsv を置けんなら、**MP4 と gcsv の両方を Documents/XREAL/100XREAL に保存する** 必要がある（Gallery/Photos は MediaStore.Video 登録されれば Documents でも読める）。MP4 の gyrf も残す。
+- 実装完了（commit `87a7098`）: MP4 と gcsv の RELATIVE_PATH を Documents/XREAL/100XREAL に統一、`nextFilename` の重複チェックも Documents に合わせた。ローカル22テスト PASS、CI `45607547882` green。★v0.1.38 prerelease 公開: APK sha256 `d04034fdc54a6dad2f71fb2e8336fe761ce5adf9147d2979ea9d360fe8c5ce60`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.38 。実機にも導入済み。
+- ★次の検証: v0.1.38 で実機録画 → Documents/XREAL/100XREAL に MP4 と同名 .gcsv ができること → Gyroflow で `Detected camera: XREAL 1S` とジャイロが出ること → Gallery/Photos でサムネ・再生が出ること（Directory 変更で Gallery  Side effect が無いか確認）。
 - ★_blocked_（20:2x JST）: ユーザーが XREAL を再起動したが、また `ping 169.254.2.1` が不通。USB デバイスは認識（vendor 13080/product 1086）、eth0 up、route 正しい（`ts-lan-route apply` も SKIP で問題なし）が、XREAL 側の TCP が応答せず実機録画不可。物理的な USB 挿し直しが必要（ユーザーしかできない）。ホスト側では gcsv サイドカーによる Gyroflow detect 成功を実証済みなので、修正自体は完了。
 
 ## 旧・破損ファイルの事後修復完了（2026-11-24 21:0x JST）
