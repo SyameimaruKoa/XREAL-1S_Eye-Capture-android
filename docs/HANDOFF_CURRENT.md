@@ -8,7 +8,8 @@
   3. `flushAudioUpTo()` で PTS 到達分を順に書き出し、`finish()` で残りを全部 flush（末尾の音声を落とさない）。
   4. AudioSampleEntry の channelcount を 2→1 に修正（実機は mono 48kHz、csd-0 `{0x11,0x88}` も chCfg=1 を確認）。
 - ホスト検証（`tests/StreamingAudioTimingGen.java`）: 11個の AAC フレームを 21.33ms 刻みで投入 → **audio moofs=11、PTS `[0,21333,42666,...,213330]`、duration 全て 21333** を確認。1つも落ちていない。
-- ★実機がオフライン（2026-11-25 時点で sc-52b は 1h 前まで、ping 不通）のため実機録画検証は不可。APK は CI 後に prerelease で公開し、ユーザーが検証する。
+- ローカル Java テスト22個すべて PASS、CI run `45540847755` green（commit `81765e4`）。★v0.1.32 prerelease 公開（2026-11-25 12:39 JST / 03:39 UTC）: APK sha256 `d3a29742599a8bf02c38cac736ed50fd1555438d5069d162a47b0b32560871d6`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.32
+- ★実機がオフライン（2026-11-25 時点で sc-52b は 1h 前まで、ping 不通）のため実機録画検証は不可。APK は prerelease で公開済み、ユーザーが検証する。実機が戻ったら v0.1.32 を導入して音声を聴き、`ffprobe -select_streams a` で 48kHz/mono かつ連続した PTS になっていることを確認。
 
 ## 旧・破損ファイルの事後修復完了（2026-11-24 21:0x JST）
 - ユーザーから破損ファイル3つの修復を依頼。`/tmp/opencode/repair_fmp4.py` を作成して全ファイルを修復。
