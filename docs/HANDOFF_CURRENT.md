@@ -78,7 +78,13 @@
 - ホスト検証: `short_fmp4.mp4` に注入 → `injected2.mp4` を `gyro2bb --dump` したところ **`Detected camera: XREAL 1S`** ＋ IMU データを parse。gcsv サイドカー不要で MP4 単体で Gyroflow が読めるようになった。
 - MP4 は DCIM（Gallery/Photos のサムネ・再生維持）、gcsv は Documents（補助、書ける場所）。gyrf も MP4 内に残す（Google Photos のモーション用）。
 - ローカル22テスト PASS、CI `45610193924` green（commit `6d7521b`）。★v0.1.39 prerelease 公開: APK sha256 `6999c75352389b89b91bd01e7e7d180029ae6005377c1e52ab0e875aa90a6a2b`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.39 。実機にも導入済み。
-- ★最終検証: v0.1.39 で実機録画 → MP4 を pull → `gyro2bb --dump` で `Detected camera: XREAL 1S` とジャイロが出ること → Gallery/Photos でサムネ・再生が出ること。
+- ★★★実機最終検証完了（2026-11-26 02:5x JST、v0.1.39）:
+  - scrcpy を Xvfb 上で起動（`--hwdec=disabled`）。USB 権限ダイアログは FLAG_SECURE で scrcpy に出んが、**`input keyevent` の DPAD DOWN×4 + ENTER で突破**できた（HANDOFF の既知手順どおり）。
+  - 以後 `input -d 0` が効き、HeadlessReceiver start/stop broadcast も届く。`session started: VID_20261126_025135.mp4`、`finish: videoSamples=2150 audioSamples=1693 failed=false`、`telemetry injection embedded=true samples=37388`。
+  - MP4 155MB を pull。ffprobe: video(hevc) + data(gyrf) + duration 36.25秒、警告なし。gyrf magic 2,150個、**最後の magic がファイル末尾から756バイト**（末尾5MB内）。
+  - **`gyro2bb --dump` で `Detected camera: XREAL 1S` ＋ Gyroscope 999 Hz の実 IMU データを確認**。gcsv サイドカー無しで MP4 単体から Gyroflow がモーションを読めた。
+  - つまり Gallery/Photos のサムネ・再生（v0.1.34 で解決）、レンズプロファイル廃止（v0.1.35）、一回書き込み fMP4、gyrf 埋め込み（Google Photos 用）、Gyroflow のモーション読取り（gyrf 末尾追記）が全部揃った。
+  - gcsv は Documents/XREAL/100XREAL に補助として書かれる（MediaStore.Files は DCIM を拒否するため）。
 - ★_blocked_（21:3x JST）: ユーザーが「別 AI は仮想スクリーンに逃がした」と言うが、実機メイン（displayId=0）で **pscam_recorder が繰り返し top に来る**。force-stop しても数秒で復帰。`input tap` も HeadlessReceiver の start/stop broadcast も端末に届かん（logcat に Xreal ログが出ず、ServiceRecord が変わらん）。`am start` のみ効く。**端末の入力操作を他 AI/ユーザーが制御しとる**。ホスト側では gyrf 末尾追記による Gyroflow detect 成功を実証済み（commit `6d7521b`、v0.1.39 公開済み）で、アプリ側の修正は完了。
 - 実機での最終確認に必要な操作: pscam_recorder を完全に停止/アンインストールするか、ユーザーが直接画面で「録画開始→停止」を行う。その後生成 MP4 を pull して `gyro2bb --dump` で `Detected camera: XREAL 1S` を確認する。
 - ★_blocked_（20:2x JST）: ユーザーが XREAL を再起動したが、また `ping 169.254.2.1` が不通。USB デバイスは認識（vendor 13080/product 1086）、eth0 up、route 正しい（`ts-lan-route apply` も SKIP で問題なし）が、XREAL 側の TCP が応答せず実機録画不可。物理的な USB 挿し直しが必要（ユーザーしかできない）。ホスト側では gcsv サイドカーによる Gyroflow detect 成功を実証済みなので、修正自体は完了。
