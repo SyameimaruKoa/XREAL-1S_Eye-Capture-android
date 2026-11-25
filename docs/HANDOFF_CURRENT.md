@@ -20,6 +20,8 @@
   2. gyrf は **MP4 の末尾 moov に追記**で載せる（先頭 moov ＋ 末尾 moov の2段構造は正常ファイルと同じ。2回全書き換えではない）。
   3. ユーザーは「Gyroflow 再生は正常、問題は 1回でコードすると再生速度を無視すること」と報告。これは先頭 moov の timescale=10000 / stts=0 が原因の可能性。末尾 moov の完全 stbl を Gyroflow が使うようにする必要がある。
 - ★やってはいけない: gcsv サイドカーだけに逃がす（Google Photos でモーション消失）、録画後の全領域2回書き込み（fMP4 の意味が無くなる）。
+- 2026-11-25 18:3x: muxer を media3 `FragmentedMp4Sink`（`openFragmentedMuxer()`）に戻した（commit `427a7ff`）。ローカル22テスト PASS、CI `45585650442` green。★v0.1.34 prerelease 公開: APK sha256 `af3d01509c5315b3352869cd324d869526b22900ebe28a7c37c7d889dbfb31d3`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.34 。実機にも導入済み。
+- ★残る作業: ①ユーザーが XREAL を物理再接続（`ping 169.254.2.1` が前の eth0 down/up で不通のまま、ルート/mods 再適用でも復活せず）。②v0.1.34 で録画し、**Gallery/Photos のサムネ・記録時間・再生を目視確認**。③レンズプロファイル捏造（720p 固定）を廃止し実サイズに合わせる。④gyrf を media3 fMP4 の moov に追記して Google Photos のモーションも維持（2回全書き換え禁止）。
 
 ## 旧・実機で切断→再開の不具合を発見（2026-11-25 13:2x）
 - v0.1.32 で eth0 down/up による切断テストを実施。
