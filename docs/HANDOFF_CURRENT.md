@@ -24,7 +24,8 @@
 - ★残る作業: ①ユーザーが XREAL を物理再接続（`ping 169.254.2.1` が前の eth0 down/up で不通のまま、ルート/mods 再適用・USB 構成再選択でも復活せず）。②v0.1.35 で録画し、**Gallery/Photos のサムネ・記録時間・再生を目視確認**。③gyrf を media3 fMP4 の moov に追記して Google Photos のモーションも維持（2回全書き換え禁止）。
 - 2026-11-25 18:4x: レンズプロファイル廃止を実装（commit `9d62853`）。`GyroflowProto.frame()` の LensData(field 16) と `HORIZONTAL_FOV_DEG=77.3` 定数を削除。テスト2つを「field 16 が無いこと」を検証するよう更新。ローカル22テスト PASS、CI `45587754174` green。★v0.1.35 prerelease 公開: APK sha256 `e6f378974acbd6ca29ead42e237ab9fa30c48d3abd8df835e539e43fc2208332`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.35 。実機にも導入済み。
 - ★gyrf 注入の実証完了（2026-11-25 19:2x）: media3 fMP4 の短いクリップ（`short_fmp4.mp4`、正常ファイルから 5秒カット）に `Mp4TelemetryInjector.inject()` を適用 → `injected.mp4` は **video(hevc) + data(gyrf) + duration 5.002 秒** を維持。gyrf box 16バイト、hdlr=meta、GyroflowProtobuf magic 300個を確認。→ **media3 fMP4 ＋ mp4parser 注入 gyrf で Gallery/Photos と Gyroflow/Google Photos の両立が可能**。注入は停止時に moov を再構築して1回書くだけで、録画中の逐次書き込みは media3 が担うので fMP4 の意味も残る。
-- 次: アプリで `embedded = fmp4Mode` による注入スキップを外し、fMP4 でも注入を走らせる。注入後も Gallery/Photos がサムネ・再生できることを実機で再確認する必要がある。
+- アプリで `embedded = fmp4Mode` による注入スキップを外し、fMP4 でも注入を走らせた（commit `c5e33ba`）。注入成功時に `telemetry injection embedded=... samples=...` ログを出力。ローカル22テスト PASS、CI `45594174897` green。★v0.1.36 prerelease 公開: APK sha256 `4a5eee6e03c2a3f0f5df679e629b268e800dff49946a3b31b07474bf63d11831`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.36 。実機にも導入済み。
+- ★残る確認: 注入後も Gallery/Photos がサムネ・再生できることを実機で目視確認（ホストの ffprobe では video+data+duration 維持を確認済みだが、Gallery/Photos の実挙動が最終指標）。XREAL USB 再接続後に録画して確認。
 - ★_blocked_: ユーザーが 18:5x に「再起動している」→ スマホは復帰（adb device、tailscale direct active、v0.1.35 導入済み sha256 一致、ServiceRecord=0）。しかし **XREAL 1S の USB がスマホから外れたまま**（`dumpsys usb` に vendor 13080 無し、eth0/eth1 No such device）。実機録画には **XREAL の USB を挿し直す物理操作が必要**（ユーザーしかできない）。
 
 ## 旧・実機で切断→再開の不具合を発見（2026-11-25 13:2x）
