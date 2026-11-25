@@ -58,8 +58,12 @@ final class RecordingOutput {
             ContentValues values = new ContentValues();
             values.put(MediaStore.Video.Media.DISPLAY_NAME, filename);
             values.put(MediaStore.Video.Media.MIME_TYPE, mimeType);
+            // Store the MP4 in Documents/XREAL/100XREAL together with the gcsv
+            // sidecar. Gyroflow only looks for a same-basename gcsv in the MP4's
+            // own directory, and MediaStore.Files rejects DCIM for the gcsv
+            // insert. MediaStore.Video entries still appear in Gallery/Photos.
             values.put(MediaStore.Video.Media.RELATIVE_PATH,
-                    Environment.DIRECTORY_DCIM + "/100XREAL");
+                    Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL");
             values.put(MediaStore.Video.Media.DATE_TAKEN, captureTimeMs);
             values.put(MediaStore.Video.Media.IS_PENDING, 1);
             uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
@@ -90,7 +94,7 @@ final class RecordingOutput {
         } else {
             children = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
             selection = MediaStore.Video.Media.RELATIVE_PATH + "=?";
-            selectionArgs = new String[]{Environment.DIRECTORY_DCIM + "/100XREAL/"};
+            selectionArgs = new String[]{Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL/"};
         }
         ensureNameAvailable(resolver, children, selection, selectionArgs, base);
         if (tree == null) {
@@ -227,11 +231,10 @@ final class RecordingOutput {
             ContentValues values = new ContentValues();
             values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
             values.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
-            // Keep the gcsv next to the MP4 in DCIM/100XREAL. Gyroflow looks for
-            // a sidecar with the same basename when the embedded gyrf samples
-            // fall outside the first/last 5 MB of a long clip and detection fails.
+            // Same folder as the MP4 so Gyroflow's same-basename sidecar lookup
+            // finds it. MediaStore.Files only allows Download/Documents here.
             values.put(MediaStore.MediaColumns.RELATIVE_PATH,
-                    Environment.DIRECTORY_DCIM + "/100XREAL");
+                    Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL");
             values.put(MediaStore.MediaColumns.IS_PENDING, 1);
             gyroUri = resolver.insert(MediaStore.Files.getContentUri("external"), values);
         }
