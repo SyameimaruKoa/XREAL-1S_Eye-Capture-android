@@ -68,6 +68,8 @@
 - **対策の実証**: 実機 MP4 と**同じ basename** の gcsv を同じフォルダに置いたら `gyro2bb --dump` が `Detected camera` を出し、IMU データを parse できた。MP4 の gyrf は残す（Google Photos のモーション用）ので「gcsv 単独はダメ」という要件も満たす。gcsv は Gyroflow 用の補助。
 - **修正**: `RecordService` で注入成否に関わらず常に gcsv を書く（`if (!embedded)` を削除）。`RecordingOutput.writeGyroCsv()` の保存先を Documents/XREAL/100XREAL → **DCIM/100XREAL（MP4 と同じ）** に変更。
 - gcsv の書式は `GyroCsvFormatter`（`GYROFLOW IMU LOG` / version 1.3 / t,gx,gy,gz,ax,ay,az）が正しいことを telemetry-parser で確認済み。
+- ローカル22テスト PASS、CI `45602946323` green（commit `be7a426`）。★v0.1.37 prerelease 公開: APK sha256 `e60a4e5bf4a3f191a230d1d9f0a40aebaaed8ae738459c41b0850dc6c1945a1a`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.37 。実機にも導入済み。
+- ★次の検証: v0.1.37 で実機録画 → DCIM/100XREAL に MP4 と同名の .gcsv ができること → MP4 を Gyroflow（`gyro2bb --dump` または実アプリ）で開いて `Detected camera: XREAL 1S` とジャイロが出ることを確認。
 
 ## 旧・破損ファイルの事後修復完了（2026-11-24 21:0x JST）
 - ユーザーから破損ファイル3つの修復を依頼。`/tmp/opencode/repair_fmp4.py` を作成して全ファイルを修復。
