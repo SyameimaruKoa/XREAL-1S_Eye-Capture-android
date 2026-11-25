@@ -22,7 +22,8 @@ public final class ImuToGyroflowTest {
         byte[] main = GyroflowProto.main(hdr, frame);
         require(main.length > 0, "protobuf generated from real report");
 
-        // The frame must carry the IMU sample (field 17) and lens data (field 16).
+        // The frame must carry the IMU sample (field 17) and no fabricated lens
+        // data (field 16) - a hard-coded FOV produced a wrong lens profile.
         boolean imu = false;
         boolean lens = false;
         int[] pos = {0};
@@ -47,7 +48,7 @@ public final class ImuToGyroflowTest {
             else break;
         }
         require(imu, "IMU sample embedded in protobuf frame");
-        require(lens, "lens data embedded in protobuf frame");
+        require(!lens, "no fabricated lens data in protobuf frame");
         System.out.println("ImuToGyroflowTest passed");
     }
 

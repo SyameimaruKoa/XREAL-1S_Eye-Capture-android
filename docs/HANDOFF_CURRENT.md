@@ -2,14 +2,14 @@
 
 ## ★★★★最終方針（2026-11-25 18:4x、ユーザーの実機スクリーンショットで確定）
 - ユーザーが最新版で実機録画して確認:
-  - **ジャイロ埋め込みと Gyroflow 再生は問題なし**。ただし **1600p で録画したのに 720p のレンズプロファイルが入っとった** → ★レンズプロファイル捏造をやめる（ Gyroflow の NoDistortion / 実サイズに合わせる）。
+  - **ジャイロ埋め込みと Gyroflow 再生は問題なし**。ただし **1600p で録画したのに 720p のレンズプロファイルが入っとった** → ★レンズプロファイルを**廃止**（LensData を書かない。Gyroflow は NoDistortion として扱う）。「実サイズに合わせる」ではない。
   - **Google Photos / Samsung Gallery / Samsung Video でサムネ無し・記録時間無し・再生不可**。スクリーンショットはグレー枠＋再生アイコンのみ。Samsung Video は「非対応」と出る。
 - **ffmpeg が読めても配慮の鬼だから有用なだけ**。ユーザーが確認したのは Gallery/Photos の実挙動で、これが正しい指標。
 - 真因: 先頭 moov の stbl が空（stsz count=0, stco=0）で、moof にサンプルがあるため、Gallery/Photos が最初のフレームと再生時間を引けん。自前 `StreamingGyroflowMuxer` が原因。
 - **確定した直し方（もうブレない）**:
   1. muxer を media3 `FragmentedMp4Sink`（`openFragmentedMuxer()`）に戻す = 11-19 の正常ファイルと同じ `moov + moof×N + mdat×N` 構造。Gallery/Photos が読める。
   2. gyrf は gcsv 単独に逃がさず MP4 に残す。media3 fMP4 の moov に gyrf トラックを追記する方式を実装（2回全書き換え禁止、先頭 moov ＋ 末尾 moov 追記は可）。
-  3. レンズプロファイル捏造（固定 720p）を廃止。
+  3. **レンズプロファイル（捏造した LensData／field 16）を完全廃止**。FOV 決め打ち 77.3° と fx 計算を削除し、LensData を書かない（Gyroflow は NoDistortion）。
   4. 実機で Gallery/Photos のサムネ・記録時間・再生を目視確認するまで完了にしない。
 
 ## 旧・方針の大訂正（2026-11-25 18:1x、ユーザー指摘）
@@ -21,7 +21,7 @@
   3. ユーザーは「Gyroflow 再生は正常、問題は 1回でコードすると再生速度を無視すること」と報告。これは先頭 moov の timescale=10000 / stts=0 が原因の可能性。末尾 moov の完全 stbl を Gyroflow が使うようにする必要がある。
 - ★やってはいけない: gcsv サイドカーだけに逃がす（Google Photos でモーション消失）、録画後の全領域2回書き込み（fMP4 の意味が無くなる）。
 - 2026-11-25 18:3x: muxer を media3 `FragmentedMp4Sink`（`openFragmentedMuxer()`）に戻した（commit `427a7ff`）。ローカル22テスト PASS、CI `45585650442` green。★v0.1.34 prerelease 公開: APK sha256 `af3d01509c5315b3352869cd324d869526b22900ebe28a7c37c7d889dbfb31d3`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.34 。実機にも導入済み。
-- ★残る作業: ①ユーザーが XREAL を物理再接続（`ping 169.254.2.1` が前の eth0 down/up で不通のまま、ルート/mods 再適用でも復活せず）。②v0.1.34 で録画し、**Gallery/Photos のサムネ・記録時間・再生を目視確認**。③レンズプロファイル捏造（720p 固定）を廃止し実サイズに合わせる。④gyrf を media3 fMP4 の moov に追記して Google Photos のモーションも維持（2回全書き換え禁止）。
+- ★残る作業: ①ユーザーが XREAL を物理再接続（`ping 169.254.2.1` が前の eth0 down/up で不通のまま、ルート/mods 再適用でも復活せず）。②v0.1.34 で録画し、**Gallery/Photos のサムネ・記録時間・再生を目視確認**。③レンズプロファイル（捏造 LensData）を完全廃止（LensData を書かない）。④gyrf を media3 fMP4 の moov に追記して Google Photos のモーションも維持（2回全書き換え禁止）。
 
 ## 旧・実機で切断→再開の不具合を発見（2026-11-25 13:2x）
 - v0.1.32 で eth0 down/up による切断テストを実施。

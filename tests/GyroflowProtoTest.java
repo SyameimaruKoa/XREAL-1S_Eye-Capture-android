@@ -9,26 +9,10 @@ public final class GyroflowProtoTest {
                 1234567.0, 0.5f, -0.25f, 0.125f, 1f, 9.8f, 2f);
         byte[] frame = GyroflowProto.frame(1, 1000.0, 2000.0,
                 Collections.singletonList(sample), 1600, 1200);
-        byte[] lens = readBytes(frame, 16);
-        require(lens.length > 0, "lens data present");
-        boolean noDistortion = false;
-        for (int i = 0; i + 1 < lens.length; i++) {
-            if ((lens[i] & 0xff) == 0x2a && lens[i + 1] == 0x00) {
-                noDistortion = true;
-                break;
-            }
-        }
-        require(noDistortion, "no_distortion declared");
+        // No fabricated LensData: a hard-coded FOV produced a wrong (e.g. 720p)
+        // lens profile on 1600p clips. Absence means NoDistortion in Gyroflow.
+        require(!hasField(frame, 16), "no fabricated lens data embedded");
 
-        // fx must scale with resolution for a fixed FOV.
-        byte[] lens1600 = readBytes(GyroflowProto.frame(1, 0, 1,
-                Collections.singletonList(sample), 1600, 1200), 16);
-        byte[] lens800 = readBytes(GyroflowProto.frame(1, 0, 1,
-                Collections.singletonList(sample), 800, 600), 16);
-        double fx1600 = firstFloat(lens1600);
-        double fx800 = firstFloat(lens800);
-        require(Math.abs(fx1600 / fx800 - 2.0) < 0.01,
-                "fx scales with resolution: " + fx1600 + " / " + fx800);
         byte[] main = GyroflowProto.main(GyroflowProto.header(1920, 1080, 30f,
                 33333333L, 1000, "YxZ"), frame);
 
@@ -76,17 +60,37 @@ public final class GyroflowProtoTest {
         return value;
     }
 
-    private static float firstFloat(byte[] lens) {
-        // field 1 (camera_intrinsic_matrix) repeated float: tag 0x0d then 4 LE bytes
-        for (int i = 0; i + 4 < lens.length; i++) {
-            if ((lens[i] & 0xff) == 0x0d) {
-                return Float.intBitsToFloat(
-                        (lens[i + 1] & 0xff) | ((lens[i + 2] & 0xff) << 8)
-                                | ((lens[i + 3] & 0xff) << 16)
-                                | ((lens[i + 4] & 0xff) << 24));
+    private static boolean hasField(byte[] data, int wanted) {
+        int[] pos = {0};
+        int[] field = {0};
+        int[] wire = {0};
+        while (pos[0] < data.length) {
+            key(data, pos, field, wire);
+            if (wire[0] == 2) {
+                int length = 0;
+                int shift = 0;
+                while (true) {
+                    int b = data[pos[0]++] & 0xff;
+                    length |= (b & 0x7f) << shift;
+                    if ((b & 0x80) == 0) {
+                        break;
+                    }
+                    shift += 7;
+                }
+                if (field[0] == wanted) {
+                    return true;
+                }
+                pos[0] += length;
+            } else if (wire[0] == 0) {
+                while ((data[pos[0]++] & 0x80) != 0) {
+                }
+            } else if (wire[0] == 1) {
+                pos[0] += 8;
+            } else if (wire[0] == 5) {
+                pos[0] += 4;
             }
         }
-        throw new AssertionError("no float in lens data");
+        return false;
     }
 
     private static byte[] readBytes(byte[] data, int wanted) {
