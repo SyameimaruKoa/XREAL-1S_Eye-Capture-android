@@ -77,6 +77,8 @@
 - ★決定的な解決を発見し実装: Gyroflow の detect は先頭/末尾5MBの magic を探す。**注入後に gyrf の最初のサンプル（magic 含有）をファイル末尾に追記し、moov の stco[0] をそのオフセットに差し替える**（MP4 の一部書き換えのみ、2回全体書き込みではない）。`Mp4TelemetryInjector.appendGyrfHeaderAtEnd()` を実装。
 - ホスト検証: `short_fmp4.mp4` に注入 → `injected2.mp4` を `gyro2bb --dump` したところ **`Detected camera: XREAL 1S`** ＋ IMU データを parse。gcsv サイドカー不要で MP4 単体で Gyroflow が読めるようになった。
 - MP4 は DCIM（Gallery/Photos のサムネ・再生維持）、gcsv は Documents（補助、書ける場所）。gyrf も MP4 内に残す（Google Photos のモーション用）。
+- ローカル22テスト PASS、CI `45610193924` green（commit `6d7521b`）。★v0.1.39 prerelease 公開: APK sha256 `6999c75352389b89b91bd01e7e7d180029ae6005377c1e52ab0e875aa90a6a2b`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.39 。実機にも導入済み。
+- ★最終検証: v0.1.39 で実機録画 → MP4 を pull → `gyro2bb --dump` で `Detected camera: XREAL 1S` とジャイロが出ること → Gallery/Photos でサムネ・再生が出ること。
 - ★_blocked_（20:2x JST）: ユーザーが XREAL を再起動したが、また `ping 169.254.2.1` が不通。USB デバイスは認識（vendor 13080/product 1086）、eth0 up、route 正しい（`ts-lan-route apply` も SKIP で問題なし）が、XREAL 側の TCP が応答せず実機録画不可。物理的な USB 挿し直しが必要（ユーザーしかできない）。ホスト側では gcsv サイドカーによる Gyroflow detect 成功を実証済みなので、修正自体は完了。
 
 ## 旧・破損ファイルの事後修復完了（2026-11-24 21:0x JST）
