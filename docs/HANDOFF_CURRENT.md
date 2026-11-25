@@ -1,6 +1,14 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## ★実機検証（2026-11-25 13:2x JST、v0.1.32）
+## ★実機で切断→再開の不具合を発見（2026-11-25 13:2x）
+- v0.1.32 で eth0 down/up による切断テストを実施。
+- 動作: 切断検出 → 旧 MP4 `VID_20261125_132347.mp4`（66MB）を保存 → 新セッション `VID_20261125_132424.mp4`（94KB）開始 → その直後に再stall → 再接続試行が全て失敗。
+- ログ: `reconnect attempt N failed: java.io.IOException: 対応する録画設定を確認できません`。`GlassesStatusClient.readLiveMode()` が想定外の応答を返したのが原因。
+- **コード上の真因**: `RecordService` の reconnectHook が `readLiveMode()` の例外を `RuntimeException` にラップして投げ、`TcpSource.reconnect()` の catch で再接続ループ全体が失敗しとる。TCP 52995 は接続できとるので、hook を非 fatal（警告のみ）にすればカメラ Start（0x2781）まで進み再開するはず。
+- 補足: eth0 down/up 後は `ping 169.254.2.1` が通らん（XREAL 側の USB ネットが応答せず）。ルート自体は `169.254.2.0/24 dev eth0` で正しい。物理再接続なら USB 再 enumerate で復旧するが、eth だけの down/up では XREAL 側が戻らん可能性。hook を非 fatal にしても ping が復活しなければ再開できんが、まずは fatal 化を直す。
+- ★修正予定: hook の `readLiveMode` / `setLiveMode` 失敗を警告ログに落とし、例外を投げないようにする。live mode 復元を試みつつ再接続を継続。
+
+## 旧・実機検証（2026-11-25 13:2x JST、v0.1.32）
 - 実機が復帰（sc-52b direct active）。`lockctl normal 0000 --gesture auto` で解除（PIN は HANDOFF に記録しない）。v0.1.32 を導入（sha256 `d3a2974...` 一致）。
 - 実機録画 `VID_20261125_131846.mp4`（677MB / 156.06秒）を pull して音声を検証:
   - ffprobe: **警告なし**、`codec_name=aac / sample_rate=48000 / channels=1（mono）`、`duration=156.06`。

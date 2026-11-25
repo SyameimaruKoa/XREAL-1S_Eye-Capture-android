@@ -326,19 +326,30 @@ public final class RecordService extends Service {
                         .getString("confirmed_live_mode", "1600 1200 60");
                 final String restoredMode = liveMode == null ? "1600 1200 60" : liveMode;
                 ((TcpSource) videoSource).setReconnectHook(() -> {
+                    // A transient failure to read/set the glasses' live mode must
+                    // not abort the whole reconnect: the video TCP socket is
+                    // already up and the camera Start command can still resume
+                    // the stream. Try to restore, but never throw from here.
                     try {
                         GlassesStatusClient client = new GlassesStatusClient(this);
-                        String current = client.readLiveMode(liveToken);
+                        String current = null;
+                        try {
+                            current = client.readLiveMode(liveToken);
+                        } catch (Exception ignored) {
+                            Log.w(TAG, "live mode read failed after reconnect; trying restore");
+                        }
                         if (!restoredMode.equals(current)) {
-                            client.setLiveMode(current, restoredMode, liveToken);
-                            String verified = client.readLiveMode(liveToken);
-                            if (!restoredMode.equals(verified)) {
-                                throw new IOException("画質を復元できませんでした: " + verified);
+                            try {
+                                client.setLiveMode(
+                                        current == null ? restoredMode : current,
+                                        restoredMode, liveToken);
+                            } catch (Exception ignored) {
+                                Log.w(TAG, "live mode restore failed after reconnect");
                             }
                         }
-                        Log.i(TAG, "live mode restored after reconnect: " + restoredMode);
+                        Log.i(TAG, "live mode restore attempted after reconnect: " + restoredMode);
                     } catch (Exception e) {
-                        throw new RuntimeException(e);
+                        Log.w(TAG, "live mode hook failed, continuing reconnect", e);
                     }
                 });
             }
