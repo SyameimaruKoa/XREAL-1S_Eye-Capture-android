@@ -1,6 +1,27 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## ★実機で切断→再開の不具合を発見（2026-11-25 13:2x）
+## ★★★★最終方針（2026-11-25 18:4x、ユーザーの実機スクリーンショットで確定）
+- ユーザーが最新版で実機録画して確認:
+  - **ジャイロ埋め込みと Gyroflow 再生は問題なし**。ただし **1600p で録画したのに 720p のレンズプロファイルが入っとった** → ★レンズプロファイル捏造をやめる（ Gyroflow の NoDistortion / 実サイズに合わせる）。
+  - **Google Photos / Samsung Gallery / Samsung Video でサムネ無し・記録時間無し・再生不可**。スクリーンショットはグレー枠＋再生アイコンのみ。Samsung Video は「非対応」と出る。
+- **ffmpeg が読めても配慮の鬼だから有用なだけ**。ユーザーが確認したのは Gallery/Photos の実挙動で、これが正しい指標。
+- 真因: 先頭 moov の stbl が空（stsz count=0, stco=0）で、moof にサンプルがあるため、Gallery/Photos が最初のフレームと再生時間を引けん。自前 `StreamingGyroflowMuxer` が原因。
+- **確定した直し方（もうブレない）**:
+  1. muxer を media3 `FragmentedMp4Sink`（`openFragmentedMuxer()`）に戻す = 11-19 の正常ファイルと同じ `moov + moof×N + mdat×N` 構造。Gallery/Photos が読める。
+  2. gyrf は gcsv 単独に逃がさず MP4 に残す。media3 fMP4 の moov に gyrf トラックを追記する方式を実装（2回全書き換え禁止、先頭 moov ＋ 末尾 moov 追記は可）。
+  3. レンズプロファイル捏造（固定 720p）を廃止。
+  4. 実機で Gallery/Photos のサムネ・記録時間・再生を目視確認するまで完了にしない。
+
+## 旧・方針の大訂正（2026-11-25 18:1x、ユーザー指摘）
+- ユーザー提示の正常ファイル `VID_20261119_120758.mp4`（1.4GB / 339秒）を解析: **先頭 moov(timescale=10000, stss有り) + moof×167 + 各 mdat + 末尾 moov（完全 stbl）**。gyrf は無いが、サムネも Gyroflow 再生も正常。脆弱だったのは**自前 StreamingGyroflowMuxer で moof に gyrf を混ぜたこと**。
+- ユーザーは「ジャイロを別ファイルにできない理由を覚えてないのか」と指摘。**Google Photos でモーションが失われるため gcsv 単独は不可**という初期要件をわっちが忘れとった。gcsv 逃がし案は撤回。
+- 確定方針:
+  1. muxer を **media3 `FragmentedMp4Sink`（`openFragmentedMuxer()`）に戻す**。これは `33cd0c3`（自前 muxer 導入）の親で使っとる方式で、11-19 の正常ファイルを生んだ。
+  2. gyrf は **MP4 の末尾 moov に追記**で載せる（先頭 moov ＋ 末尾 moov の2段構造は正常ファイルと同じ。2回全書き換えではない）。
+  3. ユーザーは「Gyroflow 再生は正常、問題は 1回でコードすると再生速度を無視すること」と報告。これは先頭 moov の timescale=10000 / stts=0 が原因の可能性。末尾 moov の完全 stbl を Gyroflow が使うようにする必要がある。
+- ★やってはいけない: gcsv サイドカーだけに逃がす（Google Photos でモーション消失）、録画後の全領域2回書き込み（fMP4 の意味が無くなる）。
+
+## 旧・実機で切断→再開の不具合を発見（2026-11-25 13:2x）
 - v0.1.32 で eth0 down/up による切断テストを実施。
 - 動作: 切断検出 → 旧 MP4 `VID_20261125_132347.mp4`（66MB）を保存 → 新セッション `VID_20261125_132424.mp4`（94KB）開始 → その直後に再stall → 再接続試行が全て失敗。
 - ログ: `reconnect attempt N failed: java.io.IOException: 対応する録画設定を確認できません`。`GlassesStatusClient.readLiveMode()` が想定外の応答を返したのが原因。

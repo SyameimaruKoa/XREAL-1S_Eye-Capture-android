@@ -582,8 +582,11 @@ public final class RecordService extends Service {
         if (!rawMode) {
             output = RecordingOutput.create(this, outputTree, captureTimeMs);
             mp4Name = output.getFilename();
-            // fMP4: single write with the gyrf track embedded from the first byte.
-            muxer = fmp4Mode ? output.openStreamingMuxer(new byte[0], 1600, 1200)
+            // fMP4: media3's FragmentedMp4Sink writes a complete head moov
+            // (stsd/stss/stts) that Gallery and Google Photos can read. The
+            // custom streaming muxer left the head stbl empty, so those apps
+            // showed no thumbnail, no duration and could not play the file.
+            muxer = fmp4Mode ? output.openFragmentedMuxer()
                     : output.openMuxer();
         } else {
             mp4Name = hevcFile != null
