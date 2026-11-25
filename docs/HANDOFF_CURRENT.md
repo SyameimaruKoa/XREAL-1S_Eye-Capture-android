@@ -59,6 +59,16 @@
 - ローカル Java テスト22個すべて PASS、CI run `45540847755` green（commit `81765e4`）。★v0.1.32 prerelease 公開（2026-11-25 12:39 JST / 03:39 UTC）: APK sha256 `d3a29742599a8bf02c38cac736ed50fd1555438d5069d162a47b0b32560871d6`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.32
 - ★実機がオフライン（2026-11-25 時点で sc-52b は 1h 前まで、ping 不通）のため実機録画検証は不可。APK は prerelease で公開済み、ユーザーが検証する。実機が戻ったら v0.1.32 を導入して音声を聴き、`ffprobe -select_streams a` で 48kHz/mono かつ連続した PTS になっていることを確認。
 
+## ★Gyroflow がジャイロを読まん原因を特定（2026-11-25 20:1x JST）
+- ユーザーが v0.1.36 で確認: Gallery/Photos のサムネ・再生は正常、しかし Gyroflow でジャイロが居ない。
+- telemetry-parser をビルドして `gyro2bb --dump` で解析:
+  - ホスト注入の `injected.mp4`（21MB）: `Detected camera: XREAL 1S`、ジャイロ/加速度データ正常。
+  - 実機の `v0136_device.mp4`（194MB）: **`Unsupported file format`** で detect 自体が失敗。
+- **真因**: Gyroflow の detect はファイルの**先頭5MB＋末尾5MB**しか読まん（`lib.rs::from_stream_with_options` の `read_mb=5`）。実機ファイルの gyrf magic は offset 6.8MB〜188.4MB に分散し、両端5MBに無い → detect されん。`injected.mp4` は magic が末尾5MB（16MB〜21MB）にあって detect 成功。
+- **対策の実証**: 実機 MP4 と**同じ basename** の gcsv を同じフォルダに置いたら `gyro2bb --dump` が `Detected camera` を出し、IMU データを parse できた。MP4 の gyrf は残す（Google Photos のモーション用）ので「gcsv 単独はダメ」という要件も満たす。gcsv は Gyroflow 用の補助。
+- **修正**: `RecordService` で注入成否に関わらず常に gcsv を書く（`if (!embedded)` を削除）。`RecordingOutput.writeGyroCsv()` の保存先を Documents/XREAL/100XREAL → **DCIM/100XREAL（MP4 と同じ）** に変更。
+- gcsv の書式は `GyroCsvFormatter`（`GYROFLOW IMU LOG` / version 1.3 / t,gx,gy,gz,ax,ay,az）が正しいことを telemetry-parser で確認済み。
+
 ## 旧・破損ファイルの事後修復完了（2026-11-24 21:0x JST）
 - ユーザーから破損ファイル3つの修復を依頼。`/tmp/opencode/repair_fmp4.py` を作成して全ファイルを修復。
 - **uploads の2つ**（v0.1.27 世代、固定 16,666us で gyrf だけ可変 PTS）: 全 gyrf サンプルの frame ts を読み、各 video サンプルの real duration を算出。全 moof の video traf の tfdt（累積 decode time）と trun sample_duration、tail moov の stts（run-length）と mvhd duration を再構築。

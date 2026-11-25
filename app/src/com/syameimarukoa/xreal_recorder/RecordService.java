@@ -751,13 +751,18 @@ public final class RecordService extends Service {
                                             Log.e(TAG, "telemetry injection failed", t);
                                         }
                                     }
-                                    if (!embedded) {
-                                        try {
-                                            finalOutput.writeGyroCsv(finalImu.formatCsv(
-                                                    finalMp4Name, captureTimeMs));
-                                        } catch (Throwable t) {
-                                            Log.e(TAG, "gcsv write failed", t);
-                                        }
+                                    // Always write the gcsv sidecar. The MP4 already
+                                    // carries gyrf for Google Photos, but Gyroflow's
+                                    // detect only reads the first/last 5 MB of a big
+                                    // file and misses gyrf samples in the middle. A
+                                    // same-basename gcsv next to the MP4 is detected
+                                    // reliably, and is only a supplement - the MP4
+                                    // telemetry remains canonical.
+                                    try {
+                                        finalOutput.writeGyroCsv(finalImu.formatCsv(
+                                                finalMp4Name, captureTimeMs));
+                                    } catch (Throwable t) {
+                                        Log.e(TAG, "gcsv write failed", t);
                                     }
                                 }
                             }

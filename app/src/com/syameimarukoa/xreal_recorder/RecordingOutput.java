@@ -227,8 +227,11 @@ final class RecordingOutput {
             ContentValues values = new ContentValues();
             values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
             values.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
+            // Keep the gcsv next to the MP4 in DCIM/100XREAL. Gyroflow looks for
+            // a sidecar with the same basename when the embedded gyrf samples
+            // fall outside the first/last 5 MB of a long clip and detection fails.
             values.put(MediaStore.MediaColumns.RELATIVE_PATH,
-                    Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL");
+                    Environment.DIRECTORY_DCIM + "/100XREAL");
             values.put(MediaStore.MediaColumns.IS_PENDING, 1);
             gyroUri = resolver.insert(MediaStore.Files.getContentUri("external"), values);
         }
