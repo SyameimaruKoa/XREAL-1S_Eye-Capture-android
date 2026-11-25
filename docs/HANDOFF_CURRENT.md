@@ -1,6 +1,15 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## ★音声ブツブツの修正（2026-11-25、ブランチ OptiPlex-3040-MFF_20261125）
+## ★実機検証（2026-11-25 13:2x JST、v0.1.32）
+- 実機が復帰（sc-52b direct active）。`lockctl normal 0000 --gesture auto` で解除（PIN は HANDOFF に記録しない）。v0.1.32 を導入（sha256 `d3a2974...` 一致）。
+- 実機録画 `VID_20261125_131846.mp4`（677MB / 156.06秒）を pull して音声を検証:
+  - ffprobe: **警告なし**、`codec_name=aac / sample_rate=48000 / channels=1（mono）`、`duration=156.06`。
+  - `ffmpeg -vn -f null -` のデコードエラー **0**。
+  - audio moof 1,200個を解析: duration すべて `21,333us`、PTS gaps は 21,333/21,334 のみ（＝21.33ms 刻みで連続）。**1フレームも落ちていない**。最初の audio PTS は 122,724us（AudioSource が映像より遅れて開始したためで、Gyroflow の同期で吸収される範囲）。
+  - ★ブツブツは解消。stop が UI から遅れて効いたが、ファイルは正常に finalize された。
+- ★次の実機検証: 切断→再開（イーサネット無効/有効、v0.1.28 の機能）。`su -c 'ifconfig eth0 down/up'` が権限で通るか確認してから実施。
+
+## 旧・音声ブツブツの修正（2026-11-25、ブランチ OptiPlex-3040-MFF_20261125）
 - ユーザー報告「音がブツブツ」。原因をコードで確定: `StreamingMuxerSink` が音声を1スロット `pendingAudio` に保持し、映像1フレーム（16.8ms）ごとに1つだけ消費しとった。AAC は 48kHz/1024サンプル＝21.33ms/フレームなので、1:1 だと音声が速く再生され、残りは上書き破棄→ブツブツ。
 - 修正:
   1. `StreamingMuxerSink` を音声キュー（`queuedAudio`）に変更。`writeAudio()` はキューに追加するだけ。
