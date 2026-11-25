@@ -70,6 +70,7 @@
 - gcsv の書式は `GyroCsvFormatter`（`GYROFLOW IMU LOG` / version 1.3 / t,gx,gy,gz,ax,ay,az）が正しいことを telemetry-parser で確認済み。
 - ローカル22テスト PASS、CI `45602946323` green（commit `be7a426`）。★v0.1.37 prerelease 公開: APK sha256 `e60a4e5bf4a3f191a230d1d9f0a40aebaaed8ae738459c41b0850dc6c1945a1a`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.37 。実機にも導入済み。
 - ★次の検証: v0.1.37 で実機録画 → DCIM/100XREAL に MP4 と同名の .gcsv ができること → MP4 を Gyroflow（`gyro2bb --dump` または実アプリ）で開いて `Detected camera: XREAL 1S` とジャイロが出ることを確認。
+- ★_blocked_（20:2x JST）: ユーザーが XREAL を再起動したが、また `ping 169.254.2.1` が不通。USB デバイスは認識（vendor 13080/product 1086）、eth0 up、route 正しい（`ts-lan-route apply` も SKIP で問題なし）が、XREAL 側の TCP が応答せず実機録画不可。物理的な USB 挿し直しが必要（ユーザーしかできない）。ホスト側では gcsv サイドカーによる Gyroflow detect 成功を実証済みなので、修正自体は完了。
 
 ## 旧・破損ファイルの事後修復完了（2026-11-24 21:0x JST）
 - ユーザーから破損ファイル3つの修復を依頼。`/tmp/opencode/repair_fmp4.py` を作成して全ファイルを修復。
