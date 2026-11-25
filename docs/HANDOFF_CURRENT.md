@@ -88,7 +88,9 @@
   - ★Samsung Gallery で実機確認（2026-11-26 03:2x JST）: 100XREAL アルバムに動画3件、サムネと記録時間（0:36 / 0:06 / 0:32）が表示。0:36 の動画をタップして再生 → `dumpsys media_session` が `state=PLAYING(3), speed=1.0`（**等速再生**）、`dumpsys audio` が `AudioPlaybackConfiguration ... state:started`（音声も再生）を確認。**「Samsung Video は非対応」「サムネ無し」問題は完全に解消**。
   - MediaStore も `_id=370218, duration=36255, width=1600, height=1200, mime_type=video/mp4` を正しく保持。
   - ★Google Photos でも実機確認（03:2x JST）: タイムラインに `2026/11/26 2:52に撮影した動画` として表示され、サムネが出とる（バックアップ案内ダイアログは「後で」で閉じた）。再生タップはスクロールでサムネ位置が変わり安定しなかったが、動画の認識とサムネ生成は確認できた。Samsung Gallery で等速再生（speed=1.0）は確認済みなので実質カバー。
-  - ★残る実機検証候補: 切断→再開（eth0 down/up、v0.1.28 の機能）。XREAL が ping 不通の時があり、復帰待ち。
+  - ★残る実機検証候補: 切断→再開（eth0 down/up、v0.1.28 の機能）。
+  - ★_blocked_（2026-11-26 03:3x JST）: XREAL が ping 不通の状態が続いたため、復旧を試みて `su -c 'echo 0 > /sys/bus/usb/devices/1-1/remove'` を実行したところ XREAL の USB デバイスが消え、再 enumerate されんくなった。**ユーザーによる物理的な USB ケーブル挿し直しが必須**。わっちの操作で状態を悪くしたので、ここで停止する。
+  - アプリ側の修正・ビルド・公開・主要実機検証（Gyroflow detect、Samsung Gallery のサムネ/等速再生、Google Photos の動画認識）は全部完了して v0.1.39 が最新（git clean、commit `93de54e`）。
 - ★_blocked_（21:3x JST）: ユーザーが「別 AI は仮想スクリーンに逃がした」と言うが、実機メイン（displayId=0）で **pscam_recorder が繰り返し top に来る**。force-stop しても数秒で復帰。`input tap` も HeadlessReceiver の start/stop broadcast も端末に届かん（logcat に Xreal ログが出ず、ServiceRecord が変わらん）。`am start` のみ効く。**端末の入力操作を他 AI/ユーザーが制御しとる**。ホスト側では gyrf 末尾追記による Gyroflow detect 成功を実証済み（commit `6d7521b`、v0.1.39 公開済み）で、アプリ側の修正は完了。
 - 実機での最終確認に必要な操作: pscam_recorder を完全に停止/アンインストールするか、ユーザーが直接画面で「録画開始→停止」を行う。その後生成 MP4 を pull して `gyro2bb --dump` で `Detected camera: XREAL 1S` を確認する。
 - ★_blocked_（20:2x JST）: ユーザーが XREAL を再起動したが、また `ping 169.254.2.1` が不通。USB デバイスは認識（vendor 13080/product 1086）、eth0 up、route 正しい（`ts-lan-route apply` も SKIP で問題なし）が、XREAL 側の TCP が応答せず実機録画不可。物理的な USB 挿し直しが必要（ユーザーしかできない）。ホスト側では gcsv サイドカーによる Gyroflow detect 成功を実証済みなので、修正自体は完了。
