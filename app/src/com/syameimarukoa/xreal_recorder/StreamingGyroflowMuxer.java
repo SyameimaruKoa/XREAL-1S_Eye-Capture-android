@@ -116,6 +116,28 @@ final class StreamingGyroflowMuxer {
         fragmentNumber++;
     }
 
+    /** Append one AAC frame as its own fragment, stamped with its real PTS. */
+    void writeAudioSample(byte[] audio, long ptsUs, long durationUs) throws IOException {
+        if (closed || audio == null || audio.length == 0) {
+            return;
+        }
+        // A standalone moof: mfhd + one audio traf, then one mdat. Keeping audio
+        // in its own fragment lets every AAC frame (21.3 ms at 48 kHz) keep its
+        // true timing instead of being forced to the 16.8 ms video frame rate.
+        int moofSize = 8 + MFHD_SIZE + TRAF_SIZE;
+        int dataStart = moofSize + 8;
+        byte[] trafAudio = traf(audioTrackId, ptsUs, audio.length, durationUs,
+                dataStart, false);
+        byte[] moof = box("moof", concat(
+                fullBox("mfhd", u32(fragmentNumber)), trafAudio));
+        long mdatSize = 8L + audio.length;
+        out.write(moof);
+        out.write(boxHeader("mdat", mdatSize));
+        out.write(audio);
+        writeOffset += moof.length + mdatSize;
+        fragmentNumber++;
+    }
+
     void stop() throws IOException {
         if (closed) {
             return;
@@ -278,8 +300,9 @@ final class StreamingGyroflowMuxer {
         // pre_defined(2) + reserved(2) + samplerate(4, 16.16). mp4parse reads
         // exactly this layout; a VisualSampleEntry body leaves trailing bytes
         // and triggers CheckParserStateErr. esds is optional for our purpose.
+        // channelcount is 1: AudioSource encodes mono (48000 Hz, AAC LC).
         return box("mp4a", concat(new byte[6], u16(1), new byte[8],
-                u16(2), u16(16), u16(0), u16(0), u32(48000L << 16)));
+                u16(1), u16(16), u16(0), u16(0), u32(48000L << 16)));
     }
 
     private byte[] metaSampleEntry() {

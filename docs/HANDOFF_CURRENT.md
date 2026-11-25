@@ -1,6 +1,16 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
-## ★★★★★★破損ファイルの事後修復完了（2026-11-24 21:0x JST）
+## ★音声ブツブツの修正（2026-11-25、ブランチ OptiPlex-3040-MFF_20261125）
+- ユーザー報告「音がブツブツ」。原因をコードで確定: `StreamingMuxerSink` が音声を1スロット `pendingAudio` に保持し、映像1フレーム（16.8ms）ごとに1つだけ消費しとった。AAC は 48kHz/1024サンプル＝21.33ms/フレームなので、1:1 だと音声が速く再生され、残りは上書き破棄→ブツブツ。
+- 修正:
+  1. `StreamingMuxerSink` を音声キュー（`queuedAudio`）に変更。`writeAudio()` はキューに追加するだけ。
+  2. `StreamingGyroflowMuxer.writeAudioSample()` を追加。各 AAC フレームを**独立した moof+mdat フラグメント**にし、tfdt を実 PTS（`ptsUs - firstPtsUs`）に、duration を 21,333us にする。映像フラグメントには audio を載せない。
+  3. `flushAudioUpTo()` で PTS 到達分を順に書き出し、`finish()` で残りを全部 flush（末尾の音声を落とさない）。
+  4. AudioSampleEntry の channelcount を 2→1 に修正（実機は mono 48kHz、csd-0 `{0x11,0x88}` も chCfg=1 を確認）。
+- ホスト検証（`tests/StreamingAudioTimingGen.java`）: 11個の AAC フレームを 21.33ms 刻みで投入 → **audio moofs=11、PTS `[0,21333,42666,...,213330]`、duration 全て 21333** を確認。1つも落ちていない。
+- ★実機がオフライン（2026-11-25 時点で sc-52b は 1h 前まで、ping 不通）のため実機録画検証は不可。APK は CI 後に prerelease で公開し、ユーザーが検証する。
+
+## 旧・破損ファイルの事後修復完了（2026-11-24 21:0x JST）
 - ユーザーから破損ファイル3つの修復を依頼。`/tmp/opencode/repair_fmp4.py` を作成して全ファイルを修復。
 - **uploads の2つ**（v0.1.27 世代、固定 16,666us で gyrf だけ可変 PTS）: 全 gyrf サンプルの frame ts を読み、各 video サンプルの real duration を算出。全 moof の video traf の tfdt（累積 decode time）と trun sample_duration、tail moov の stts（run-length）と mvhd duration を再構築。
   - `repaired_VID_20261124_183910.mp4`: 583MB、duration 266.95秒、tfdt と gyrf が全サンプル一致（差分0）。

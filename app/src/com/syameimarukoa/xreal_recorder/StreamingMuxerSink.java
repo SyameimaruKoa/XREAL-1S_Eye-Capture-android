@@ -13,9 +13,21 @@ import java.util.List;
  * protobuf are written together into fMP4 fragments in a single pass.
  */
 final class StreamingMuxerSink implements RecordingMuxer {
+    private static final class AudioFrame {
+        final byte[] data;
+        final long ptsUs;
+        AudioFrame(byte[] data, long ptsUs) {
+            this.data = data;
+            this.ptsUs = ptsUs;
+        }
+    }
+
     private final StreamingGyroflowMuxer muxer;
     private final Object lock = new Object();
-    private byte[] pendingAudio;
+    // AAC LC produces one frame per 1024 samples = 21.33 ms at 48 kHz. Video is
+    // ~16.8 ms, so a single pending slot drops/retimes frames and sounds glitchy.
+    private static final long AAC_FRAME_US = 1_000_000L * 1024 / 48000;
+    private final List<AudioFrame> queuedAudio = new ArrayList<>();
     private byte[] header;
     private boolean started;
     private int frameNumber;
@@ -112,17 +124,28 @@ final class StreamingMuxerSink implements RecordingMuxer {
                 return;
             }
         }
-        // An all-zero single byte is not a valid AAC frame. When no audio is
-        // available, omit the audio traf entirely instead of writing a bogus
-        // sample that makes readers report "Input buffer exhausted".
-        byte[] audio = pendingAudio != null ? pendingAudio : new byte[0];
-        pendingAudio = null;
+        // Video carries no audio payload; AAC frames are written as their own
+        // fragments below at their true 21.33 ms cadence.
         byte[] gyro = nextGyroPayload(ptsUs - firstPtsUs);
         try {
-            muxer.writeSample(data, audio, gyro, durationUs);
+            muxer.writeSample(data, new byte[0], gyro, durationUs);
+            flushAudioUpTo(ptsUs);
         } catch (IOException e) {
             failed = true;
             error = String.valueOf(e);
+        }
+    }
+
+    /** Write every queued AAC frame whose PTS has arrived, one fragment each. */
+    private void flushAudioUpTo(long videoPtsUs) throws IOException {
+        while (!queuedAudio.isEmpty()) {
+            AudioFrame f = queuedAudio.get(0);
+            // Keep one frame buffered for the exact PTS boundary; the rest go.
+            if (f.ptsUs > videoPtsUs && queuedAudio.size() > 1) {
+                break;
+            }
+            queuedAudio.remove(0);
+            muxer.writeAudioSample(f.data, f.ptsUs - firstPtsUs, AAC_FRAME_US);
         }
     }
 
@@ -143,7 +166,7 @@ final class StreamingMuxerSink implements RecordingMuxer {
     @Override
     public void writeAudio(byte[] data, long ptsUs) {
         synchronized (lock) {
-            pendingAudio = data;
+            queuedAudio.add(new AudioFrame(data, ptsUs));
         }
     }
 
@@ -159,6 +182,11 @@ final class StreamingMuxerSink implements RecordingMuxer {
                 pendingVideo = null;
             }
             try {
+                // Flush every remaining AAC frame so no tail audio is dropped.
+                while (!queuedAudio.isEmpty()) {
+                    AudioFrame f = queuedAudio.remove(0);
+                    muxer.writeAudioSample(f.data, f.ptsUs - firstPtsUs, AAC_FRAME_US);
+                }
                 muxer.stop();
             } catch (IOException e) {
                 failed = true;
