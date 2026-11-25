@@ -6,7 +6,9 @@
 - ログ: `reconnect attempt N failed: java.io.IOException: 対応する録画設定を確認できません`。`GlassesStatusClient.readLiveMode()` が想定外の応答を返したのが原因。
 - **コード上の真因**: `RecordService` の reconnectHook が `readLiveMode()` の例外を `RuntimeException` にラップして投げ、`TcpSource.reconnect()` の catch で再接続ループ全体が失敗しとる。TCP 52995 は接続できとるので、hook を非 fatal（警告のみ）にすればカメラ Start（0x2781）まで進み再開するはず。
 - 補足: eth0 down/up 後は `ping 169.254.2.1` が通らん（XREAL 側の USB ネットが応答せず）。ルート自体は `169.254.2.0/24 dev eth0` で正しい。物理再接続なら USB 再 enumerate で復旧するが、eth だけの down/up では XREAL 側が戻らん可能性。hook を非 fatal にしても ping が復活しなければ再開できんが、まずは fatal 化を直す。
-- ★修正予定: hook の `readLiveMode` / `setLiveMode` 失敗を警告ログに落とし、例外を投げないようにする。live mode 復元を試みつつ再接続を継続。
+- ★修正完了: hook の `readLiveMode` / `setLiveMode` 失敗を警告ログに落とし、例外を投げないようにした（commit `31fd291`）。live mode 復元を試みつつ再接続を継続。
+- ローカル Java テスト22個すべて PASS、CI run `45546814356` green。★v0.1.33 prerelease 公開（2026-11-25 17:44 JST / 08:44 UTC）: APK sha256 `df879b412c64be9da5c557c6b3302951efae1b1f8d93faf37b0d5df5ede3119b`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.33
+- ★_blocked_: eth0 down/up 後、XREAL 本体が `ping 169.254.2.1` に応答せず（ARP は解決するが ICMP 不通）。eth0 は up、ルート `169.254.2.0/24 dev eth0` は正しい。XREAL の USB ネットワークを復旧させるには**物理的な再接続（USB 挿し直し）が必要**で、これはユーザーしかできない。再接続の実機検証はこれ待ち。サーバー再起動後、sc-52b は tailscale offline（last seen 4h）。
 
 ## 旧・実機検証（2026-11-25 13:2x JST、v0.1.32）
 - 実機が復帰（sc-52b direct active）。`lockctl normal 0000 --gesture auto` で解除（PIN は HANDOFF に記録しない）。v0.1.32 を導入（sha256 `d3a2974...` 一致）。
