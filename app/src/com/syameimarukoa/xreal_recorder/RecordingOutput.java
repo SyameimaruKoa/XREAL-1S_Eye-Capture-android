@@ -58,12 +58,10 @@ final class RecordingOutput {
             ContentValues values = new ContentValues();
             values.put(MediaStore.Video.Media.DISPLAY_NAME, filename);
             values.put(MediaStore.Video.Media.MIME_TYPE, mimeType);
-            // Store the MP4 in Documents/XREAL/100XREAL together with the gcsv
-            // sidecar. Gyroflow only looks for a same-basename gcsv in the MP4's
-            // own directory, and MediaStore.Files rejects DCIM for the gcsv
-            // insert. MediaStore.Video entries still appear in Gallery/Photos.
+            // MediaStore.Video only allows DCIM/Movies/Pictures; Documents is
+            // rejected. Keep the MP4 in DCIM for Gallery/Photos.
             values.put(MediaStore.Video.Media.RELATIVE_PATH,
-                    Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL");
+                    Environment.DIRECTORY_DCIM + "/100XREAL");
             values.put(MediaStore.Video.Media.DATE_TAKEN, captureTimeMs);
             values.put(MediaStore.Video.Media.IS_PENDING, 1);
             uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
@@ -94,7 +92,7 @@ final class RecordingOutput {
         } else {
             children = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
             selection = MediaStore.Video.Media.RELATIVE_PATH + "=?";
-            selectionArgs = new String[]{Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL/"};
+            selectionArgs = new String[]{Environment.DIRECTORY_DCIM + "/100XREAL/"};
         }
         ensureNameAvailable(resolver, children, selection, selectionArgs, base);
         if (tree == null) {

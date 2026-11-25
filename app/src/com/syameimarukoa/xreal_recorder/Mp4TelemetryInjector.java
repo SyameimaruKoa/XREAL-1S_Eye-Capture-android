@@ -106,6 +106,146 @@ final class Mp4TelemetryInjector {
         try (FileOutputStream stream = new FileOutputStream(output)) {
             container.writeContainer(stream.getChannel());
         }
+        appendGyrfHeaderAtEnd(output);
+    }
+
+    /**
+     * Gyroflow's detect only scans the first/last 5 MB of a file for the
+     * "GyroflowProtobuf" magic. In long clips the injected gyrf samples sit in
+     * the middle and detection fails. Copy the first (header) gyrf sample to
+     * the very end of the file and repoint stco[0] at it, so the magic is in the
+     * tail window. Only the moov's stco entry is rewritten - no second full
+     * write of the recording.
+     */
+    private static void appendGyrfHeaderAtEnd(File file) throws IOException {
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(file, "rw");
+        try {
+            long size = raf.length();
+            MoovLoc loc = findMoov(raf, size);
+            if (loc == null) {
+                return;
+            }
+            raf.seek(loc.offset);
+            byte[] moov = new byte[(int) loc.size];
+            raf.readFully(moov);
+            int trak = findGyrfTrak(moov);
+            if (trak < 0) {
+                return;
+            }
+            int stcoRel = findBox(moov, trak, trakLen(moov, trak), "stco");
+            int stszRel = findBox(moov, trak, trakLen(moov, trak), "stsz");
+            if (stcoRel < 0 || stszRel < 0) {
+                return;
+            }
+            int chunkCount = be32(moov, stcoRel + 12);
+            int sampleCount = be32(moov, stszRel + 16);
+            if (chunkCount < 1 || sampleCount < 1) {
+                return;
+            }
+            long firstOff = be32u(moov, stcoRel + 16);
+            int firstSize = be32(moov, stszRel + 20);
+            if (firstSize <= 0 || firstSize > 1024 * 1024 || firstOff + firstSize > size) {
+                return;
+            }
+            byte[] sample = new byte[firstSize];
+            raf.seek(firstOff);
+            raf.readFully(sample);
+            if (!new String(sample, java.nio.charset.StandardCharsets.ISO_8859_1)
+                    .contains("GyroflowProtobuf")) {
+                return;
+            }
+            raf.seek(size);
+            raf.write(sample);
+            raf.seek(loc.offset + stcoRel + 16);
+            raf.write(intBytes((int) size));
+        } finally {
+            raf.close();
+        }
+    }
+
+    private static final class MoovLoc {
+        final long offset; final long size;
+        MoovLoc(long o, long s) { offset = o; size = s; }
+    }
+
+    private static MoovLoc findMoov(java.io.RandomAccessFile raf, long size) throws IOException {
+        long pos = 0;
+        while (pos + 8 <= size) {
+            raf.seek(pos);
+            byte[] hdr = new byte[8];
+            raf.readFully(hdr);
+            long sz = be32u(hdr, 0);
+            String type = new String(hdr, 4, 4, java.nio.charset.StandardCharsets.ISO_8859_1);
+            if (sz < 8 || pos + sz > size) {
+                return null;
+            }
+            if ("moov".equals(type) && sz < Integer.MAX_VALUE) {
+                return new MoovLoc(pos, sz);
+            }
+            pos += sz;
+        }
+        return null;
+    }
+
+    private static int findGyrfTrak(byte[] moov) {
+        int pos = 8;
+        while (pos + 8 <= moov.length) {
+            int sz = be32(moov, pos);
+            String type = new String(moov, pos + 4, 4, java.nio.charset.StandardCharsets.ISO_8859_1);
+            if (sz < 8 || pos + sz > moov.length) {
+                return -1;
+            }
+            if ("trak".equals(type)) {
+                int stsd = findBox(moov, pos, sz, "stsd");
+                if (stsd >= 0) {
+                    String entry = new String(moov, stsd + 16, 4,
+                            java.nio.charset.StandardCharsets.ISO_8859_1);
+                    if ("gyrf".equals(entry)) {
+                        return pos;
+                    }
+                }
+            }
+            pos += sz;
+        }
+        return -1;
+    }
+
+    private static int trakLen(byte[] moov, int trak) {
+        return be32(moov, trak);
+    }
+
+    private static int findBox(byte[] buf, int start, int length, String wanted) {
+        int pos = start + 8;
+        int end = start + length;
+        while (pos + 8 <= end) {
+            int sz = be32(buf, pos);
+            String type = new String(buf, pos + 4, 4, java.nio.charset.StandardCharsets.ISO_8859_1);
+            if (sz < 8 || pos + sz > end) {
+                return -1;
+            }
+            if (wanted.equals(type)) {
+                return pos;
+            }
+            int nested = findBox(buf, pos, sz, wanted);
+            if (nested >= 0) {
+                return nested;
+            }
+            pos += sz;
+        }
+        return -1;
+    }
+
+    private static int be32(byte[] b, int i) {
+        return ((b[i] & 0xff) << 24) | ((b[i + 1] & 0xff) << 16)
+                | ((b[i + 2] & 0xff) << 8) | (b[i + 3] & 0xff);
+    }
+
+    private static long be32u(byte[] b, int i) {
+        return be32(b, i) & 0xffffffffL;
+    }
+
+    private static byte[] intBytes(int v) {
+        return new byte[]{(byte) (v >>> 24), (byte) (v >>> 16), (byte) (v >>> 8), (byte) v};
     }
 
     /** mp4parser uses GCD for edit lists but LCM for mvhd; align both to mvhd. */
