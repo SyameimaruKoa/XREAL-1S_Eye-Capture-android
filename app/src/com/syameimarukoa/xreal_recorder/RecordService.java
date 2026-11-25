@@ -708,8 +708,12 @@ public final class RecordService extends Service {
                                 }
                                 finalOutput.writeMetadata(cameraInfo.toString(2));
                                 if (finalImu != null && finalImu.getSampleCount() > 0) {
-                                    boolean embedded = fmp4Mode; // already embedded during recording
-                                    if (!rawMode && !fmp4Mode) {
+                                    // media3 fMP4 has no gyrf track; inject it
+                                    // into the moov at stop time (moof/video data
+                                    // is untouched and the recording stays a
+                                    // single streaming write while in progress).
+                                    boolean embedded = false;
+                                    if (!rawMode) {
                                         try {
                                             List<GyroflowProto.ImuSample> imuSamples =
                                                     finalImu.getSamples();
@@ -741,6 +745,8 @@ public final class RecordService extends Service {
                                                     videoSource.getHeight(), fps,
                                                     durationUs, rate, "xYz", imuSamples,
                                                     finalImu.getFirstTimestampNs() / 1000L);
+                                            Log.i(TAG, "telemetry injection embedded=" + embedded
+                                                    + " samples=" + imuSamples.size());
                                         } catch (Throwable t) {
                                             Log.e(TAG, "telemetry injection failed", t);
                                         }
