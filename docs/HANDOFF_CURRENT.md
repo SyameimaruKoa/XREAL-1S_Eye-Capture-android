@@ -59,7 +59,14 @@
 - ローカル Java テスト22個すべて PASS、CI run `45540847755` green（commit `81765e4`）。★v0.1.32 prerelease 公開（2026-11-25 12:39 JST / 03:39 UTC）: APK sha256 `d3a29742599a8bf02c38cac736ed50fd1555438d5069d162a47b0b32560871d6`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.32
 - ★実機がオフライン（2026-11-25 時点で sc-52b は 1h 前まで、ping 不通）のため実機録画検証は不可。APK は prerelease で公開済み、ユーザーが検証する。実機が戻ったら v0.1.32 を導入して音声を聴き、`ffprobe -select_streams a` で 48kHz/mono かつ連続した PTS になっていることを確認。
 
-## ★★★★media3 moov 生成のタイミングを修正（2026-11-26 21:3x JST、ユーザーが「1」を選択）
+## ★720p60 が撮れていたことを実証（2026-11-26 22:0x JST）
+- ユーザーが「アプリのデータを削除したりキャッシュを削除してたら 720p60 が撮れてた。生データも保存してるはず」と報告。
+- 実機 DCIM を確認: `VID_20261126_190505/190549/190624/190921/190935/191136/191153.mp4` は全部 **1280x720 / 59.409 fps**（60fps NTSC相当）。旧 HANDOFF の「720p60 はカメラが Start を拒否して不可」という結論は誤りだった（prefs 初期化でモード設定が変わり Start が通った模様）。
+- `VID_20261126_190935.mp4` は video(hevc 1280x720) + audio(aac 587 frames) + data(gyrf) の3トラック。
+- 生データも確認（Android/data/.../files/Movies/）: `xreal_20261126_191514.hevc`（22MB 生 Annex-B）、`.wav`（48kHz/2ch/6秒）、`.gcsv`（6,077 IMUサンプル、`videofilename=VID_20261126_191514.mp4`）。
+- ★教訓: 「ファームウェアが 720p60 を拒否する」は端的な状態であって常時ではない。prefs/モード状態を初期化すれば撮れることがある。
+
+## 旧・media3 moov 生成のタイミングを修正（2026-11-26 21:3x JST、ユーザーが「1」を選択）
 - `FragmentedMp4Writer.createHeader()` を disassemble して確認: **最初の `writeSampleData()` 時に moov を確定**し、その時点の `tracks` しか書かん。60fps では video の AU が audio より先に来て、その時点で audio track が無い → moov に audio が入らん。30fps では audio が先に来るので正常。
 - 修正（`FragmentedMp4Sink`）: `flushPendingIfReady()` で audio track が来るまで video を保留（video 単独で moov を確定させない）。`startVideoOnly()` に実装を入れ、マイクが無い場合は video を flush して video-only MP4 にする。
 - ★実機検証完了（2026-11-26 21:5x JST、v0.1.42）: 1600p60 で録画 `VID_20261126_215545.mp4`（173MB / 43秒）。ffprobe で **video(hevc 1600x1200) + audio(aac)** の2トラックを確認。moov に `soun=1, mp4a=1, vide=1`。`finish: videoSamples=2544 audioSamples=1991 failed=false`。**音声トラック消失は完全に解消**。
