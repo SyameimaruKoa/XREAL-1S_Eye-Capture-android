@@ -59,7 +59,13 @@
 - ローカル Java テスト22個すべて PASS、CI run `45540847755` green（commit `81765e4`）。★v0.1.32 prerelease 公開（2026-11-25 12:39 JST / 03:39 UTC）: APK sha256 `d3a29742599a8bf02c38cac736ed50fd1555438d5069d162a47b0b32560871d6`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.32
 - ★実機がオフライン（2026-11-25 時点で sc-52b は 1h 前まで、ping 不通）のため実機録画検証は不可。APK は prerelease で公開済み、ユーザーが検証する。実機が戻ったら v0.1.32 を導入して音声を聴き、`ffprobe -select_streams a` で 48kHz/mono かつ連続した PTS になっていることを確認。
 
-## ★★全画質の保存・再生確認（2026-11-26 22:2x JST）— v2 リリースは保留
+## ★★★原因は Tailscale table 52 の throw（2026-11-26 22:3x JST）
+- ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証したが、原因は無関係だった。
+- **`ip route get 169.254.2.1` が `via 192.168.55.1 dev wlan0 table 1013` を返しとった** = Tailscale の table 52 に `throw 169.254.2.0/24` が入っていて USB(eth0) ではなく Wi-Fi 経由にルーティングされ、ping も TCP(50180/52999) も届かんかった。ARP は正しく eth0 を指しとった。
+- 修正: `ip route del throw 169.254.2.0/24 table 52` + `ip route add 169.254.2.0/24 dev eth0 table 52`（IMU の 169.254.1.0/24 も similarly）。`ip route get` が `dev eth0` を返し、ping 0% loss に復帰。これで 1600p30 も撮れるようになった。
+- ★v0.1.42 の問題: 注入をやめたため MP4 に gyrf が無く、gcsv も Documents にあるので Gyroflow がジャイロを読めん。しかし **FragmentedMp4Sink を修正した今なら mp4parser 注入しても audio が残る** ことをホストで実証（`v42_1600p30_inj.mp4`: aac + hevc + data、Gyroflow `Detected camera: XREAL 1S`）。→ RecordService で注入を復活（`embedded=false`, `if (!rawMode)`）。
+
+## 旧・全画質の保存・再生確認（2026-11-26 22:2x JST）— v2 リリースは保留
 - ユーザー指示「全画質でビデオ、音声、ジャイロが完璧に保存、再生されていることを確認して。完璧なら v2 を正式リリースして」。
 - 解析結果:
   - **720p60** `VID_20261126_190935.mp4`: video(hevc 1280x720 59.409fps) + audio(aac 587 frames) + data(gyrf)。`gyro2bb --dump` → `Detected camera: XREAL 1S`。**完璧**。

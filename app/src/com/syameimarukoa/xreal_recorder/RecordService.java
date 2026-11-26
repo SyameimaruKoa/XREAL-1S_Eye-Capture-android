@@ -712,13 +712,13 @@ public final class RecordService extends Service {
                                     // into the moov at stop time (moof/video data
                                     // is untouched and the recording stays a
                                     // single streaming write while in progress).
-                                    // media3 fMP4's audio entry has no esds, which
-                                    // mp4parser's remux cannot read and drops the
-                                    // audio track. For fMP4 keep the MP4 untouched
-                                    // and let Gyroflow read the same-basename gcsv
-                                    // sidecar written below.
-                                    boolean embedded = fmp4Mode;
-                                    if (!rawMode && !fmp4Mode) {
+                                    // Inject the gyrf track into the moov so
+                                    // Gyroflow reads motion from the MP4 itself.
+                                    // FragmentedMp4Sink now waits for both tracks
+                                    // before writing the first sample, so the
+                                    // mp4parser remux keeps the audio track too.
+                                    boolean embedded = false;
+                                    if (!rawMode) {
                                         try {
                                             List<GyroflowProto.ImuSample> imuSamples =
                                                     finalImu.getSamples();
