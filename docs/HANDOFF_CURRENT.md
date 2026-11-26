@@ -59,7 +59,17 @@
 - ローカル Java テスト22個すべて PASS、CI run `45540847755` green（commit `81765e4`）。★v0.1.32 prerelease 公開（2026-11-25 12:39 JST / 03:39 UTC）: APK sha256 `d3a29742599a8bf02c38cac736ed50fd1555438d5069d162a47b0b32560871d6`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.32
 - ★実機がオフライン（2026-11-25 時点で sc-52b は 1h 前まで、ping 不通）のため実機録画検証は不可。APK は prerelease で公開済み、ユーザーが検証する。実機が戻ったら v0.1.32 を導入して音声を聴き、`ffprobe -select_streams a` で 48kHz/mono かつ連続した PTS になっていることを確認。
 
-## ★720p60 が撮れていたことを実証（2026-11-26 22:0x JST）
+## ★★全画質の保存・再生確認（2026-11-26 22:2x JST）— v2 リリースは保留
+- ユーザー指示「全画質でビデオ、音声、ジャイロが完璧に保存、再生されていることを確認して。完璧なら v2 を正式リリースして」。
+- 解析結果:
+  - **720p60** `VID_20261126_190935.mp4`: video(hevc 1280x720 59.409fps) + audio(aac 587 frames) + data(gyrf)。`gyro2bb --dump` → `Detected camera: XREAL 1S`。**完璧**。
+  - **1600p30** `VID_20261126_191604.mp4`: video(1600x1200 29.85fps) + audio(aac) + data(gyrf)。Gyroflow detect OK。**完璧**。
+  - **1600p60** `VID_20261126_215545.mp4`（v0.1.42）: video(1600x1200 59.3fps) + audio(aac)。**gyrf は無し**（v0.1.42 で注入をやめ gcsv サイドカーにしたため）。MP4 単体では Gyroflow detect 不可、gcsv を隣に置けば読める（過去実証済み）。
+  - **720p30** `VID_20261126_190105.mp4`: video(1280x720 59.409fps!?) + data(gyrf) のみ、**audio 無し**。修正前ファイル。
+- 新規撮影の試み: prefs を `1280 720 60` / `1600 1200 30` に書き換えて start したが、`TCP camera start failed: Unexpected TCP camera acknowledgement` / `videoSamples=0 failed=true`。**グラス側のモードが 1600p60 に固定されとり、prefs 書き換えでは Start が通らん**。UI 経由の本体モード切替（再起動を伴う）が要る。
+- **結論: 「全画質完璧」は確認できていない**。720p30 の音声と 1600p60 の gyrf が未達/未確認。→ **v2 正式リリースは保留**。ユーザーに状況を報告する。
+
+## 旧・720p60 が撮れていたことを実証（2026-11-26 22:0x JST）
 - ユーザーが「アプリのデータを削除したりキャッシュを削除してたら 720p60 が撮れてた。生データも保存してるはず」と報告。
 - 実機 DCIM を確認: `VID_20261126_190505/190549/190624/190921/190935/191136/191153.mp4` は全部 **1280x720 / 59.409 fps**（60fps NTSC相当）。旧 HANDOFF の「720p60 はカメラが Start を拒否して不可」という結論は誤りだった（prefs 初期化でモード設定が変わり Start が通った模様）。
 - `VID_20261126_190935.mp4` は video(hevc 1280x720) + audio(aac 587 frames) + data(gyrf) の3トラック。
