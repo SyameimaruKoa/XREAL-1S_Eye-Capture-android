@@ -38,6 +38,7 @@ import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.CompoundButton;
 import android.widget.FrameLayout;
+import android.widget.Toast;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -629,6 +630,22 @@ public class MainActivity extends Activity {
         findDevice();
         pollStatus();
         startTelemetry();
+    }
+
+    @Override
+    @Deprecated
+    public void onBackPressed() {
+        // Closing the activity while the recorded file is still being finalized
+        // can leave the MP4 truncated. Keep the app in the foreground and warn.
+        if (RecordService.isStopping()) {
+            Toast.makeText(this, "保存処理中です。完了までアプリを閉じないでください", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (RecordService.isRecordingOrStarting()) {
+            Toast.makeText(this, "録画中です。先に録画を停止してください", Toast.LENGTH_LONG).show();
+            return;
+        }
+        super.onBackPressed();
     }
 
     @Override

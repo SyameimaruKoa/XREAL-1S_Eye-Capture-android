@@ -1034,6 +1034,31 @@ public final class RecordService extends Service {
     }
 
     @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        // Swiping the app away while the file is still being finalized can
+        // leave the recording truncated. Surface a warning; do not kill the
+        // worker thread here so the in-progress save can still finish.
+        if (isStopping()) {
+            try {
+                NotificationManager nm = (NotificationManager)
+                        getSystemService(Context.NOTIFICATION_SERVICE);
+                if (nm != null) {
+                    Notification.Builder b = new Notification.Builder(this, CHANNEL_ID)
+                            .setSmallIcon(android.R.drawable.stat_sys_warning)
+                            .setContentTitle("保存処理中です")
+                            .setContentText("アプリを閉じないでください。録画ファイルの保存が完了していません")
+                            .setOngoing(false)
+                            .setAutoCancel(true);
+                    nm.notify(NOTIFICATION_ID + 1, b.build());
+                }
+            } catch (Throwable ignored) {
+            }
+            Log.w(TAG, "app swiped away while saving; warning shown");
+        }
+        super.onTaskRemoved(rootIntent);
+    }
+
+    @Override
     public void onDestroy() {
         destroyed = true;
         displayHandler.removeCallbacksAndMessages(null);
