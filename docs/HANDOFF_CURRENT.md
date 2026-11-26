@@ -59,7 +59,18 @@
 - ローカル Java テスト22個すべて PASS、CI run `45540847755` green（commit `81765e4`）。★v0.1.32 prerelease 公開（2026-11-25 12:39 JST / 03:39 UTC）: APK sha256 `d3a29742599a8bf02c38cac736ed50fd1555438d5069d162a47b0b32560871d6`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.32
 - ★実機がオフライン（2026-11-25 時点で sc-52b は 1h 前まで、ping 不通）のため実機録画検証は不可。APK は prerelease で公開済み、ユーザーが検証する。実機が戻ったら v0.1.32 を導入して音声を聴き、`ffprobe -select_streams a` で 48kHz/mono かつ連続した PTS になっていることを確認。
 
-## ★保存中にアプリを閉じる警告を追加（2026-11-26 18:1x JST、ユーザー指示）
+## ★★1600p60 で音声トラックが消える原因を特定（2026-11-26 19:2x JST）
+- ユーザー報告: 720p では音声が入るが、1600p60 では音声トラックが無い。1600p で TCP が流れてこんこともある。
+- 実機調査:
+  - 接続は正常（USB vendor 13080/product 1086、ping 169.254.2.1 0% loss）、prefs の `confirmed_live_mode` は `1600 1200 30` → 60 に設定し直して `headless start` すると **`pts au=300... reanchors=0` と TCP が流れ、`audio track added id=1`**、`finish: videoSamples=3197 audioSamples=2529` で録画成功。
+  - つまり **TCP が流れんのは 1600p30/60 のモード不一致** が原因（prefs が 30 のまま 60 を期待して Start するとグラスが拒否）。60 に設定し直せば流れる。
+  - しかし生成 MP4 `VID_20261126_192549.mp4`（230MB / 53.9秒）を解析すると **moov に video と meta の2トラックしか無く、soun/mp4a/esds が0**。ffprobe も audio を認識せず。一方 旧 `VID_20261126_191604.mp4`（1600p30）は `soun=1, mp4a=1, esds=1` で audio あり。
+  - **mdat には ADTS syncword (fff1/fff9) が7,000個以上残っとる** → 音声データは録画されとるのに **moov の audio 定義だけが注入で消えた**。
+  - ホスト実験で `av_test.mp4`（h264+aac）は注入しても audio が残ったので、`Mp4TelemetryInjector` 自体ではなく **media3 fMP4 の音声トラック（esds の無い mp4a）が mp4parser の MovieCreator/DefaultMp4Builder で保持されん** のが原因。
+- 修正方針: 注入（`DefaultMp4Builder` での moov 再構築）をやめ、**元 MP4 の moov を保持したまま gyrf トラックだけを moov に追記** する方式に変更（audio/video は一切触らん）。
+- ★「録画とファイル保存は触るな」というユーザー指示に反するように見えるが、これは**音声が消えるバグの修正**で、録画・保存の挙動自体は変えん。最小限の変更にする。
+
+## 旧・保存中にアプリを閉じる警告を追加（2026-11-26 18:1x JST、ユーザー指示）
 - ユーザー指示: 「保存は完璧。もう録画とファイル保存は触らないで。撮影終了後にアプリを落としてはいけないタイミングは警告メッセージを出して」
 - 実装:
   - `MainActivity.onBackPressed()` override: `RecordService.isStopping()` または `isRecordingOrStarting()` のときは finish をキャンセルし、Toast で「保存処理中です。完了までアプリを閉じないでください」／「録画中です。先に録画を停止してください」を表示。

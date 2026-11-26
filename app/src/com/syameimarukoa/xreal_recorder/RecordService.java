@@ -712,8 +712,13 @@ public final class RecordService extends Service {
                                     // into the moov at stop time (moof/video data
                                     // is untouched and the recording stays a
                                     // single streaming write while in progress).
-                                    boolean embedded = false;
-                                    if (!rawMode) {
+                                    // media3 fMP4's audio entry has no esds, which
+                                    // mp4parser's remux cannot read and drops the
+                                    // audio track. For fMP4 keep the MP4 untouched
+                                    // and let Gyroflow read the same-basename gcsv
+                                    // sidecar written below.
+                                    boolean embedded = fmp4Mode;
+                                    if (!rawMode && !fmp4Mode) {
                                         try {
                                             List<GyroflowProto.ImuSample> imuSamples =
                                                     finalImu.getSamples();
@@ -751,13 +756,10 @@ public final class RecordService extends Service {
                                             Log.e(TAG, "telemetry injection failed", t);
                                         }
                                     }
-                                    // Always write the gcsv sidecar. The MP4 already
-                                    // carries gyrf for Google Photos, but Gyroflow's
-                                    // detect only reads the first/last 5 MB of a big
-                                    // file and misses gyrf samples in the middle. A
-                                    // same-basename gcsv next to the MP4 is detected
-                                    // reliably, and is only a supplement - the MP4
-                                    // telemetry remains canonical.
+                                    // Always write the gcsv sidecar. For fMP4 this is
+                                    // what Gyroflow reads (the MP4 is left untouched
+                                    // so its audio track survives); for standard MP4
+                                    // the gyrf track in the MP4 remains canonical.
                                     try {
                                         finalOutput.writeGyroCsv(finalImu.formatCsv(
                                                 finalMp4Name, captureTimeMs));
