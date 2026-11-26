@@ -59,7 +59,17 @@
 - ローカル Java テスト22個すべて PASS、CI run `45540847755` green（commit `81765e4`）。★v0.1.32 prerelease 公開（2026-11-25 12:39 JST / 03:39 UTC）: APK sha256 `d3a29742599a8bf02c38cac736ed50fd1555438d5069d162a47b0b32560871d6`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.32
 - ★実機がオフライン（2026-11-25 時点で sc-52b は 1h 前まで、ping 不通）のため実機録画検証は不可。APK は prerelease で公開済み、ユーザーが検証する。実機が戻ったら v0.1.32 を導入して音声を聴き、`ffprobe -select_streams a` で 48kHz/mono かつ連続した PTS になっていることを確認。
 
-## ★★1600p60 で音声トラックが消える原因を特定（2026-11-26 19:2x JST）
+## ★★★1600p60 の音声消失は fps 依存と確定（2026-11-26 21:2x JST）
+- 注入をやめた v0.1.41（`embedded = fmp4Mode` に戻し、gcsv を Gyroflow 用に書く）でも **1600p60 で audio が消えた**。→ 注入が原因ではない。
+- 切り分け結果:
+  - 720p30（8秒）: audio あり
+  - 1600p30（19秒）: audio あり、moov 15,976 バイト、soun/mp4a 有り
+  - 1600p60（25秒 / 54秒 / 7分）: **audio 無し**、moov が **750 バイト** しか無く soun/mp4a ゼロ。
+  - ログは `audio track added id=1`、`audioSamples=1100〜19424` と出ており、media3 muxer には音声を書いている。
+- **結論: media3 `FragmentedMp4Muxer` が 60fps のとき moov を不完全なまま（audio トラック定義無し）書く**。30fps では正常。アプリ側の addTrack は成功しとるので、修正には muxer 側の変更が必要 → ユーザーの「録画とファイル保存は触るな」の指示と衝突する。ここで停止して報告する。
+- 試したけど失敗した修正（後戻り済みとは限る）: `Mp4TelemetryInjector.injectWithoutRemux`（gyrf trak 追記）は box が壊れて失敗。esds 追加も ancestor box サイズ更新が難航。現在のコードには `inject()` 呼び出しを戻し、`embedded = fmp4Mode` で注入スキップにしとる（commit `e2a7550`）。
+
+## 旧・1600p60 で音声トラックが消える原因を特定（2026-11-26 19:2x JST）
 - ユーザー報告: 720p では音声が入るが、1600p60 では音声トラックが無い。1600p で TCP が流れてこんこともある。
 - 実機調査:
   - 接続は正常（USB vendor 13080/product 1086、ping 169.254.2.1 0% loss）、prefs の `confirmed_live_mode` は `1600 1200 30` → 60 に設定し直して `headless start` すると **`pts au=300... reanchors=0` と TCP が流れ、`audio track added id=1`**、`finish: videoSamples=3197 audioSamples=2529` で録画成功。
