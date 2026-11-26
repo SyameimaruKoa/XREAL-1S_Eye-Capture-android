@@ -59,7 +59,12 @@
 - ローカル Java テスト22個すべて PASS、CI run `45540847755` green（commit `81765e4`）。★v0.1.32 prerelease 公開（2026-11-25 12:39 JST / 03:39 UTC）: APK sha256 `d3a29742599a8bf02c38cac736ed50fd1555438d5069d162a47b0b32560871d6`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.32
 - ★実機がオフライン（2026-11-25 時点で sc-52b は 1h 前まで、ping 不通）のため実機録画検証は不可。APK は prerelease で公開済み、ユーザーが検証する。実機が戻ったら v0.1.32 を導入して音声を聴き、`ffprobe -select_streams a` で 48kHz/mono かつ連続した PTS になっていることを確認。
 
-## ★★★1600p60 の音声消失は fps 依存と確定（2026-11-26 21:2x JST）
+## ★★★★media3 moov 生成のタイミングを修正（2026-11-26 21:3x JST、ユーザーが「1」を選択）
+- `FragmentedMp4Writer.createHeader()` を disassemble して確認: **最初の `writeSampleData()` 時に moov を確定**し、その時点の `tracks` しか書かん。60fps では video の AU が audio より先に来て、その時点で audio track が無い → moov に audio が入らん。30fps では audio が先に来るので正常。
+- 修正（`FragmentedMp4Sink`）: `flushPendingIfReady()` で audio track が来るまで video を保留（video 単独で moov を確定させない）。`startVideoOnly()` に実装を入れ、マイクが無い場合は video を flush して video-only MP4 にする。
+- 次: CI → v0.1.42 → 実機 1600p60 で音声トラックが残るか確認。
+
+## 旧・1600p60 の音声消失は fps 依存と確定（2026-11-26 21:2x JST）
 - 注入をやめた v0.1.41（`embedded = fmp4Mode` に戻し、gcsv を Gyroflow 用に書く）でも **1600p60 で audio が消えた**。→ 注入が原因ではない。
 - 切り分け結果:
   - 720p30（8秒）: audio あり

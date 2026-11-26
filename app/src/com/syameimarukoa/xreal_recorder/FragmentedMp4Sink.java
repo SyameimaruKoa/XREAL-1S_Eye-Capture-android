@@ -101,13 +101,11 @@ final class FragmentedMp4Sink implements RecordingMuxer {
             if (tracksReady || videoTrack < 0) {
                 return;
             }
-            // Audio may never arrive (no microphone, replay). Flush video anyway.
+            // Keep both tracks pending until audio arrives: media3 writes the
+            // moov on the first sample, so if video alone is written first the
+            // audio track is missing from the moov forever (seen at 60 fps).
+            // startVideoOnly() below flushes video when no microphone exists.
             if (audioTrack < 0) {
-                tracksReady = true;
-                for (Sample s : pendingVideo) {
-                    writeNow(videoTrack, s);
-                }
-                pendingVideo.clear();
                 return;
             }
             tracksReady = true;
@@ -162,7 +160,18 @@ final class FragmentedMp4Sink implements RecordingMuxer {
 
     @Override
     public void startVideoOnly() {
-        // fMP4 has no global start() call; tracks are ready once added.
+        // No microphone: flush video once so the moov contains the video track.
+        synchronized (lock) {
+            if (tracksReady || failed || videoTrack < 0) {
+                return;
+            }
+            tracksReady = true;
+            for (Sample s : pendingVideo) {
+                writeNow(videoTrack, s);
+            }
+            pendingVideo.clear();
+            pendingAudio.clear();
+        }
     }
 
     @Override
