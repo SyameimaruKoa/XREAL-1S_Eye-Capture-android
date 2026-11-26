@@ -59,7 +59,15 @@
 - ローカル Java テスト22個すべて PASS、CI run `45540847755` green（commit `81765e4`）。★v0.1.32 prerelease 公開（2026-11-25 12:39 JST / 03:39 UTC）: APK sha256 `d3a29742599a8bf02c38cac736ed50fd1555438d5069d162a47b0b32560871d6`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.32
 - ★実機がオフライン（2026-11-25 時点で sc-52b は 1h 前まで、ping 不通）のため実機録画検証は不可。APK は prerelease で公開済み、ユーザーが検証する。実機が戻ったら v0.1.32 を導入して音声を聴き、`ffprobe -select_streams a` で 48kHz/mono かつ連続した PTS になっていることを確認。
 
-## ★★★原因は Tailscale table 52 の throw（2026-11-26 22:3x JST）
+## ★★★★720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
+- ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
+- 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。
+- さらに 50180 から `reboot` を送ってグラスを再起動、USB 権限を DPAD DOWN×4+ENTER で再許可。それでも **720p60 の Start は `Unexpected TCP camera acknowledgement` で拒否**。
+- **結論: モード値は 720p60 でも、カメラサービスの内部 stream_type が更新されず Start が拒否される。ハンドジェスチャ/6DoF とは無関係で、グラス側ファームウェアの制約**（HANDOFF 既知の「この FW では 720p60 を再有効化できない」と一致）。ユーザーがデータ削除後に撮れた 720p60 は偶然の状態だった模様。
+- UI に 720p60 を選択肢として復活させた（commit `4aae3bd`、v0.1.44）が、Start 拒否は解消せず。
+- ★現在の v0.1.44 で確認済みの画質: 1600p30 と 1600p60 は video+audio+gyrf 完璧、Gyroflow detect OK（v0.1.43 で実証）。720p60 は未達。
+
+## 旧・原因は Tailscale table 52 の throw（2026-11-26 22:3x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証したが、原因は無関係だった。
 - **`ip route get 169.254.2.1` が `via 192.168.55.1 dev wlan0 table 1013` を返しとった** = Tailscale の table 52 に `throw 169.254.2.0/24` が入っていて USB(eth0) ではなく Wi-Fi 経由にルーティングされ、ping も TCP(50180/52999) も届かんかった。ARP は正しく eth0 を指しとった。
 - 修正: `ip route del throw 169.254.2.0/24 table 52` + `ip route add 169.254.2.0/24 dev eth0 table 52`（IMU の 169.254.1.0/24 も similarly）。`ip route get` が `dev eth0` を返し、ping 0% loss に復帰。これで 1600p30 も撮れるようになった。
