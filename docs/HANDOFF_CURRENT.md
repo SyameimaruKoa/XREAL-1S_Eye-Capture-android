@@ -59,7 +59,15 @@
 - ローカル Java テスト22個すべて PASS、CI run `45540847755` green（commit `81765e4`）。★v0.1.32 prerelease 公開（2026-11-25 12:39 JST / 03:39 UTC）: APK sha256 `d3a29742599a8bf02c38cac736ed50fd1555438d5069d162a47b0b32560871d6`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.32
 - ★実機がオフライン（2026-11-25 時点で sc-52b は 1h 前まで、ping 不通）のため実機録画検証は不可。APK は prerelease で公開済み、ユーザーが検証する。実機が戻ったら v0.1.32 を導入して音声を聴き、`ffprobe -select_streams a` で 48kHz/mono かつ連続した PTS になっていることを確認。
 
-## ★Gyroflow がジャイロを読まん原因を特定（2026-11-25 20:1x JST）
+## ★保存中にアプリを閉じる警告を追加（2026-11-26 18:1x JST、ユーザー指示）
+- ユーザー指示: 「保存は完璧。もう録画とファイル保存は触らないで。撮影終了後にアプリを落としてはいけないタイミングは警告メッセージを出して」
+- 実装:
+  - `MainActivity.onBackPressed()` override: `RecordService.isStopping()` または `isRecordingOrStarting()` のときは finish をキャンセルし、Toast で「保存処理中です。完了までアプリを閉じないでください」／「録画中です。先に録画を停止してください」を表示。
+  - `RecordService.onTaskRemoved()`: 最近のアプリからスワイプされた時に保存中なら通知で警告（保存処理自体は kill せず継続）。
+  - 録画・ファイル保存のロジックは一切変更していない。
+- ローカル22テスト PASS、CI `45789655136` green（commit `104542c`）。★v0.1.40 prerelease 公開: APK sha256 `887a7dad9d868889d369bb8c2d2d69f40ac4e1a3a7b3ff57bacfcf3d1b5670dd`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.40
+
+## 旧・Gyroflow がジャイロを読まん原因を特定（2026-11-25 20:1x JST）
 - ユーザーが v0.1.36 で確認: Gallery/Photos のサムネ・再生は正常、しかし Gyroflow でジャイロが居ない。
 - telemetry-parser をビルドして `gyro2bb --dump` で解析:
   - ホスト注入の `injected.mp4`（21MB）: `Detected camera: XREAL 1S`、ジャイロ/加速度データ正常。
