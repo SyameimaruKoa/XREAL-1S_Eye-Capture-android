@@ -118,6 +118,10 @@
 - ★★★**実機で公式ツールを実行して成功**（14:58 JST）: バイナリを `/data/local/tmp/` に push、`test.jsonl` と `VID_20261127_141022.mp4` を渡して `/data/local/tmp/out.mp4` を生成。pull して ffprobe → **audio(aac) + video(hevc 2048x1512) + data(bin_data=gyrf)**、`gyro2bb --dump` → `Detected camera: XREAL 1S`。AAC は stream-copy で再エンコードなし。
 - ユーザーから「実機が空いたので使用してよい」と許可あり。作業終了時は `lockctl lock --no-brightness` を忘れん。
 - ★次はこのバイナリを APK に同梱し、停止時の gyrf 注入を自作 mp4parser から公式 ffmpeg ツールに差し替える。
+- v0.1.50 で assets の実行ファイルを `filesDir` に展開して実行したが **`error=13 Permission denied`**（Android の filesDir/assets は noexec）。v0.1.51 で箱の初期化漏れを直したが同じく noexec。
+- ★対策: Rust を **cdylib (`libgyroflow_inject.so`)** にして JNI エントリ `Java_com_syameimarukoa_xreal_recorder_GyroflowInjector_inject` を追加。`.so` を `app/src/main/jniLibs/arm64-v8a/` に置き、`scripts/build.ps1` の `jar uf` で APK の `lib/arm64-v8a/` に入れる。Android はここを実行可能な `nativeLibraryDir` に展開するので noexec を回避できる（commit `479155d`）。
+- **波形は削除も故障もしていなかった**: v0.1.51 の TCP 720p30 録画中（15:11）の screencap で REC 下の波形に緑のバーが出とる。13:48 の UVC 画面でバーが無かったのは muxer NPE で音声が来んかったため。
+- ユーザーから「実機が空いたので使用してよい」と許可あり。作業終了時は `lockctl lock --no-brightness` を忘れん。
 
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。

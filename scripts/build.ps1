@@ -164,11 +164,15 @@ foreach ($d in $dexFiles) { $jarArgs += @("-C", (Join-Path $build "dex"), $d.Nam
 # executable app-nativeLibraryDir (filesDir/assets are mounted noexec).
 $jniRoot = Join-Path $root "app\src\main\jniLibs"
 if (Test-Path $jniRoot) {
+    $nativeStage = Join-Path $build "native"
     foreach ($abi in @("arm64-v8a", "armeabi-v7a", "x86_64", "x86")) {
         $abiDir = Join-Path $jniRoot $abi
         if (Test-Path $abiDir) {
+            $stageDir = Join-Path $nativeStage "lib\$abi"
+            New-Item -ItemType Directory -Force $stageDir | Out-Null
             foreach ($so in Get-ChildItem $abiDir -Filter *.so) {
-                $jarArgs += @("-C", $jniRoot, "$abi/$($so.Name)")
+                Copy-Item $so.FullName (Join-Path $stageDir $so.Name) -Force
+                $jarArgs += @("-C", $nativeStage, "lib/$abi/$($so.Name)")
             }
         }
     }
