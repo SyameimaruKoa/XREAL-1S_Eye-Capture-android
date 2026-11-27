@@ -1011,14 +1011,19 @@ public final class RecordService extends Service {
                             if (firstImuTimeUs == 0) {
                                 firstImuTimeUs = fresh.get(0).timeUs;
                             }
-                            double startUs = fresh.get(0).timeUs - firstImuTimeUs;
-                            double endUs = fresh.get(fresh.size() - 1).timeUs - firstImuTimeUs;
+                            List<GyroflowProto.ImuSample> shifted =
+                                    new ArrayList<>(fresh.size());
+                            for (GyroflowProto.ImuSample s : fresh) {
+                                shifted.add(s.shifted(firstImuTimeUs));
+                            }
+                            double startUs = shifted.get(0).timeUs;
+                            double endUs = shifted.get(shifted.size() - 1).timeUs;
                             int w = activeVideoSource != null
                                     ? activeVideoSource.getWidth() : 1280;
                             int h = activeVideoSource != null
                                     ? activeVideoSource.getHeight() : 720;
                             byte[] frame = GyroflowProto.frame(++gyrfFrameNumber,
-                                    startUs, endUs, fresh, w, h);
+                                    startUs, endUs, shifted, w, h);
                             byte[] header = gyrfFrameNumber == 1
                                     ? GyroflowProto.header(w, h, 60f, 0L, 1000, "xYz") : null;
                             ((StreamingMuxSink) muxer).writeGyrf(
