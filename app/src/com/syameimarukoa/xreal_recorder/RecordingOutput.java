@@ -284,7 +284,7 @@ final class RecordingOutput {
             // Append a gyrf trak to a copy of the original moov instead of
             // remuxing with mp4parser: remux reads every sample and breaks when
             // the audio sample list does not match the video duration table.
-            Mp4TelemetryInjector.injectWithoutRemux(context, source, result,
+            Mp4TelemetryInjector.injectWithFfmpeg(context, source, result,
                     width, height, fps, durationUs, imuRateHz, orientation,
                     samples, firstImuTimeUs);
             try (FileInputStream injected = new FileInputStream(result);

@@ -322,6 +322,81 @@ final class Mp4TelemetryInjector {
         appendGyrfHeaderAtEnd(output);
     }
 
+    /** Mux gyrf with the official Gyroflow tool (ffmpeg-next / libavformat). */
+    static void injectWithFfmpeg(Context context, File input, File output,
+            int width, int height, float fps, long durationUs, int imuRateHz,
+            String orientation, List<GyroflowProto.ImuSample> samples,
+            long firstImuTimeUs) throws Exception {
+        File binary = ensureBinary(context);
+        Movie movie = MovieCreator.build(input.getAbsolutePath());
+        Track video = null;
+        for (Track track : movie.getTracks()) {
+            if ("vide".equals(track.getHandler())) { video = track; break; }
+        }
+        if (video == null) {
+            throw new IOException("no video track in recording");
+        }
+        long timescale = video.getTrackMetaData().getTimescale();
+        long[] durations = video.getSampleDurations();
+        if (durations.length == 0) {
+            throw new IOException("empty video track");
+        }
+        List<byte[]> payloads = buildGyrfSamples(width, height, fps, durationUs,
+                imuRateHz, orientation, samples, firstImuTimeUs, timescale, durations);
+        File dir = new File(context.getCacheDir(), "gyrf_frames");
+        deleteRecursively(dir);
+        if (!dir.mkdirs()) {
+            throw new IOException("cannot create gyrf frame directory");
+        }
+        try {
+            for (int i = 0; i < payloads.size(); i++) {
+                writeAll(new File(dir, String.format(java.util.Locale.US,
+                        "frame_%06d.bin", i + 1)), payloads.get(i));
+            }
+            ProcessBuilder pb = new ProcessBuilder(binary.getAbsolutePath(),
+                    dir.getAbsolutePath(), "-v", input.getAbsolutePath(),
+                    "-o", output.getAbsolutePath());
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            byte[] buffer = new byte[4096];
+            while (process.getInputStream().read(buffer) >= 0) { }
+            int code = process.waitFor();
+            if (code != 0) {
+                throw new IOException("gyroflow_proto_inject failed: " + code);
+            }
+        } finally {
+            deleteRecursively(dir);
+        }
+    }
+
+    private static File ensureBinary(Context context) throws IOException {
+        File binary = new File(context.getFilesDir(), "gyroflow_proto_inject");
+        if (!binary.exists() || binary.length() != 17907592L) {
+            try (InputStream in = context.getAssets().open("gyroflow_proto_inject");
+                 FileOutputStream out = new FileOutputStream(binary)) {
+                byte[] buffer = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(buffer)) >= 0) {
+                    out.write(buffer, 0, n);
+                }
+            }
+            if (!binary.setExecutable(true)) {
+                throw new IOException("cannot make gyroflow_proto_inject executable");
+            }
+        }
+        return binary;
+    }
+
+    private static void deleteRecursively(File file) {
+        File[] children = file.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                deleteRecursively(child);
+            }
+        }
+        file.delete();
+    }
+
     private static byte[] readAll(File f) throws IOException {
         try (java.io.FileInputStream in = new java.io.FileInputStream(f);
              java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
