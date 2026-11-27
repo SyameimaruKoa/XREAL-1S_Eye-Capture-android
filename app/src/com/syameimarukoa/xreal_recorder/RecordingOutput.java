@@ -31,7 +31,7 @@ final class RecordingOutput {
     private final boolean pendingMedia;
     private final String filename;
     private final Uri tree;
-    private RawStreamSink rawSink;
+    private RecordingMuxer rawSink;
     private android.os.ParcelFileDescriptor parcelFd;
     private boolean completed;
 
