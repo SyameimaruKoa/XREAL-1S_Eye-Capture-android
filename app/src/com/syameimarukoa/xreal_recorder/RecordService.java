@@ -582,10 +582,8 @@ public final class RecordService extends Service {
         if (!rawMode) {
             output = RecordingOutput.create(this, outputTree, captureTimeMs);
             mp4Name = output.getFilename();
-            // fMP4: media3's FragmentedMp4Sink writes a complete head moov
-            // (stsd/stss/stts) that Gallery and Google Photos can read. The
-            // custom streaming muxer left the head stbl empty, so those apps
-            // showed no thumbnail, no duration and could not play the file.
+            // Raw HEVC/AAC are staged; FFmpeg writes the final fragmented MP4
+            // with gyrf at stop time. media3's muxer is no longer needed.
             muxer = fmp4Mode ? output.openFragmentedMuxer()
                     : output.openMuxer();
         } else {
@@ -714,9 +712,8 @@ public final class RecordService extends Service {
                                     // single streaming write while in progress).
                                     // Inject the gyrf track into the moov so
                                     // Gyroflow reads motion from the MP4 itself.
-                                    // FragmentedMp4Sink now waits for both tracks
-                                    // before writing the first sample, so the
-                                    // mp4parser remux keeps the audio track too.
+                                    // FFmpeg muxes audio, video and gyrf into
+                                    // one fragmented MP4 at stop time.
                                     boolean embedded = false;
                                     if (!rawMode) {
                                         try {

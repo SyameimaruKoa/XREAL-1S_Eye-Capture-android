@@ -10,4 +10,6 @@ final class GyroflowInjector {
     }
 
     static native boolean inject(String telemetryDir, String video, String output);
+
+    static native boolean muxRaw(String hevc, String aac, String telemetryDir, String output);
 }

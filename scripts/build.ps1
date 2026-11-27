@@ -29,20 +29,8 @@ $libJars = @()
 $resZips = @()
 $libPackages = @()
 
-# media3 muxer dependencies (fetched at build time, not checked in).
-foreach ($name in @('media3-muxer', 'media3-common', 'media3-container')) {
-    $aar = Join-Path $mediaDir "$name.aar"
-    $jar = Join-Path $build "libs\$name.jar"
-    if (-not (Test-Path $aar)) { throw "Missing media3 library: $aar" }
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $zip = [System.IO.Compression.ZipFile]::OpenRead($aar)
-    $entry = $zip.Entries | Where-Object { $_.FullName -eq 'classes.jar' }
-    if ($null -eq $entry) { $zip.Dispose(); throw "No classes.jar in $aar" }
-    [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $jar, $true)
-    $zip.Dispose()
-    $libJars += $jar
-}
-foreach ($name in @('annotation', 'guava', 'isoparser', 'muxer', 'slf4j-api', 'aspectjrt')) {
+# media3 muxer removed: FFmpeg (libgyroflow_inject.so) writes the container.
+foreach ($name in @('annotation', 'guava', 'isoparser', 'slf4j-api', 'aspectjrt')) {
     $jar = Join-Path $mediaDir "$name.jar"
     if (Test-Path $jar) { $libJars += $jar }
 }

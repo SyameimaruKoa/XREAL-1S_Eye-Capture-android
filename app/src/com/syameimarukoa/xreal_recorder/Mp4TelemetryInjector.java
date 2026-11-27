@@ -322,33 +322,17 @@ final class Mp4TelemetryInjector {
         appendGyrfHeaderAtEnd(output);
     }
 
-    /** Mux gyrf with the official Gyroflow tool (ffmpeg-next / libavformat). */
-    static void injectWithFfmpeg(Context context, File input, File output,
+    /** Mux raw HEVC + ADTS AAC + gyrf with the official Gyroflow ffmpeg tool. */
+    static void injectWithFfmpeg(Context context, File hevc, File aac, File output,
             int width, int height, float fps, long durationUs, int imuRateHz,
             String orientation, List<GyroflowProto.ImuSample> samples,
             long firstImuTimeUs) throws Exception {
-        if (context != null && PropertyBoxParserImpl.BOX_MAP_CACHE == null) {
-            Properties mapping = new Properties();
-            try (InputStream stream = context.getAssets().open("isoparser2-default.properties")) {
-                mapping.load(stream);
-            }
-            PropertyBoxParserImpl.BOX_MAP_CACHE = mapping;
-        }
-        Movie movie = MovieCreator.build(input.getAbsolutePath());
-        Track video = null;
-        for (Track track : movie.getTracks()) {
-            if ("vide".equals(track.getHandler())) { video = track; break; }
-        }
-        if (video == null) {
-            throw new IOException("no video track in recording");
-        }
-        long timescale = video.getTrackMetaData().getTimescale();
-        long[] durations = video.getSampleDurations();
-        if (durations.length == 0) {
-            throw new IOException("empty video track");
-        }
+        int frames = Math.max(1, Math.round(durationUs * fps / 1_000_000.0));
+        long step = Math.max(1L, Math.round(1_000_000.0 / fps));
+        long[] durations = new long[frames];
+        java.util.Arrays.fill(durations, step);
         List<byte[]> payloads = buildGyrfSamples(width, height, fps, durationUs,
-                imuRateHz, orientation, samples, firstImuTimeUs, timescale, durations);
+                imuRateHz, orientation, samples, firstImuTimeUs, 1_000_000L, durations);
         File dir = new File(context.getCacheDir(), "gyrf_frames");
         deleteRecursively(dir);
         if (!dir.mkdirs()) {
@@ -359,9 +343,10 @@ final class Mp4TelemetryInjector {
                 writeAll(new File(dir, String.format(java.util.Locale.US,
                         "frame_%06d.bin", i + 1)), payloads.get(i));
             }
-            if (!GyroflowInjector.inject(dir.getAbsolutePath(),
-                    input.getAbsolutePath(), output.getAbsolutePath())) {
-                throw new IOException("gyroflow_proto_inject failed");
+            if (!GyroflowInjector.muxRaw(hevc.getAbsolutePath(),
+                    aac.getAbsolutePath(), dir.getAbsolutePath(),
+                    output.getAbsolutePath())) {
+                throw new IOException("gyroflow_proto_inject muxRaw failed");
             }
         } finally {
             deleteRecursively(dir);

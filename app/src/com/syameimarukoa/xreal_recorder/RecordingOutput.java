@@ -31,6 +31,7 @@ final class RecordingOutput {
     private final boolean pendingMedia;
     private final String filename;
     private final Uri tree;
+    private RawStreamSink rawSink;
     private boolean completed;
 
     private RecordingOutput(Context context, ContentResolver resolver, Uri uri,
@@ -149,15 +150,18 @@ final class RecordingOutput {
         return new StreamingMuxerSink(muxer);
     }
 
-    /** Open a fragmented MP4 sink (mode 3). The sink owns and closes the channel. */
-    FragmentedMp4Sink openFragmentedMuxer() throws IOException {
-        java.io.OutputStream stream = resolver.openOutputStream(uri, "rw");
-        if (stream == null) {
-            throw new IOException("Could not open fMP4 in the selected location");
+    /** Record raw HEVC/AAC; the external ffmpeg tool builds the final MP4. */
+    RecordingMuxer openFragmentedMuxer() throws IOException {
+        File hevc = new File(context.getCacheDir(), "xreal_rec.hevc");
+        File aac = new File(context.getCacheDir(), "xreal_rec.aac");
+        if (hevc.exists() && !hevc.delete()) {
+            throw new IOException("Could not clear raw HEVC temp file");
         }
-        java.nio.channels.WritableByteChannel ch =
-                java.nio.channels.Channels.newChannel(stream);
-        return new FragmentedMp4Sink(ch, stream);
+        if (aac.exists() && !aac.delete()) {
+            throw new IOException("Could not clear raw AAC temp file");
+        }
+        rawSink = new RawStreamSink(hevc, aac);
+        return rawSink;
     }
 
     synchronized void complete() throws IOException {
@@ -270,21 +274,13 @@ final class RecordingOutput {
         File source = new File(context.getCacheDir(), "inject_source_" + stamp + ".mp4");
         File result = new File(context.getCacheDir(), "inject_result_" + stamp + ".mp4");
         try {
-            try (InputStream original = resolver.openInputStream(uri);
-                 FileOutputStream copy = new FileOutputStream(source)) {
-                if (original == null) {
-                    throw new IOException("Could not read recording MP4");
-                }
-                byte[] buffer = new byte[64 * 1024];
-                int count;
-                while ((count = original.read(buffer)) >= 0) {
-                    copy.write(buffer, 0, count);
-                }
+            if (rawSink == null) {
+                throw new IOException("raw recording stream is missing");
             }
-            // Append a gyrf trak to a copy of the original moov instead of
-            // remuxing with mp4parser: remux reads every sample and breaks when
-            // the audio sample list does not match the video duration table.
-            Mp4TelemetryInjector.injectWithFfmpeg(context, source, result,
+            // FFmpeg writes the whole fragmented MP4 from raw HEVC/AAC + gyrf,
+            // so media3's muxer (and its extra AAR) is no longer needed.
+            Mp4TelemetryInjector.injectWithFfmpeg(context,
+                    rawSink.hevcFile(), rawSink.aacFile(), result,
                     width, height, fps, durationUs, imuRateHz, orientation,
                     samples, firstImuTimeUs);
             try (FileInputStream injected = new FileInputStream(result);
