@@ -264,10 +264,7 @@ final class RecordingOutput {
     }
 
     /**
-     * Embeds Gyroflow telemetry into the recorded MP4. SAF tree outputs are left
-     * untouched and keep the .gcsv sidecar. The MP4 must be staged in the app
-     * cache because mp4parser reads samples lazily while writing the container.
-     */
+    /** Append gyrf to the MP4 already written to the uri; no second copy. */
     boolean injectTelemetry(int width, int height, float fps, long durationUs,
                             int imuRateHz, String orientation,
                             List<GyroflowProto.ImuSample> samples, long firstImuTimeUs)
@@ -275,41 +272,17 @@ final class RecordingOutput {
         if (tree != null) {
             return false;
         }
+        if (!(rawSink instanceof StreamingMuxSink)) {
+            return false;
+        }
+        StreamingMuxSink sink = (StreamingMuxSink) rawSink;
         try {
-            if (!(rawSink instanceof StreamingMuxSink)) {
-                throw new IOException("streaming mux sink is missing");
-            }
-            // Append gyrf to the same MP4 and finish it. One continuous write,
-            // no second file, no second copy to storage.
-            StreamingMuxSink streamSink = (StreamingMuxSink) rawSink;
-            Mp4TelemetryInjector.appendGyrf(streamSink, width, height, fps,
+            Mp4TelemetryInjector.appendGyrf(sink, width, height, fps,
                     durationUs, imuRateHz, orientation, samples, firstImuTimeUs);
- catch (Exception e) {
-                // Restore the original from the copy if the rewrite failed midway.
-                // Without this the recording would be left truncated like a
-                // partial fMP4 write.
-                try (FileInputStream backup = new FileInputStream(source);
-                     OutputStream restore = resolver.openOutputStream(uri, "w")) {
-                    if (restore != null) {
-                        byte[] buffer = new byte[64 * 1024];
-                        int count;
-                        while ((count = backup.read(buffer)) >= 0) {
-                            restore.write(buffer, 0, count);
-                        }
-                    }
-                } catch (Exception restoreError) {
-                    e.addSuppressed(restoreError);
-                }
-                throw e;
-            }
             return true;
-        } finally {
-            if (source.exists() && !source.delete()) {
-                source.deleteOnExit();
-            }
-            if (result.exists() && !result.delete()) {
-                result.deleteOnExit();
-            }
+        } catch (Exception e) {
+            sink.discard();
+            return false;
         }
     }
 }
