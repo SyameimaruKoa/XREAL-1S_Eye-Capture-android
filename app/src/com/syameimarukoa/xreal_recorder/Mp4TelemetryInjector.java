@@ -102,3 +102,4 @@ final class Mp4TelemetryInjector {
             out.write(data);
         }
     }
+}
