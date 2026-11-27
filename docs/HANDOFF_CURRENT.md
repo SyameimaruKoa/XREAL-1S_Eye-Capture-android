@@ -138,6 +138,14 @@
 - AAC は MediaCodec 出力を ffmpeg が stream-copy し、再エンコードしない。
 - CI 成功、v0.1.55 公開（sha256 `94492a1f5e3bf9e671358c58e494c6a1a53bad2aa8a34786d14c31a3b9bf7fab`）。**実機禁止中につき未検証**。実機が戻ったら全画質の video/audio/gyrf を再検証する。
 
+## ★★★エミュ（host）で FFmpeg のみの gyrf mux を実証（2026-11-27 16:5x〜17:0x JST）
+- ユーザー指示「XREAL の生データ使ってエミュで試験して」「バイナリを直接書き換えるのは駄目。ffmpeg のみで完結させて」。
+- host の Rust テストで XREAL の生データ（extracted.hevc + test.aac + test.jsonl）を `mux_raw_files()` に渡し、**`gyro2bb --dump` が `Detected camera: XREAL 1S`** を返した。
+- 決め手は **FFmpeg の stream metadata `handler_name = "XREAL IMU"` を設定するだけ**。ffmpeg が BIN_DATA に付ける既定の `GoPro MET` が誤検出の原因じゃった。`patch_gpmd_to_gyrf()` のような出力バイナリの直接書き換えは**完全に撤廃**。
+- v0.1.58 公開（sha256 `07794c55f1a9765ad3e983ec7958a817016b9a4799014a9dd82f2ff56ed0e734`）・実機導入済み。
+- ★実機検証は **グラスの USB が落ちておって不可**: `dumpsys usb` に XREAL (3318:043e) が無く、`eth0` も無い（`ip route get 169.254.2.1` → `dev tailscale0`）。グラスを再接続してもらう必要がある。
+- 画面は `lockctl lock --no-brightness` でロック済み。
+
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
 - 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。
