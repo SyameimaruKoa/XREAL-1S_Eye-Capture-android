@@ -164,6 +164,13 @@
 - 残存する軽微な UI 表示「未変換の録画を復旧: 成功0 / 失敗10」は過去の RAW ファイルの残りで、録画・再生機能には影響しない。
 - ★v2 正式 Release の条件（全画質を現行版で確認）は満たした。ブランチはまだ main にマージしていない。
 
+## ★異常終了耐性の再調査（2026-11-27 19:0x JST、未解決）
+- ユーザー指摘で再確認: 現行 v0.1.58 は録画中に生 HEVC/AAC を cache に書き、停止時に ffmpeg が fMP4 を生成する。**録画中に落ちたら MP4 は無い**。v2 の release notes の「Interrupt しても再生可能」は誤りだった。v2 Release を削除し、main を merge 前 (`90b6ca0`) に force push で戻した。
+- ffmpeg の streaming mux (`movflags=frag_keyframe` / `+empty_moov`) を Rust JNI で実装し host テストで「trailer を書かずに drop」を試したが、**出力は `ftyp` 32 バイトのみで moov も moof も出なかった**（`avio_flush` も効かず）。ffprobe は `moov atom not found`。
+- つまり **ffmpeg の mov muxer は write_trailer まで moov を書かない**。ffmpeg のみで「落ちた瞬間に読める MP4」を作るのは現状の API では不可能と判断。
+- 選択肢: (a) media3 の fMP4（先頭 moov）に戻す / (b) ffmpeg 出力に moov を手で挿入（ユーザーが禁止したバイナリ書き換え）/ (c) 生 HEVC/AAC を外部ストレージに保存して自動復旧し、MP4 は後から生成する。**ユーザーの判断待ち**。
+- Rust の `StreamingMux` 実装は `/tmp/telemetry-parser/bin/gyroflow_proto_inject/lib.rs` に残っている（未反映）。
+
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
 - 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。
