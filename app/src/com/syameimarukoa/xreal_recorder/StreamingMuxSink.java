@@ -126,6 +126,7 @@ final class StreamingMuxSink implements RecordingMuxer {
     private void fail(String message) {
         failed = true;
         error = message;
+        android.util.Log.e("XrealRec", "mux fail: " + message);
     }
 
     @Override
