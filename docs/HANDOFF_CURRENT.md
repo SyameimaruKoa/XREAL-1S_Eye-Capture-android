@@ -2594,3 +2594,9 @@
 - 細かなバグ潰し（2026-11-21 15:0x）:
   - ★「停止処理中...」が UI に残るバグ: `runRecording()` の finally が `status` を戻さず、`stopSelf()` → `onDestroy()` の `t.join(3000)` がタイムアウトすると `recording=false` にならず `pollStatus()` が「停止処理中...」を取得し続けていた。修正: finally で `status="待機中"` に戻し、`recording=false` を `destroyed` 条件なしで確実に設定。fMP4 なので停止処理が途中でもファイルは再生可能なため、データ自体は無伤だった（ユーザー指摘）。
   - HeadlessReceiver の start broadcast が enqueued のまま receiver に届かないことがある（`headless start` ログ無し、stop は効いた）。UI タップは確実に動く。broadcast 経路は未解決。
+
+## ★v2 リリース完了（2026-11-28 02:0x JST）
+- `OptiPlex-3040-MFF_20261125` を `main` に `--no-ff` マージして push（merge commit `75dfb62`）。
+- `v2` を正式 Release（`isPrerelease=false`）。APK sha256 `2bc0b6be1ba3f37816c43ea7ede30f2e4f240b0822ca0a6a0654acdd58720e86`、15,860,195 bytes、versionCode 26 / versionName 2、minSdk 30。
+- URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v2
+- 最終確認: kill 中録画の MP4 で video/audio decode 無エラー、gyrf は gyro2bb が認識、`ftyp+moov+moof+mdat` 構造。
