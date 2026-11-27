@@ -20,10 +20,9 @@ TCP（USB 上の NCM/ECM ネットワーク）経由の HEVC 受信を主経路�
 
 ## アプリID（APPID）アプリケーションID
 
-- v1: `com.syameimarukoa.xreal_recorder`
-- v0.1.x（プレリリース）: `jp.xreal.recorder`
+- 現行（v0.1.x / v2）: `com.syameimarukoa.xreal_recorder`
 
-applicationId が異なるため、v0.1.x と v1 は別アプリとして扱われます。設定や保存済み画質は引き継がれません。
+過去のプレリリースで使われていた `jp.xreal.recorder` は現在のアプリとは別のアプリです。
 
 ## 実測値（TCP HEVC／実機・ffprobe）
 
