@@ -12,6 +12,8 @@ interface RecordingMuxer {
 
     void writeAudio(byte[] data, long ptsUs);
 
+    void writeGyrf(byte[] data, long ptsUs);
+
     void startVideoOnly();
 
     void finish();

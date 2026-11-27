@@ -68,8 +68,8 @@ final class StreamingMuxSink implements RecordingMuxer {
         }
     }
 
-    /** Append one gyrf sample to the same MP4 after recording stops. */
-    void writeGyrf(byte[] data, long ptsUs) {
+    @Override
+    public void writeGyrf(byte[] data, long ptsUs) {
         if (failed || handle == 0) {
             return;
         }

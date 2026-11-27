@@ -93,6 +93,9 @@ public final class RecordService extends Service {
     private static volatile long recordingStartedMs;
     private static volatile String thermalSummary = "";
     private static volatile GlassesImuClient telemetryImuClient;
+    private int gyrfSampleCount;
+    private int gyrfFrameNumber;
+    private double firstImuTimeUs;
     private static volatile String videoLinkMessage = "";
     private static volatile int videoReconnectCount;
     private volatile VideoSource activeVideoSource;
@@ -865,6 +868,9 @@ public final class RecordService extends Service {
             muxer.addVideoTrack(fmt);
         }
         telemetryImuClient = imu;
+        gyrfSampleCount = 0;
+        gyrfFrameNumber = 0;
+        firstImuTimeUs = 0;
         // Reset the UI mirror for the new file; per-file counters live in SessionStats.
         videoFrames = 0;
         videoBytes = 0;
@@ -994,6 +1000,32 @@ public final class RecordService extends Service {
                     if (imuTemp != null) {
                         if (sb.length() > 0) sb.append(" / ");
                         sb.append(String.format(Locale.US, "IMU %.1f℃", imuTemp));
+                    }
+                }
+                if (recording && imu != null && muxer instanceof StreamingMuxSink) {
+                    try {
+                        List<GyroflowProto.ImuSample> all = imu.getSamples();
+                        if (all.size() > gyrfSampleCount) {
+                            List<GyroflowProto.ImuSample> fresh =
+                                    all.subList(gyrfSampleCount, all.size());
+                            if (firstImuTimeUs == 0) {
+                                firstImuTimeUs = fresh.get(0).timeUs;
+                            }
+                            double startUs = fresh.get(0).timeUs - firstImuTimeUs;
+                            double endUs = fresh.get(fresh.size() - 1).timeUs - firstImuTimeUs;
+                            int w = activeVideoSource != null
+                                    ? activeVideoSource.getWidth() : 1280;
+                            int h = activeVideoSource != null
+                                    ? activeVideoSource.getHeight() : 720;
+                            byte[] frame = GyroflowProto.frame(++gyrfFrameNumber,
+                                    startUs, endUs, fresh, w, h);
+                            byte[] header = gyrfFrameNumber == 1
+                                    ? GyroflowProto.header(w, h, 60f, 0L, 1000, "xYz") : null;
+                            ((StreamingMuxSink) muxer).writeGyrf(
+                                    GyroflowProto.main(header, frame), (long) startUs);
+                            gyrfSampleCount = all.size();
+                        }
+                    } catch (Exception ignored) {
                     }
                 }
                 try {

@@ -171,6 +171,10 @@ final class StreamingMuxerSink implements RecordingMuxer {
     }
 
     @Override
+    public void writeGyrf(byte[] data, long ptsUs) {
+    }
+
+    @Override
     public void startVideoOnly() {
     }
 

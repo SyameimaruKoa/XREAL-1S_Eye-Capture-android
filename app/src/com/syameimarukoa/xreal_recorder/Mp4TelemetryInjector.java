@@ -58,20 +58,11 @@ final class Mp4TelemetryInjector {
         }
         return payloads;
     }
-    /** Append gyrf samples to the MP4 being written, then finish it. */
+    /** Finish the MP4; gyrf samples were written incrementally during recording. */
     static void appendGyrf(StreamingMuxSink sink, int width, int height, float fps,
             long durationUs, int imuRateHz, String orientation,
             List<GyroflowProto.ImuSample> samples, long firstImuTimeUs)
             throws Exception {
-        int frames = (int) Math.max(1L, Math.round(durationUs * fps / 1_000_000.0));
-        long step = Math.max(1L, Math.round(1_000_000.0 / fps));
-        long[] durations = new long[frames];
-        java.util.Arrays.fill(durations, step);
-        List<byte[]> payloads = buildGyrfSamples(width, height, fps, durationUs,
-                imuRateHz, orientation, samples, firstImuTimeUs, 1_000_000L, durations);
-        for (int i = 0; i < payloads.size(); i++) {
-            sink.writeGyrf(payloads.get(i), i * step);
-        }
         sink.close();
     }
 
