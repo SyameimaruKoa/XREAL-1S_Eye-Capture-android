@@ -281,8 +281,12 @@ final class RecordingOutput {
                     copy.write(buffer, 0, count);
                 }
             }
-            Mp4TelemetryInjector.inject(context, source, result, width, height, fps,
-                    durationUs, imuRateHz, orientation, samples, firstImuTimeUs);
+            // Append a gyrf trak to a copy of the original moov instead of
+            // remuxing with mp4parser: remux reads every sample and breaks when
+            // the audio sample list does not match the video duration table.
+            Mp4TelemetryInjector.injectWithoutRemux(context, source, result,
+                    width, height, fps, durationUs, imuRateHz, orientation,
+                    samples, firstImuTimeUs);
             try (FileInputStream injected = new FileInputStream(result);
                  OutputStream destination = resolver.openOutputStream(uri, "w")) {
                 if (destination == null) {

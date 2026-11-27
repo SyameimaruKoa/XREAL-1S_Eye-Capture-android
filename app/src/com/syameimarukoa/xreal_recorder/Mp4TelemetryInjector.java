@@ -319,6 +319,7 @@ final class Mp4TelemetryInjector {
         }
         structPutInt(result, tailMoovAbs, (int) loc.size + gyrfTrakLen);
         writeAll(new java.io.File(output.getAbsolutePath()), result);
+        appendGyrfHeaderAtEnd(output);
     }
 
     private static byte[] readAll(File f) throws IOException {
