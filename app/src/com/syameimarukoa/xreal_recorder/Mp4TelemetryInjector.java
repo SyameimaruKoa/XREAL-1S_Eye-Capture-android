@@ -63,6 +63,14 @@ final class Mp4TelemetryInjector {
             long durationUs, int imuRateHz, String orientation,
             List<GyroflowProto.ImuSample> samples, long firstImuTimeUs)
             throws Exception {
+        // Append a final gyrf sample so readers probing the file tail see it.
+        if (!samples.isEmpty()) {
+            double startUs = samples.get(0).shifted(firstImuTimeUs).timeUs;
+            double endUs = samples.get(samples.size() - 1).shifted(firstImuTimeUs).timeUs;
+            byte[] frame = GyroflowProto.frame(Integer.MAX_VALUE, startUs, endUs,
+                    samples, width, height);
+            sink.writeGyrf(GyroflowProto.main(null, frame), (long) startUs);
+        }
         sink.close();
     }
 
