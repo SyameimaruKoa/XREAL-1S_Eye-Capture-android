@@ -123,6 +123,13 @@
 - **波形は削除も故障もしていなかった**: v0.1.51 の TCP 720p30 録画中（15:11）の screencap で REC 下の波形に緑のバーが出とる。13:48 の UVC 画面でバーが無かったのは muxer NPE で音声が来んかったため。
 - ユーザーから「実機が空いたので使用してよい」と許可あり。作業終了時は `lockctl lock --no-brightness` を忘れん。
 
+## ★★★v0.1.54 で公式 Gyroflow muxer の JNI 注入を実機確認（2026-11-27 15:30 JST）
+- 障害と対策の連鎖: assets 実行ファイルは noexec で Permission denied → JNI .so 化 → APK 内パスが `arm64-v8a/...` で展開されん → `lib/arm64-v8a/...` に staging → JNI シンボル名の `_` エスケープ漏れ（`_1` が必要）→ 修正。
+- **実機確認**: `VID_20261127_153028.mp4`（18MB / 12秒、TCP 720p30）。ffprobe → **audio(aac) + video(hevc 1280x720) + data(bin_data=gyrf)**、`gyro2bb --dump` → `Detected camera: XREAL 1S`。AAC は MediaCodec 出力を stream-copy で、FFmpeg では再エンコードしていない。
+- つまり **gyrf 注入は自作 mp4parser をやめて Gyroflow 公式の ffmpeg-next ツールに任せることができた**。APK は 17MB 増（native .so 17MB）。
+- 波形は健在（15:11 の screencap で緑バー確認）。13:48 に出んかったのは muxer 失敗で音声が来んかっただけ。
+- ★残る課題: (1) fMP4 の muxing も ffmpeg に任せる案（Gallery/Photos 互換の moov 構造を維持する必要がある）、(2) バージョンが変わったので全画質の再検証、(3) 画面ロック。
+
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
 - 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。
