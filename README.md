@@ -2,7 +2,7 @@
 
 XREAL 1S（XREAL Eye 搭載グラス）の映像・音声・ジャイロ（IMU）データを、Android 端末単体で録画・記録するためのネイティブアプリです。
 
-&lt;img src=&quot;docs/images/screenshot-main.png&quot; width=&quot;320&quot; alt=&quot;メイン画面（待機中）&quot;&gt;
+​<img src="docs/images/screenshot-main.png" width="320" alt="メイン画面（待機中）">
 
 ## 主な特徴
 
