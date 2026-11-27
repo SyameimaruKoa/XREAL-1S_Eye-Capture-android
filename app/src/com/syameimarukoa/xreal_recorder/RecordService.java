@@ -756,6 +756,37 @@ public final class RecordService extends Service {
                                         } catch (Throwable t) {
                                             Log.e(TAG, "telemetry injection failed", t);
                                         }
+                                    } else if (rawMode && !rawOnly) {
+                                        SessionRegistry.State rawState = sessions.current();
+                                        Session rawSession = rawState.active
+                                                && rawState.session instanceof Session
+                                                ? (Session) rawState.session : null;
+                                        if (rawSession != null && rawSession.hevcFile != null) {
+                                            try {
+                                                List<GyroflowProto.ImuSample> imuSamples =
+                                                        finalImu.getSamples();
+                                                double imuSpanUs = imuSamples.size() > 1
+                                                        ? imuSamples.get(imuSamples.size() - 1).timeUs
+                                                        - imuSamples.get(0).timeUs : 0.0;
+                                                long durationUs = imuSpanUs > 0
+                                                        ? (long) imuSpanUs
+                                                        : (spanNs > 0 ? spanNs / 1000L : 0L);
+                                                File out = new File(dir, finalMp4Name);
+                                                File aacRaw = new File(dir,
+                                                        "xreal_" + ts + ".aac");
+                                                String err = Mp4TelemetryInjector.convertRawToMp4(
+                                                        this, rawSession.hevcFile, aacRaw,
+                                                        videoSource.getWidth(),
+                                                        videoSource.getHeight(),
+                                                        videoSource.getFrameRate(),
+                                                        durationUs, 1000, "xYz", imuSamples,
+                                                        finalImu.getFirstTimestampNs() / 1000L,
+                                                        out);
+                                                Log.i(TAG, "raw convert result=" + err);
+                                            } catch (Throwable t) {
+                                                Log.e(TAG, "raw conversion failed", t);
+                                            }
+                                        }
                                     }
                                     // Always write the gcsv sidecar. For fMP4 this is
                                     // what Gyroflow reads (the MP4 is left untouched
@@ -839,7 +870,7 @@ public final class RecordService extends Service {
 
         audioRef.set(audio);
         Session session = new Session(writer, muxer, audio, imu, gyroSink, hevcOut,
-                new boolean[1], finalStats);
+                hevcFile, new boolean[1], finalStats);
         if (!sessions.install(session, generation)) {
             // A stall retired the state while this session was being built: discard
             // the half-built resources instead of leaving a stale active session.
