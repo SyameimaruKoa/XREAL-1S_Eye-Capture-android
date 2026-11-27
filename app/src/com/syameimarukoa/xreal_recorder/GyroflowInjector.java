@@ -24,5 +24,10 @@ final class GyroflowInjector {
     /** Write the final trailer and release the handle. */
     static native boolean closeMux(long handle);
 
+    /** Returns null on success, otherwise the FFmpeg error text. */
+    static native String openMuxError(String output, String hevc, String aac);
+
+    static native long lastHandle();
+
     static native boolean inject(String telemetryDir, String video, String output);
 }

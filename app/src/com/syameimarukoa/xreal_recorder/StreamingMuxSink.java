@@ -45,10 +45,15 @@ final class StreamingMuxSink implements RecordingMuxer {
             return;
         }
         if (handle == 0) {
-            handle = GyroflowInjector.openMux(output.getAbsolutePath(),
+            String err = GyroflowInjector.openMuxError(output.getAbsolutePath(),
                     hevcSeed.getAbsolutePath(), aacSeed.getAbsolutePath());
-            if (handle == 0) {
-                fail("openMux failed");
+            if (err != null) {
+                fail("openMux failed: " + err);
+            } else {
+                handle = GyroflowInjector.lastHandle();
+                if (handle == 0) {
+                    fail("openMux returned no handle");
+                }
             }
         }
     }
