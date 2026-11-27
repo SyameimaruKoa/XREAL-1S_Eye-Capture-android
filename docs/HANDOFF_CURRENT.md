@@ -171,6 +171,12 @@
 - 選択肢: (a) media3 の fMP4（先頭 moov）に戻す / (b) ffmpeg 出力に moov を手で挿入（ユーザーが禁止したバイナリ書き換え）/ (c) 生 HEVC/AAC を外部ストレージに保存して自動復旧し、MP4 は後から生成する。**ユーザーの判断待ち**。
 - Rust の `StreamingMux` 実装は `/tmp/telemetry-parser/bin/gyroflow_proto_inject/lib.rs` に残っている（未反映）。
 
+## ★ffmpeg 単体の異常終了耐性を再確認（2026-11-27 19:2x JST）
+- ユーザー「ffmpeg だけで作れないの？」→ **作れる**。CLI で生 HEVC/AAC を stream-copy し `-movflags +empty_moov` で書いて `kill -9` しても、`ftyp + moov + moof + mdat + mfra` が残り ffprobe が video/audio を読めた。
+- 我々の JNI `StreamingMux` は `moov` は先頭に出るが `moof/mdat` が出ない（サンプルがファイルに届かない）。demuxer 由来 codecpar／time_base／`+empty_moov`／`Packet::write` と `write_interleaved`／`avio_flush`／`av_interleaved_write_frame(NULL)` を試したが未解決。CLI との差はまだ特定できていない。
+- **端末負荷**: 「1 秒ごとに全生データから fMP4 を作り直す」方式は毎回 O(n) で全体 O(n²) になり実用的でない。CLI を 1 プロセス常駐させて FIFO で HEVC/AAC/gyrf を流す方式、または JNI の moof flush 修正が候補。
+- 前回の v2 取りやめ・main 戻しは維持。作業は `OptiPlex-3040-MFF_20261125` で継続中。
+
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
 - 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。
