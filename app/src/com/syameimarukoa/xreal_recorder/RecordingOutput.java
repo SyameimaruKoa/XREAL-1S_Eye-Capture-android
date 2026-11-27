@@ -150,18 +150,47 @@ final class RecordingOutput {
         return new StreamingMuxerSink(muxer);
     }
 
-    /** Record raw HEVC/AAC; the external ffmpeg tool builds the final MP4. */
+    /** Stream raw HEVC/AAC into a resident ffmpeg CLI writing a fragmented MP4. */
     RecordingMuxer openFragmentedMuxer() throws IOException {
-        File hevc = new File(context.getCacheDir(), "xreal_rec.hevc");
-        File aac = new File(context.getCacheDir(), "xreal_rec.aac");
-        if (hevc.exists() && !hevc.delete()) {
-            throw new IOException("Could not clear raw HEVC temp file");
+        File ffmpeg = ensureFfmpeg();
+        File hevcFifo = new File(context.getCacheDir(), "xreal_hevc.fifo");
+        File aacFifo = new File(context.getCacheDir(), "xreal_aac.fifo");
+        File out = new File(context.getCacheDir(), "xreal_stream.mp4");
+        for (File f : new File[]{hevcFifo, aacFifo, out}) {
+            if (f.exists() && !f.delete()) {
+                throw new IOException("Could not clear " + f.getName());
+            }
         }
-        if (aac.exists() && !aac.delete()) {
-            throw new IOException("Could not clear raw AAC temp file");
-        }
-        rawSink = new RawStreamSink(hevc, aac);
+        android.system.Os.mkfifo(hevcFifo.getAbsolutePath(), 0600);
+        android.system.Os.mkfifo(aacFifo.getAbsolutePath(), 0600);
+        ProcessBuilder pb = new ProcessBuilder(ffmpeg.getAbsolutePath(),
+                "-hide_banner", "-loglevel", "error",
+                "-f", "hevc", "-r", "30", "-i", hevcFifo.getAbsolutePath(),
+                "-f", "aac", "-i", aacFifo.getAbsolutePath(),
+                "-map", "0:v", "-map", "1:a", "-c", "copy",
+                "-bsf:a", "aac_adtstoasc", "-movflags", "+empty_moov",
+                out.getAbsolutePath());
+        Process ffmpegProcess = pb.start();
+        rawSink = new FifoStreamSink(hevcFifo, aacFifo, out, ffmpegProcess);
         return rawSink;
+    }
+
+    private File ensureFfmpeg() throws IOException {
+        File binary = new File(context.getFilesDir(), "ffmpeg");
+        if (!binary.exists() || binary.length() != 17796352L) {
+            try (InputStream in = context.getAssets().open("ffmpeg");
+                 FileOutputStream out = new FileOutputStream(binary)) {
+                byte[] buffer = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(buffer)) >= 0) {
+                    out.write(buffer, 0, n);
+                }
+            }
+            if (!binary.setExecutable(true)) {
+                throw new IOException("Could not make ffmpeg executable");
+            }
+        }
+        return binary;
     }
 
     synchronized void complete() throws IOException {

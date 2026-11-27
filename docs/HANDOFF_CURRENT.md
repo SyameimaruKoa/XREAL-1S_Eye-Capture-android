@@ -184,6 +184,14 @@
 - CLI で video/audio だけなら `+empty_moov` + kill -9 で moof が残ることを再確認。gyrf だけがボトルネック。
 - 残る選択肢: (a) JNI の moof flush を直す（継続調査）、(b) gyrf は停止時注入に戻し、録画中の moof は video/audio だけ CLI で書く（落ちても映像・音声は残る、gyrf は復旧時に追加）、(c) media3 に戻す。
 
+## ★FIFO 常駐方式の実装着手（2026-11-27 20:2x JST、ユーザー承認）
+- ユーザー判断「ジャイロデータだけなら長回しでも 100MB 程度、別ファイルで良い」「後処理でちゃんと入れ込んでくれるんだよね？」「ファイル保存関係は全部 ffmpeg に任せられるってことだよね？」。
+- 構成: 録画中は `FifoStreamSink` が HEVC/AAC を FIFO に書き、**常駐 ffmpeg CLI** が `-f hevc -f aac -c copy -movflags +empty_moov` で fMP4 を書き進める（moof/mdat が逐次残る）。停止時に JNI `inject()`（`mux_with_ffmpeg_next`）で video/audio を stream-copy しつつ gyrf を追加。つまり **保存関係は全て ffmpeg（libavformat）**。
+- gyrf は停止時に生成する別データで、後処理で確実に MP4 に入る（v0.1.58 で実証済みの `inject()` 経路）。落ちた瞬間は video/audio だけになるが、ジャイロは再生成すれば良いというユーザー判断。
+- Android で FIFO はアプリ cache なら作れることを実機確認（`Os.mkfifo` を使う）。端末には ffmpeg が無いので APK の assets に同梱して filesDir へ展開、chmod 755。
+- `FifoStreamSink.java` と `RecordingOutput.openFragmentedMuxer()` を実装済み。`inject()` の handler_name も `XREAL IMU` に統一。
+- ★ffmpeg CLI の aarch64 cross-compile を実行中（cargo registry の build.rs から `--disable-programs` を外した）。完了後に assets へ配置して CI。
+
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
 - 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。

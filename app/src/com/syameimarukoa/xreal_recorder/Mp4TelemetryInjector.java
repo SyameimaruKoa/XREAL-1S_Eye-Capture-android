@@ -58,7 +58,7 @@ final class Mp4TelemetryInjector {
         }
         return payloads;
     }
-    static void injectWithFfmpeg(Context context, File hevc, File aac, File output,
+    static void injectWithFfmpeg(Context context, File sourceMp4, File aac, File output,
             int width, int height, float fps, long durationUs, int imuRateHz,
             String orientation, List<GyroflowProto.ImuSample> samples,
             long firstImuTimeUs) throws Exception {
@@ -78,11 +78,9 @@ final class Mp4TelemetryInjector {
                 writeAll(new File(dir, String.format(java.util.Locale.US,
                         "frame_%06d.bin", i + 1)), payloads.get(i));
             }
-            String muxError = GyroflowInjector.muxRaw(hevc.getAbsolutePath(),
-                    aac.getAbsolutePath(), dir.getAbsolutePath(),
-                    output.getAbsolutePath());
-            if (muxError != null) {
-                throw new IOException("gyroflow_proto_inject muxRaw failed: " + muxError);
+            if (!GyroflowInjector.inject(dir.getAbsolutePath(),
+                    hevc.getAbsolutePath(), output.getAbsolutePath())) {
+                throw new IOException("gyroflow_proto_inject inject failed");
             }
         } finally {
             deleteRecursively(dir);
