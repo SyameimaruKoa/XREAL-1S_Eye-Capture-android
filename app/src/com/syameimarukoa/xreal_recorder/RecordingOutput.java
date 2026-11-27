@@ -133,14 +133,10 @@ final class RecordingOutput {
 
     /** One continuous write to the app-owned file; MediaScanner publishes it. */
     RecordingMuxer openFragmentedMuxer() throws IOException {
-        File hevcSeed = new File(context.getCacheDir(), "xreal_seed.hevc");
-        File aacSeed = new File(context.getCacheDir(), "xreal_seed.aac");
-        for (File f : new File[]{outputFile, hevcSeed, aacSeed}) {
-            if (f.exists() && !f.delete()) {
-                throw new IOException("Could not clear " + f.getName());
-            }
+        if (outputFile.exists() && !outputFile.delete()) {
+            throw new IOException("Could not clear " + outputFile.getName());
         }
-        rawSink = new StreamingMuxSink(outputFile, hevcSeed, aacSeed);
+        rawSink = new StreamingMuxSink(outputFile);
         return rawSink;
     }
 

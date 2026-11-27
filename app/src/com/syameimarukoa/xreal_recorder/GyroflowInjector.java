@@ -10,8 +10,6 @@ final class GyroflowInjector {
     }
 
     /** Open a fragmented MP4 for a single continuous write. */
-    static native long openMux(String output, String hevc, String aac);
-
     /** Open on a duplicated fd of the final SAF uri; one continuous write. */
     static native long openMuxFd(int fd, String hevc, String aac);
 
@@ -25,7 +23,7 @@ final class GyroflowInjector {
     static native boolean closeMux(long handle);
 
     /** Returns null on success, otherwise the FFmpeg error text. */
-    static native String openMuxError(String output, String hevc, String aac);
+    static native String openMuxError(String output, int width, int height, byte[] csd);
 
     static native long lastHandle();
 

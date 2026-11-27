@@ -7,18 +7,14 @@ import java.io.File;
 /** Writes video/audio straight into the final MP4 via the JNI muxer. */
 final class StreamingMuxSink implements RecordingMuxer {
     private final File output;
-    private final File hevcSeed;
-    private final File aacSeed;
     private long handle;
     private boolean failed;
     private boolean closed;
     private String error = "";
 
-    StreamingMuxSink(File output, File hevcSeed, File aacSeed) {
+    StreamingMuxSink(File output) {
         android.util.Log.i("XrealRec", "mux output=" + output.getAbsolutePath());
         this.output = output;
-        this.hevcSeed = hevcSeed;
-        this.aacSeed = aacSeed;
     }
 
     File outputFile() {
@@ -27,35 +23,23 @@ final class StreamingMuxSink implements RecordingMuxer {
 
     @Override
     public void addVideoTrack(MediaFormat format) {
-        try {
-            java.io.OutputStream seed = new java.io.BufferedOutputStream(
-                    new java.io.FileOutputStream(hevcSeed));
-            java.nio.ByteBuffer csd = format.getByteBuffer("csd-0");
-            if (csd != null) {
-                byte[] bytes = new byte[csd.remaining()];
-                csd.duplicate().get(bytes);
-                seed.write(bytes);
-            }
-            seed.close();
-            java.io.OutputStream aseed = new java.io.BufferedOutputStream(
-                    new java.io.FileOutputStream(aacSeed));
-            aseed.write(new byte[]{0x11, (byte) 0x88});
-            aseed.close();
-        } catch (Throwable t) {
-            fail("seed write failed: " + t);
-            return;
+        byte[] csd = new byte[0];
+        java.nio.ByteBuffer buf = format.getByteBuffer("csd-0");
+        if (buf != null) {
+            csd = new byte[buf.remaining()];
+            buf.duplicate().get(csd);
         }
-        if (handle == 0) {
-            String err = GyroflowInjector.openMuxError(output.getAbsolutePath(),
-                    hevcSeed.getAbsolutePath(), aacSeed.getAbsolutePath());
-            if (err != null) {
-                fail("openMux failed: " + err);
-            } else {
-                handle = GyroflowInjector.lastHandle();
-                android.util.Log.i("XrealRec", "mux handle=" + handle);
-                if (handle == 0) {
-                    fail("openMux returned no handle");
-                }
+        int width = format.getInteger(MediaFormat.KEY_WIDTH);
+        int height = format.getInteger(MediaFormat.KEY_HEIGHT);
+        String err = GyroflowInjector.openMuxError(
+                output.getAbsolutePath(), width, height, csd);
+        if (err != null) {
+            fail("openMux failed: " + err);
+        } else {
+            handle = GyroflowInjector.lastHandle();
+            android.util.Log.i("XrealRec", "mux handle=" + handle);
+            if (handle == 0) {
+                fail("openMux returned no handle");
             }
         }
     }
