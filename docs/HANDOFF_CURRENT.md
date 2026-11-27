@@ -68,7 +68,9 @@
   - **720p30** `VID_20261126_190105.mp4`: 1280x720 + gyrf のみ、**音声トラック無し**、detect OK → 音声欠落（ただし 19:01 撮影＝v0.1.42 の muxer 修正前の古いデータ）
 - **最新版（v0.1.43）で撮って確認したのは 1600p30（22:43）と 1600p60（22:44）だけ**。どちらも video+audio+gyrf 完璧、Gyroflow detect OK。
 - 720p30 `VID_20261126_190105.mp4`（19:01）と 720p60 `VID_20261126_190935.mp4`（19:09）は **v0.1.42 の muxer 修正前** に撮ったデータで、最新版で撮ったものではない。用户が「最新の状態で撮って」と指示した趣旨はこれを指しとる。
-- ★つまり「全画質を最新版で確認した」とは言えん。720p30（と可能なら 720p60）を最新版で撮り直す必要があるが、実機は今無い。実機復帰後に実施する。
+- ★★720p30 を最新版（v0.1.44）で実機撮影して確認完了（2026-11-27 13:1x JST）: `VID_20261127_131339.mp4`（79MB / 36.5秒）。ffprobe で video(hevc 1280x720 29.85fps) + audio(aac) + data(gyrf) の3トラック、Gyroflow `Detected camera: XREAL 1S`。`finish: videoSamples=1071 audioSamples=1687 failed=false`、`telemetry injection embedded=true samples=36889`。**720p30 の音声欠落は最新版で解消**。
+- ★これで **720p60 を除く全画質（720p30 / 1600p30 / 1600p60）が最新版で video+audio+gyrf 完璧** と確認できた。720p60 はユーザーが「意図的に撮れないことは分かってるので無視」と指示。
+- 実機作業後は `lockctl lock --no-brightness` で画面をロック（`Screen: off / Keyguard: locked` を確認済み）。
 
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
