@@ -97,7 +97,24 @@
   - `pendingStartAfterUvc`: UVC 選択時に録画開始を押すと `requestUvcEnable()` → HID 有効化 → 再接続（`ACTION_USB_DEVICE_ATTACHED` を filter に追加）→ 1.5秒後に自動で録画開始。有効化コマンド後3秒のチェックも並走させ、ATTACHED が来ん場合もカバー。
   - `showQualityPicker()` の「UVC HEVC の準備」ダイアログを廃止。UVC 選択時は即 `requestUvcEnable()`。
 - UVC 有効化の再接続で Tailscale table 52 のルートが `via 10.212.0.1 dev wlan0 table 1013` に戻った → `ip route del throw 169.254.2.0/24 table 52` + `ip route add 169.254.2.0/24 dev eth0 table 52` で復旧、`ping 169.254.2.1` 0% loss 確認。
-- ★CI 完了後、実機で「録画開始1回 → USB 権限許可 → 自動開始」と「UVC 選択 → 録画開始1回 → 有効化 → 再接続 → 自動開始（2048x1512）」を検証する。
+- ★実機で「録画開始1回タップ → 自動録画開始」を実証（14:04、UVC 準備済み状態で `● REC` が出た）。
+- ★UVC の実解像度は **2048x1512** と実証（v0.1.48 / `VID_20261127_141022.mp4`、`finish: videoSamples=832 audioSamples=663 failed=false`、2.11Mbps）。ユーザー指摘が正しかった。わっちの 1600x1200 記録は誤り。
+- media3 は先頭 video サンプルに KEY_FRAME が付かんと pending を捨てて `writeSampleData` が NPE する。UVC は先頭 AU が IDR 判定されんかったため、最初の video サンプルに KEY_FRAME を強制（commit `0c989ba`）して解消。
+- **gyrf 注入がまだ失敗**: `Mp4TelemetryInjector.inject()` の mp4parser remux で `ArrayIndexOutOfBounds length=663 index=751`（audio sample list と duration 表の不整合、UVC は video 832 > audio 663）。対策として `injectWithoutRemux()`（元 moov を末尾にコピー＋gyrf trak 追記、remux しない）に切替＋末尾 magic 追記（commit `fbe3fd2`）。CI 後実機検証。
+- **波形は baseline のみ**: コードは全て残っとるが、実機画面では緑/黄/赤のバーが出ん（audioPeak=0）。ただし保存 MP4 の音声は `mean -58.7dB / max -2.1dB` で信号あり。ピーク取得側の調査が残る。
+- ★CI 完了後、新版で gyrf 注入と波形を再検証する。
+
+## ★★★コンテナ作成を FFmpeg に任せる方針（2026-11-27 14:1x JST、ユーザー提案）
+- ユーザー「コンテナ作成を自作するんじゃなくて他のに任せられないか。APKサイズ上がってもいいからライブラリとか」「fMP4も含めて全てffmpegに出来るんじゃない？AACの作成はffmpegでしないでほしい」。
+- Gyroflow 公式ドキュメント（docs.gyroflow.xyz の GitBook ask で確認）: gyrf は **ffmpeg-next (libavformat)** で mux するのが公式の書き手。`telemetry-parser` リポジトリの `gyroflow_proto_inject` が video を stream-copy して data トラックを追加する。
+- ローカルに `/tmp/telemetry-parser/bin/gyroflow_proto_inject/` があり、`ffmpeg-next 9.x` を使用。ビルドは clang の `limits.h` 問題を `BINDGEN_EXTRA_CLANG_ARGS=-I$(gcc -print-file-name=include)` で回避中。
+- **AAC は ffmpeg で生成しない**: MediaCodec の AAC 出力を ffmpeg に stream-copy で渡す。公式ツールは audio をスキップしとるが、`mux_with_ffmpeg_next()` の stream-copy loop に audio を追加すれば残せる（コメントの理由は Sony MP4 の channel_layout UNSPEC で、わっちの mono AAC は問題にならん）。
+- fMP4 化も ffmpeg の movflags で対応するが、**Gallery/Photos 互換**（HANDOFF 冒頭の方針）を崩さんよう `moov + moof×N + mdat×N` 構造を維持する必要がある。`empty_moov` は先頭 moov が空になるので要注意。
+- ★★検索で確定: Gyroflow 公式（docs.gyroflow.xyz の ask）が gyrf 書き手として挙げるのは **`telemetry-parser` の `gyroflow_proto_inject`**（`ffmpeg-next` = libavformat で mux）。自作 mp4parser ではない。`gyroflow_proto_inject` の `mux_with_ffmpeg_next()` は video を stream-copy して data トラック（`AV_CODEC_ID_BIN_DATA`、MOV muxer が `gpmd` を書く）を追加。
+- host でビルド成功（`BINDGEN_EXTRA_CLANG_ARGS=-I$(gcc -print-file-name=include)` で limits.h 問題を回避）。audio も stream-copy する 1 行パッチを追加（AAC は再エンコードしない）。
+- **host 実証**: `gyroflow_proto_convert` で既存 gyrf → jsonl、それを `gyroflow_proto_inject` で UVC 動画（`VID_20261127_141022.mp4`, 2048x1512）に注入 → **audio(aac) + video(hevc 2048x1512) + data(bin_data=gyrf) の3トラック**が生成され、`gyro2bb --dump` が `Detected camera: XREAL 1S` を返した。自作 mp4parser より確実。
+- Android 化: `cargo ndk` + `ffmpeg-sys-next` の `build` feature で cross-compile を試行。NDK 30 の sysroot/CC/nm path を環境変数で解決したが、`make` が `config_components.h` 途中で切れる／clang crash でまだ成功していない。`/tmp` 満杯（tmpfs 7.6G）も一因で古い検証動画を削除して 4GB 空けた。次は ffmpeg-kit の prebuilt AAR か、ffmpeg-sys-next の configure オプションを詰める。
+- ★ユーザー指示「実機禁止」: 以降、実機（adb）は触らずローカルの調査・ビルドのみ。
 
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
