@@ -59,7 +59,17 @@
 - ローカル Java テスト22個すべて PASS、CI run `45540847755` green（commit `81765e4`）。★v0.1.32 prerelease 公開（2026-11-25 12:39 JST / 03:39 UTC）: APK sha256 `d3a29742599a8bf02c38cac736ed50fd1555438d5069d162a47b0b32560871d6`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.32
 - ★実機がオフライン（2026-11-25 時点で sc-52b は 1h 前まで、ping 不通）のため実機録画検証は不可。APK は prerelease で公開済み、ユーザーが検証する。実機が戻ったら v0.1.32 を導入して音声を聴き、`ffprobe -select_streams a` で 48kHz/mono かつ連続した PTS になっていることを確認。
 
-## ★★★★720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
+## ★全画質の実データ確認（2026-11-27 13:0x JST、実機なし・pull 済みファイルを解析）
+- ユーザー指摘「720p60 を記録しろと言うたのはお前だ。記録できたから提示した」→ 訂正: 720p60 は**撮れて記録されておる**。わっちが再現できんかったのは別状態じゃった。
+- 4画質の ffprobe + gyro2bb 結果:
+  - **720p60** `VID_20261126_190935.mp4`: 1280x720/59.4fps + AAC + gyrf、Gyroflow detect OK → **完璧**
+  - **1600p30** `v43_1600p30.mp4`（v0.1.43）: 1600x1200/29.85fps + AAC + gyrf、detect OK → **完璧**
+  - **1600p60** `v43_1600p60.mp4`（v0.1.43）: 1600x1200/59.2fps + AAC + gyrf、detect OK → **完璧**
+  - **720p30** `VID_20261126_190105.mp4`: 1280x720 + gyrf のみ、**音声トラック無し**、detect OK → 音声欠落（ただし 19:01 撮影＝v0.1.42 の muxer 修正前の古いデータ）
+- **結論**: 720p60 以外では 720p30 に音声欠落が見つかったが、これは修正前データ。最新版（v0.1.43/44）で 720p30 を撮った実データは無く、未確認。1600p30/1600p60 は最新版で確認済み。
+- ★ユーザーは「実機は今いない」→ 720p30 の最新版確認は実機復帰後。
+
+## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
 - 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。
 - さらに 50180 から `reboot` を送ってグラスを再起動、USB 権限を DPAD DOWN×4+ENTER で再許可。それでも **720p60 の Start は `Unexpected TCP camera acknowledgement` で拒否**。
