@@ -1171,18 +1171,20 @@ public final class RecordService extends Service {
         final GlassesImuClient imu;
         final GcsvStreamSink gyroSink;
         final FileOutputStream hevcOut;
+        final File hevcFile;
         final boolean[] csdSent;
         final SessionStats stats;
 
         Session(VideoWriter writer, RecordingMuxer muxer, AudioSource audio,
                 GlassesImuClient imu, GcsvStreamSink gyroSink, FileOutputStream hevcOut,
-                boolean[] csdSent, SessionStats stats) {
+                File hevcFile, boolean[] csdSent, SessionStats stats) {
             this.writer = writer;
             this.muxer = muxer;
             this.audio = audio;
             this.imu = imu;
             this.gyroSink = gyroSink;
             this.hevcOut = hevcOut;
+            this.hevcFile = hevcFile;
             this.csdSent = csdSent;
             this.stats = stats;
         }
