@@ -35,8 +35,11 @@ final class FragmentedMp4Sink implements RecordingMuxer {
     private final FragmentedMp4Muxer muxer;
     private final List<Sample> pendingVideo = new ArrayList<>();
     private final List<Sample> pendingAudio = new ArrayList<>();
+    private MediaFormat pendingVideoFormat;
+    private MediaFormat pendingAudioFormat;
     private int videoTrack = -1;
     private int audioTrack = -1;
+    private boolean videoOnly;
     private int videoSampleCount;
     private int audioSampleCount;
     private boolean tracksReady;
@@ -54,59 +57,63 @@ final class FragmentedMp4Sink implements RecordingMuxer {
 
     @Override
     public void addVideoTrack(MediaFormat format) {
-        try {
-            Format.Builder b = new Format.Builder()
-                    .setSampleMimeType(MediaFormat.MIMETYPE_VIDEO_HEVC)
-                    .setWidth(format.getInteger(MediaFormat.KEY_WIDTH))
-                    .setHeight(format.getInteger(MediaFormat.KEY_HEIGHT));
-            if (format.containsKey("csd-0")) {
-                ByteBuffer csd = format.getByteBuffer("csd-0");
-                byte[] bytes = new byte[csd.remaining()];
-                csd.duplicate().get(bytes);
-                // media3 parses Annex-B initialization data itself.
-                b.setInitializationData(Collections.singletonList(bytes));
-            }
-            videoTrack = muxer.addTrack(b.build());
-            android.util.Log.i("XrealFMp4", "video track added id=" + videoTrack
-                    + " mime=" + b.build().sampleMimeType);
-            flushPendingIfReady();
-        } catch (Throwable t) {
-            fail(t);
+        synchronized (lock) {
+            pendingVideoFormat = format;
         }
+        flushPendingIfReady();
     }
 
     @Override
     public void addAudioTrack(MediaFormat format) {
-        try {
-            Format.Builder b = new Format.Builder()
-                    .setSampleMimeType(MediaFormat.MIMETYPE_AUDIO_AAC)
-                    .setChannelCount(format.getInteger(MediaFormat.KEY_CHANNEL_COUNT))
-                    .setSampleRate(format.getInteger(MediaFormat.KEY_SAMPLE_RATE));
-            if (format.containsKey("csd-0")) {
-                ByteBuffer csd = format.getByteBuffer("csd-0");
-                byte[] bytes = new byte[csd.remaining()];
-                csd.duplicate().get(bytes);
-                b.setInitializationData(Collections.singletonList(bytes));
-            }
-            audioTrack = muxer.addTrack(b.build());
-            android.util.Log.i("XrealFMp4", "audio track added id=" + audioTrack);
-            flushPendingIfReady();
-        } catch (Throwable t) {
-            fail(t);
+        synchronized (lock) {
+            pendingAudioFormat = format;
         }
+        flushPendingIfReady();
+    }
+
+    private int addTrackNow(MediaFormat format, boolean audio) {
+        Format.Builder b = audio
+                ? new Format.Builder()
+                        .setSampleMimeType(MediaFormat.MIMETYPE_AUDIO_AAC)
+                        .setChannelCount(format.getInteger(MediaFormat.KEY_CHANNEL_COUNT))
+                        .setSampleRate(format.getInteger(MediaFormat.KEY_SAMPLE_RATE))
+                : new Format.Builder()
+                        .setSampleMimeType(MediaFormat.MIMETYPE_VIDEO_HEVC)
+                        .setWidth(format.getInteger(MediaFormat.KEY_WIDTH))
+                        .setHeight(format.getInteger(MediaFormat.KEY_HEIGHT));
+        if (format.containsKey("csd-0")) {
+            ByteBuffer csd = format.getByteBuffer("csd-0");
+            byte[] bytes = new byte[csd.remaining()];
+            csd.duplicate().get(bytes);
+            // media3 parses Annex-B initialization data itself.
+            b.setInitializationData(Collections.singletonList(bytes));
+        }
+        int id = muxer.addTrack(b.build());
+        android.util.Log.i("XrealFMp4", (audio ? "audio" : "video")
+                + " track added id=" + id);
+        return id;
     }
 
     private void flushPendingIfReady() {
         synchronized (lock) {
-            if (tracksReady || videoTrack < 0) {
+            if (tracksReady || failed) {
                 return;
             }
-            // Keep both tracks pending until audio arrives: media3 writes the
-            // moov on the first sample, so if video alone is written first the
-            // audio track is missing from the moov forever (seen at 60 fps).
-            // startVideoOnly() below flushes video when no microphone exists.
-            if (audioTrack < 0) {
+            // media3 resolves track indices against the order tracks were added.
+            // Always register audio first: when video arrives first and becomes
+            // id 0, writeSampleData() gets a null Track and the whole recording
+            // fails. Waiting for audio also keeps it in the initial moov.
+            if (pendingAudioFormat != null && audioTrack < 0) {
+                audioTrack = addTrackNow(pendingAudioFormat, true);
+            }
+            if (pendingVideoFormat == null) {
                 return;
+            }
+            if (audioTrack < 0 && !videoOnly) {
+                return;
+            }
+            if (videoTrack < 0) {
+                videoTrack = addTrackNow(pendingVideoFormat, false);
             }
             tracksReady = true;
             for (Sample s : pendingVideo) {
@@ -160,18 +167,14 @@ final class FragmentedMp4Sink implements RecordingMuxer {
 
     @Override
     public void startVideoOnly() {
-        // No microphone: flush video once so the moov contains the video track.
+        // No microphone: register and flush video alone so moov has a track.
         synchronized (lock) {
-            if (tracksReady || failed || videoTrack < 0) {
+            if (tracksReady || failed || pendingVideoFormat == null) {
                 return;
             }
-            tracksReady = true;
-            for (Sample s : pendingVideo) {
-                writeNow(videoTrack, s);
-            }
-            pendingVideo.clear();
-            pendingAudio.clear();
+            videoOnly = true;
         }
+        flushPendingIfReady();
     }
 
     @Override
