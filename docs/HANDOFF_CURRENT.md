@@ -177,6 +177,13 @@
 - **端末負荷**: 「1 秒ごとに全生データから fMP4 を作り直す」方式は毎回 O(n) で全体 O(n²) になり実用的でない。CLI を 1 プロセス常駐させて FIFO で HEVC/AAC/gyrf を流す方式、または JNI の moof flush 修正が候補。
 - 前回の v2 取りやめ・main 戻しは維持。作業は `OptiPlex-3040-MFF_20261125` で継続中。
 
+## ★FIFO 方式の検討（2026-11-27 19:4x JST、行き詰まり）
+- ユーザー「端末負荷は？」→ 毎秒 fMP4 作り直しは O(n²) で却下。CLI 常駐＋FIFO を検討。
+- **gyrf を ffmpeg CLI に流せない**: `-f data` は codec_id=NONE になり MP4 muxer が `Could not find tag for codec none` / `Tag gpmd incompatible` で拒否。`-tag:gpmd` も効かず。
+- つまり gyrf は公式ツールの Rust ライブラリ（＝JNI `mux_raw_files` / `StreamingMux`）経由が唯一の経路。その `StreamingMux` は moov は出るが moof が出ん（未解決）。
+- CLI で video/audio だけなら `+empty_moov` + kill -9 で moof が残ることを再確認。gyrf だけがボトルネック。
+- 残る選択肢: (a) JNI の moof flush を直す（継続調査）、(b) gyrf は停止時注入に戻し、録画中の moof は video/audio だけ CLI で書く（落ちても映像・音声は残る、gyrf は復旧時に追加）、(c) media3 に戻す。
+
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
 - 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。
