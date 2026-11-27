@@ -2622,3 +2622,10 @@
 - クラッシュ耐性: 録画中 force-stop 後も 4.4MB MP4 が残り、video/audio decode 無エラー、gyrf 読めることを確認済み。
 - v2 Release の APK を commit `368ded6` の検証済みビルド（sha256 `8b132d66a9e127f280b9d1bb35e340cadf47c7e119110a96330fbf55d9e1ca67`）で差し替えた。
 - UVC のみ未検証だが、v0.1.58 で 2048x1512 + audio + gyrf を確認済み。
+
+## ★RAW後処理のオフライン変換を確認・修正（2026-11-28 08:4x JST）
+- ユーザー「実機無しでRAWからの後処理でMP4に変換出来るか確かめて」。
+- **Rust 側 `mux_raw_files()` は host で確認済み**: `/tmp/opencode/host_mux_test.mp4`（RAW HEVC 17MB + ADTS AAC 78KB + gyrf 3.1MB から生成）。ffprobe で hevc/aac/bin_data の3トラック、`gyro2bb --dump` が `Detected camera: XREAL 1S`、video/audio decode エラー無し。
+- **問題**: Java の `GyroflowInjector` に `muxRaw` が無く、`Mp4TelemetryInjector` に呼び出しが無かったため実機のハンドルが無いと変換できなかった。
+- ブランチ `OptiPlex-3040-MFF_20261128` を切り、`GyroflowInjector.muxRaw()` / `Mp4TelemetryInjector.convertRawToMp4()` / RAW モード停止時の呼び出しを追加。CI 成功（run `46084752825`）。commits `c7bcd52`〜`f5eb15d`。
+- ★オフライン RAW→MP4 は可能。ブランチはマージ待ち。
