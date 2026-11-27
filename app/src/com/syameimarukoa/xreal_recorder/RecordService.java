@@ -774,8 +774,8 @@ public final class RecordService extends Service {
                                                 File out = new File(dir, finalMp4Name);
                                                 File aacRaw = new File(dir,
                                                         "xreal_" + ts + ".aac");
-                                                String err = Mp4TelemetryInjector.convertRawToMp4(RecordService.this, 
-                                                        this, rawSession.hevcFile, aacRaw,
+                                                String err = Mp4TelemetryInjector.convertRawToMp4(
+                                                        RecordService.this, rawSession.hevcFile, aacRaw,
                                                         videoSource.getWidth(),
                                                         videoSource.getHeight(),
                                                         videoSource.getFrameRate(),
