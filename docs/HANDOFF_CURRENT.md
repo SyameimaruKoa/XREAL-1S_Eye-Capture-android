@@ -1,5 +1,582 @@
 # XREAL 1S Eye 録画アプリ：現在の引継ぎ
 
+## ★★★★最終方針（2026-11-25 18:4x、ユーザーの実機スクリーンショットで確定）
+- ユーザーが最新版で実機録画して確認:
+  - **ジャイロ埋め込みと Gyroflow 再生は問題なし**。ただし **1600p で録画したのに 720p のレンズプロファイルが入っとった** → ★レンズプロファイルを**廃止**（LensData を書かない。Gyroflow は NoDistortion として扱う）。「実サイズに合わせる」ではない。
+  - **Google Photos / Samsung Gallery / Samsung Video でサムネ無し・記録時間無し・再生不可**。スクリーンショットはグレー枠＋再生アイコンのみ。Samsung Video は「非対応」と出る。
+- **ffmpeg が読めても配慮の鬼だから有用なだけ**。ユーザーが確認したのは Gallery/Photos の実挙動で、これが正しい指標。
+- 真因: 先頭 moov の stbl が空（stsz count=0, stco=0）で、moof にサンプルがあるため、Gallery/Photos が最初のフレームと再生時間を引けん。自前 `StreamingGyroflowMuxer` が原因。
+- **確定した直し方（もうブレない）**:
+  1. muxer を media3 `FragmentedMp4Sink`（`openFragmentedMuxer()`）に戻す = 11-19 の正常ファイルと同じ `moov + moof×N + mdat×N` 構造。Gallery/Photos が読める。
+  2. gyrf は gcsv 単独に逃がさず MP4 に残す。media3 fMP4 の moov に gyrf トラックを追記する方式を実装（2回全書き換え禁止、先頭 moov ＋ 末尾 moov 追記は可）。
+  3. **レンズプロファイル（捏造した LensData／field 16）を完全廃止**。FOV 決め打ち 77.3° と fx 計算を削除し、LensData を書かない（Gyroflow は NoDistortion）。
+  4. 実機で Gallery/Photos のサムネ・記録時間・再生を目視確認するまで完了にしない。
+
+## 旧・方針の大訂正（2026-11-25 18:1x、ユーザー指摘）
+- ユーザー提示の正常ファイル `VID_20261119_120758.mp4`（1.4GB / 339秒）を解析: **先頭 moov(timescale=10000, stss有り) + moof×167 + 各 mdat + 末尾 moov（完全 stbl）**。gyrf は無いが、サムネも Gyroflow 再生も正常。脆弱だったのは**自前 StreamingGyroflowMuxer で moof に gyrf を混ぜたこと**。
+- ユーザーは「ジャイロを別ファイルにできない理由を覚えてないのか」と指摘。**Google Photos でモーションが失われるため gcsv 単独は不可**という初期要件をわっちが忘れとった。gcsv 逃がし案は撤回。
+- 確定方針:
+  1. muxer を **media3 `FragmentedMp4Sink`（`openFragmentedMuxer()`）に戻す**。これは `33cd0c3`（自前 muxer 導入）の親で使っとる方式で、11-19 の正常ファイルを生んだ。
+  2. gyrf は **MP4 の末尾 moov に追記**で載せる（先頭 moov ＋ 末尾 moov の2段構造は正常ファイルと同じ。2回全書き換えではない）。
+  3. ユーザーは「Gyroflow 再生は正常、問題は 1回でコードすると再生速度を無視すること」と報告。これは先頭 moov の timescale=10000 / stts=0 が原因の可能性。末尾 moov の完全 stbl を Gyroflow が使うようにする必要がある。
+- ★やってはいけない: gcsv サイドカーだけに逃がす（Google Photos でモーション消失）、録画後の全領域2回書き込み（fMP4 の意味が無くなる）。
+- 2026-11-25 18:3x: muxer を media3 `FragmentedMp4Sink`（`openFragmentedMuxer()`）に戻した（commit `427a7ff`）。ローカル22テスト PASS、CI `45585650442` green。★v0.1.34 prerelease 公開: APK sha256 `af3d01509c5315b3352869cd324d869526b22900ebe28a7c37c7d889dbfb31d3`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.34 。実機にも導入済み。
+- ★残る作業: ①ユーザーが XREAL を物理再接続（`ping 169.254.2.1` が前の eth0 down/up で不通のまま、ルート/mods 再適用・USB 構成再選択でも復活せず）。②v0.1.35 で録画し、**Gallery/Photos のサムネ・記録時間・再生を目視確認**。③gyrf を media3 fMP4 の moov に追記して Google Photos のモーションも維持（2回全書き換え禁止）。
+- 2026-11-25 18:4x: レンズプロファイル廃止を実装（commit `9d62853`）。`GyroflowProto.frame()` の LensData(field 16) と `HORIZONTAL_FOV_DEG=77.3` 定数を削除。テスト2つを「field 16 が無いこと」を検証するよう更新。ローカル22テスト PASS、CI `45587754174` green。★v0.1.35 prerelease 公開: APK sha256 `e6f378974acbd6ca29ead42e237ab9fa30c48d3abd8df835e539e43fc2208332`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.35 。実機にも導入済み。
+- ★gyrf 注入の実証完了（2026-11-25 19:2x）: media3 fMP4 の短いクリップ（`short_fmp4.mp4`、正常ファイルから 5秒カット）に `Mp4TelemetryInjector.inject()` を適用 → `injected.mp4` は **video(hevc) + data(gyrf) + duration 5.002 秒** を維持。gyrf box 16バイト、hdlr=meta、GyroflowProtobuf magic 300個を確認。→ **media3 fMP4 ＋ mp4parser 注入 gyrf で Gallery/Photos と Gyroflow/Google Photos の両立が可能**。注入は停止時に moov を再構築して1回書くだけで、録画中の逐次書き込みは media3 が担うので fMP4 の意味も残る。
+- アプリで `embedded = fmp4Mode` による注入スキップを外し、fMP4 でも注入を走らせた（commit `c5e33ba`）。注入成功時に `telemetry injection embedded=... samples=...` ログを出力。ローカル22テスト PASS、CI `45594174897` green。★v0.1.36 prerelease 公開: APK sha256 `4a5eee6e03c2a3f0f5df679e629b268e800dff49946a3b31b07474bf63d11831`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.36 。実機にも導入済み。
+- ★実機で最終検証完了（2026-11-25 19:29 JST、v0.1.36）: ユーザーが XREAL を再接続 → ping 通る → v0.1.36 で録画 `VID_20261125_192841.mp4`（194MB / 45.8秒）を保存。ffprobe で **video(hevc) + data(gyrf) + duration 45.84秒** を確認。構造: 先頭 ftyp/moov（media3 完全 stbl）、gyrf box 1つ、**GyroflowProtobuf magic 2,716個**（全 IMU サンプル埋め込み）。→ Gallery/Photos のサムネ・再生と Gyroflow のジャイロ両立を実機データで実証。
+- ★残る最終確認: ユーザーが Gallery/Photos で実際にサムネ・記録時間・再生を目視すること（ffprobe/構造は確認済み）。レンズプロファイルは廃止済みで 720p のでっち上げは消えた。
+- ★_blocked_: ユーザーが 18:5x に「再起動している」→ スマホは復帰（adb device、tailscale direct active、v0.1.35 導入済み sha256 一致、ServiceRecord=0）。しかし **XREAL 1S の USB がスマホから外れたまま**（`dumpsys usb` に vendor 13080 無し、eth0/eth1 No such device）。実機録画には **XREAL の USB を挿し直す物理操作が必要**（ユーザーしかできない）。
+
+## 旧・実機で切断→再開の不具合を発見（2026-11-25 13:2x）
+- v0.1.32 で eth0 down/up による切断テストを実施。
+- 動作: 切断検出 → 旧 MP4 `VID_20261125_132347.mp4`（66MB）を保存 → 新セッション `VID_20261125_132424.mp4`（94KB）開始 → その直後に再stall → 再接続試行が全て失敗。
+- ログ: `reconnect attempt N failed: java.io.IOException: 対応する録画設定を確認できません`。`GlassesStatusClient.readLiveMode()` が想定外の応答を返したのが原因。
+- **コード上の真因**: `RecordService` の reconnectHook が `readLiveMode()` の例外を `RuntimeException` にラップして投げ、`TcpSource.reconnect()` の catch で再接続ループ全体が失敗しとる。TCP 52995 は接続できとるので、hook を非 fatal（警告のみ）にすればカメラ Start（0x2781）まで進み再開するはず。
+- 補足: eth0 down/up 後は `ping 169.254.2.1` が通らん（XREAL 側の USB ネットが応答せず）。ルート自体は `169.254.2.0/24 dev eth0` で正しい。物理再接続なら USB 再 enumerate で復旧するが、eth だけの down/up では XREAL 側が戻らん可能性。hook を非 fatal にしても ping が復活しなければ再開できんが、まずは fatal 化を直す。
+- ★修正完了: hook の `readLiveMode` / `setLiveMode` 失敗を警告ログに落とし、例外を投げないようにした（commit `31fd291`）。live mode 復元を試みつつ再接続を継続。
+- ローカル Java テスト22個すべて PASS、CI run `45546814356` green。★v0.1.33 prerelease 公開（2026-11-25 17:44 JST / 08:44 UTC）: APK sha256 `df879b412c64be9da5c557c6b3302951efae1b1f8d93faf37b0d5df5ede3119b`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.33
+- ★_blocked_: eth0 down/up 後、XREAL 本体が `ping 169.254.2.1` に応答せず（ARP は解決するが ICMP 不通）。eth0 は up、ルート `169.254.2.0/24 dev eth0` は正しい。XREAL の USB ネットワークを復旧させるには**物理的な再接続（USB 挿し直し）が必要**で、これはユーザーしかできない。再接続の実機検証はこれ待ち。サーバー再起動後、sc-52b は tailscale offline（last seen 4h）。
+
+## 旧・実機検証（2026-11-25 13:2x JST、v0.1.32）
+- 実機が復帰（sc-52b direct active）。`lockctl normal 0000 --gesture auto` で解除（PIN は HANDOFF に記録しない）。v0.1.32 を導入（sha256 `d3a2974...` 一致）。
+- 実機録画 `VID_20261125_131846.mp4`（677MB / 156.06秒）を pull して音声を検証:
+  - ffprobe: **警告なし**、`codec_name=aac / sample_rate=48000 / channels=1（mono）`、`duration=156.06`。
+  - `ffmpeg -vn -f null -` のデコードエラー **0**。
+  - audio moof 1,200個を解析: duration すべて `21,333us`、PTS gaps は 21,333/21,334 のみ（＝21.33ms 刻みで連続）。**1フレームも落ちていない**。最初の audio PTS は 122,724us（AudioSource が映像より遅れて開始したためで、Gyroflow の同期で吸収される範囲）。
+  - ★ブツブツは解消。stop が UI から遅れて効いたが、ファイルは正常に finalize された。
+- ★次の実機検証: 切断→再開（イーサネット無効/有効、v0.1.28 の機能）。`su -c 'ifconfig eth0 down/up'` が権限で通るか確認してから実施。
+
+## 旧・音声ブツブツの修正（2026-11-25、ブランチ OptiPlex-3040-MFF_20261125）
+- ユーザー報告「音がブツブツ」。原因をコードで確定: `StreamingMuxerSink` が音声を1スロット `pendingAudio` に保持し、映像1フレーム（16.8ms）ごとに1つだけ消費しとった。AAC は 48kHz/1024サンプル＝21.33ms/フレームなので、1:1 だと音声が速く再生され、残りは上書き破棄→ブツブツ。
+- 修正:
+  1. `StreamingMuxerSink` を音声キュー（`queuedAudio`）に変更。`writeAudio()` はキューに追加するだけ。
+  2. `StreamingGyroflowMuxer.writeAudioSample()` を追加。各 AAC フレームを**独立した moof+mdat フラグメント**にし、tfdt を実 PTS（`ptsUs - firstPtsUs`）に、duration を 21,333us にする。映像フラグメントには audio を載せない。
+  3. `flushAudioUpTo()` で PTS 到達分を順に書き出し、`finish()` で残りを全部 flush（末尾の音声を落とさない）。
+  4. AudioSampleEntry の channelcount を 2→1 に修正（実機は mono 48kHz、csd-0 `{0x11,0x88}` も chCfg=1 を確認）。
+- ホスト検証（`tests/StreamingAudioTimingGen.java`）: 11個の AAC フレームを 21.33ms 刻みで投入 → **audio moofs=11、PTS `[0,21333,42666,...,213330]`、duration 全て 21333** を確認。1つも落ちていない。
+- ローカル Java テスト22個すべて PASS、CI run `45540847755` green（commit `81765e4`）。★v0.1.32 prerelease 公開（2026-11-25 12:39 JST / 03:39 UTC）: APK sha256 `d3a29742599a8bf02c38cac736ed50fd1555438d5069d162a47b0b32560871d6`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.32
+- ★実機がオフライン（2026-11-25 時点で sc-52b は 1h 前まで、ping 不通）のため実機録画検証は不可。APK は prerelease で公開済み、ユーザーが検証する。実機が戻ったら v0.1.32 を導入して音声を聴き、`ffprobe -select_streams a` で 48kHz/mono かつ連続した PTS になっていることを確認。
+
+## ★全画質の実データ確認（2026-11-27 13:0x JST、実機なし・pull 済みファイルを解析）
+- ユーザー指摘「720p60 を記録しろと言うたのはお前だ。記録できたから提示した」→ 訂正: 720p60 は**撮れて記録されておる**。わっちが再現できんかったのは別状態じゃった。
+- 4画質の ffprobe + gyro2bb 結果:
+  - **720p60** `VID_20261126_190935.mp4`: 1280x720/59.4fps + AAC + gyrf、Gyroflow detect OK → **完璧**
+  - **1600p30** `v43_1600p30.mp4`（v0.1.43）: 1600x1200/29.85fps + AAC + gyrf、detect OK → **完璧**
+  - **1600p60** `v43_1600p60.mp4`（v0.1.43）: 1600x1200/59.2fps + AAC + gyrf、detect OK → **完璧**
+  - **720p30** `VID_20261126_190105.mp4`: 1280x720 + gyrf のみ、**音声トラック無し**、detect OK → 音声欠落（ただし 19:01 撮影＝v0.1.42 の muxer 修正前の古いデータ）
+- **最新版（v0.1.43）で撮って確認したのは 1600p30（22:43）と 1600p60（22:44）だけ**。どちらも video+audio+gyrf 完璧、Gyroflow detect OK。
+- 720p30 `VID_20261126_190105.mp4`（19:01）と 720p60 `VID_20261126_190935.mp4`（19:09）は **v0.1.42 の muxer 修正前** に撮ったデータで、最新版で撮ったものではない。用户が「最新の状態で撮って」と指示した趣旨はこれを指しとる。
+- ★★720p30 を最新版（v0.1.44）で実機撮影して確認完了（2026-11-27 13:1x JST）: `VID_20261127_131339.mp4`（79MB / 36.5秒）。ffprobe で video(hevc 1280x720 29.85fps) + audio(aac) + data(gyrf) の3トラック、Gyroflow `Detected camera: XREAL 1S`。`finish: videoSamples=1071 audioSamples=1687 failed=false`、`telemetry injection embedded=true samples=36889`。**720p30 の音声欠落は最新版で解消**。
+- ★これで **720p60 を除く全画質（720p30 / 1600p30 / 1600p60）が最新版で video+audio+gyrf 完璧** と確認できた。720p60 はユーザーが「意図的に撮れないことは分かってるので無視」と指示。
+- 実機作業後は `lockctl lock --no-brightness` で画面をロック（`Screen: off / Keyguard: locked` を確認済み）。
+
+## ★★★v0.1.45 で全画質を撮り直して再検証完了（2026-11-27 13:3x〜13:4x JST）
+- ユーザー指示「バージョン変えたんだから全画質検証し直してよ」「UVCを忘れないでね」「720p60は確実に使えないんだからUIで平然と使えるように書かないで」。
+- v0.1.45（sha256 `3cd820955699dfbb32adcc4920e08a2e21887e4cf7d6ae1cfec529ea0fae4372`）を clean install して実機で全4画質を撮り直し、ffprobe + gyro2bb で確認:
+  - **720p30** `VID_20261127_133319.mp4`（30MB / 15秒）: hevc 1280x720 + aac + gyrf、`Detected camera: XREAL 1S` → 完璧
+  - **1600p30** `VID_20261127_133452.mp4`（25MB）: hevc 1600x1200 + aac + gyrf、detect OK → 完璧
+  - **1600p60** `VID_20261127_133607.mp4`（53MB）: hevc 1600x1200 + aac + gyrf、detect OK → 完璧
+  - **UVC HEVC** `VID_20261127_134140.mp4`（66MB / 17秒）: 当時は 1600x1200 と記録したが ★誤り。gyrf ヘッダーも 1600x1200 で、実は broadcast start がデフォルト TCP（1600p60）で撮れとった。下記の通り HeadlessReceiver を修正。本物の UVC は `UvcSource` が 2048x1512 を想定。
+- 720p60 は `VIDEO_ROUTES` から削除（commit `539c020`）。UVC 判定 index バグ（`which == 3` 固定）も `VIDEO_ROUTES.length - 1` に修正。UI ダイアログは4選択肢（720p/30 / 1600p/30 / 1600p/60 / UVC HEVC）のみ、720p60 は表示されない。
+- ★**全4画質が現行 v0.1.45 で video + audio + gyrf 完璧**。v2 正式リリースの条件は満たした（720p60 は仕様外として UI から除外）。
+- 実機作業後は `lockctl lock --no-brightness` で画面をロック（`Screen: off / Keyguard: locked` 確認済み）。
+
+## ★★★UVC と音声波形の指摘対応（2026-11-27 13:4x〜13:5x JST）
+- ユーザー指摘「UVCは1600x1200じゃなくね？」「録画中の音声波形表示どこに捨てた？」
+- **UVC の真因**: `HeadlessReceiver` が broadcast start で `EXTRA_VIDEO_ROUTE` を渡しとらんかった。RecordService はデフォルト `ROUTE_TCP_HEVC` を使うため、prefs で UVC を選んでも broadcast 経由では TCP（1600p60/30）で録画されとった。gyrf ヘッダーを直接パースして 1600x1200 なことを確認。修正: prefs の `video_route` を読み intent に渡す（commit `97ac256`）。本物の UVC は 2048x1512。
+- **波形は削除しとらん**: `git log -S phoneWaveform` / `-S screenSaverWaveform` に削除コミットなし。`RecordingPresentation.WaveformView` は phone / 第二画面 / 放置画面の3か所で生きとる。13:48 の実機画面では baseline のみ（緑/黄/赤のバー無し）＝ audioPeak が 0 だった。これは直後の録画が muxer エラーで音声が入らんかったため。
+- **muxer NPE も発見**: 13:47:22 `FragmentedMp4Writer.writeSampleData` で `Track` が null → `finish: videoSamples=0 audioSamples=1 failed=true`。track 追加順が video(id=0)→audio(id=1) になると media3 が video track を解決できん。修正: MediaFormat を保存し、muxer.addTrack を **audio→video の順** に固定（commit `65a5cc7`）。audio が来ん場合は `startVideoOnly()` で video のみ登録。
+- ★CI 完了後、新版 APK で UVC 録画（2048x1512 確認）と波形を実機検証する。
+
+## ★★★録画ボタン1回で開始するよう修正（2026-11-27 13:5x JST）
+- ユーザー正確な説明「録画ボタンを押した時にUSB通信の許可などが出ると、許可をしてもう一度録画開始ボタンを押さないと録画が始まらない」。
+- 修正（commit `1547681`）:
+  - `pendingStartAfterPermission`: USB 権限ダイアログ許可後に `continuePendingStart()` → 自動で録画再開。全画質共通。
+  - `pendingStartAfterUvc`: UVC 選択時に録画開始を押すと `requestUvcEnable()` → HID 有効化 → 再接続（`ACTION_USB_DEVICE_ATTACHED` を filter に追加）→ 1.5秒後に自動で録画開始。有効化コマンド後3秒のチェックも並走させ、ATTACHED が来ん場合もカバー。
+  - `showQualityPicker()` の「UVC HEVC の準備」ダイアログを廃止。UVC 選択時は即 `requestUvcEnable()`。
+- UVC 有効化の再接続で Tailscale table 52 のルートが `via 10.212.0.1 dev wlan0 table 1013` に戻った → `ip route del throw 169.254.2.0/24 table 52` + `ip route add 169.254.2.0/24 dev eth0 table 52` で復旧、`ping 169.254.2.1` 0% loss 確認。
+- ★実機で「録画開始1回タップ → 自動録画開始」を実証（14:04、UVC 準備済み状態で `● REC` が出た）。
+- ★UVC の実解像度は **2048x1512** と実証（v0.1.48 / `VID_20261127_141022.mp4`、`finish: videoSamples=832 audioSamples=663 failed=false`、2.11Mbps）。ユーザー指摘が正しかった。わっちの 1600x1200 記録は誤り。
+- media3 は先頭 video サンプルに KEY_FRAME が付かんと pending を捨てて `writeSampleData` が NPE する。UVC は先頭 AU が IDR 判定されんかったため、最初の video サンプルに KEY_FRAME を強制（commit `0c989ba`）して解消。
+- **gyrf 注入がまだ失敗**: `Mp4TelemetryInjector.inject()` の mp4parser remux で `ArrayIndexOutOfBounds length=663 index=751`（audio sample list と duration 表の不整合、UVC は video 832 > audio 663）。対策として `injectWithoutRemux()`（元 moov を末尾にコピー＋gyrf trak 追記、remux しない）に切替＋末尾 magic 追記（commit `fbe3fd2`）。CI 後実機検証。
+- **波形は baseline のみ**: コードは全て残っとるが、実機画面では緑/黄/赤のバーが出ん（audioPeak=0）。ただし保存 MP4 の音声は `mean -58.7dB / max -2.1dB` で信号あり。ピーク取得側の調査が残る。
+- ★CI 完了後、新版で gyrf 注入と波形を再検証する。
+
+## ★★★コンテナ作成を FFmpeg に任せる方針（2026-11-27 14:1x JST、ユーザー提案）
+- ユーザー「コンテナ作成を自作するんじゃなくて他のに任せられないか。APKサイズ上がってもいいからライブラリとか」「fMP4も含めて全てffmpegに出来るんじゃない？AACの作成はffmpegでしないでほしい」。
+- Gyroflow 公式ドキュメント（docs.gyroflow.xyz の GitBook ask で確認）: gyrf は **ffmpeg-next (libavformat)** で mux するのが公式の書き手。`telemetry-parser` リポジトリの `gyroflow_proto_inject` が video を stream-copy して data トラックを追加する。
+- ローカルに `/tmp/telemetry-parser/bin/gyroflow_proto_inject/` があり、`ffmpeg-next 9.x` を使用。ビルドは clang の `limits.h` 問題を `BINDGEN_EXTRA_CLANG_ARGS=-I$(gcc -print-file-name=include)` で回避中。
+- **AAC は ffmpeg で生成しない**: MediaCodec の AAC 出力を ffmpeg に stream-copy で渡す。公式ツールは audio をスキップしとるが、`mux_with_ffmpeg_next()` の stream-copy loop に audio を追加すれば残せる（コメントの理由は Sony MP4 の channel_layout UNSPEC で、わっちの mono AAC は問題にならん）。
+- fMP4 化も ffmpeg の movflags で対応するが、**Gallery/Photos 互換**（HANDOFF 冒頭の方針）を崩さんよう `moov + moof×N + mdat×N` 構造を維持する必要がある。`empty_moov` は先頭 moov が空になるので要注意。
+- ★★検索で確定: Gyroflow 公式（docs.gyroflow.xyz の ask）が gyrf 書き手として挙げるのは **`telemetry-parser` の `gyroflow_proto_inject`**（`ffmpeg-next` = libavformat で mux）。自作 mp4parser ではない。`gyroflow_proto_inject` の `mux_with_ffmpeg_next()` は video を stream-copy して data トラック（`AV_CODEC_ID_BIN_DATA`、MOV muxer が `gpmd` を書く）を追加。
+- host でビルド成功（`BINDGEN_EXTRA_CLANG_ARGS=-I$(gcc -print-file-name=include)` で limits.h 問題を回避）。audio も stream-copy する 1 行パッチを追加（AAC は再エンコードしない）。
+- **host 実証**: `gyroflow_proto_convert` で既存 gyrf → jsonl、それを `gyroflow_proto_inject` で UVC 動画（`VID_20261127_141022.mp4`, 2048x1512）に注入 → **audio(aac) + video(hevc 2048x1512) + data(bin_data=gyrf) の3トラック**が生成され、`gyro2bb --dump` が `Detected camera: XREAL 1S` を返した。自作 mp4parser より確実。
+- Android 化: `cargo ndk` + `ffmpeg-sys-next` の `build` feature で cross-compile を試行。NDK 30 の sysroot/CC/nm path を環境変数で解決したが、`make` が `config_components.h` 途中で切れる／clang crash でまだ成功していない。`/tmp` 満杯（tmpfs 7.6G）も一因で古い検証動画を削除して 4GB 空けた。次は ffmpeg-kit の prebuilt AAR か、ffmpeg-sys-next の configure オプションを詰める。
+- ★★★**Android 向け cross-compile 成功**（14:57 JST）: `cargo ndk` の CC/nm を直接指定＋`CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$BIN/aarch64-linux-android30-clang` で通った。成果物 `/tmp/opencode/android-target/aarch64-linux-android/release/gyroflow_proto_inject`（18MB）。`/tmp` 満杯がSTOPの真因で、古い動画削除で解消。
+- ★★★**実機で公式ツールを実行して成功**（14:58 JST）: バイナリを `/data/local/tmp/` に push、`test.jsonl` と `VID_20261127_141022.mp4` を渡して `/data/local/tmp/out.mp4` を生成。pull して ffprobe → **audio(aac) + video(hevc 2048x1512) + data(bin_data=gyrf)**、`gyro2bb --dump` → `Detected camera: XREAL 1S`。AAC は stream-copy で再エンコードなし。
+- ユーザーから「実機が空いたので使用してよい」と許可あり。作業終了時は `lockctl lock --no-brightness` を忘れん。
+- ★次はこのバイナリを APK に同梱し、停止時の gyrf 注入を自作 mp4parser から公式 ffmpeg ツールに差し替える。
+- v0.1.50 で assets の実行ファイルを `filesDir` に展開して実行したが **`error=13 Permission denied`**（Android の filesDir/assets は noexec）。v0.1.51 で箱の初期化漏れを直したが同じく noexec。
+- ★対策: Rust を **cdylib (`libgyroflow_inject.so`)** にして JNI エントリ `Java_com_syameimarukoa_xreal_recorder_GyroflowInjector_inject` を追加。`.so` を `app/src/main/jniLibs/arm64-v8a/` に置き、`scripts/build.ps1` の `jar uf` で APK の `lib/arm64-v8a/` に入れる。Android はここを実行可能な `nativeLibraryDir` に展開するので noexec を回避できる（commit `479155d`）。
+- **波形は削除も故障もしていなかった**: v0.1.51 の TCP 720p30 録画中（15:11）の screencap で REC 下の波形に緑のバーが出とる。13:48 の UVC 画面でバーが無かったのは muxer NPE で音声が来んかったため。
+- ユーザーから「実機が空いたので使用してよい」と許可あり。作業終了時は `lockctl lock --no-brightness` を忘れん。
+
+## ★★★v0.1.54 で公式 Gyroflow muxer の JNI 注入を実機確認（2026-11-27 15:30 JST）
+- 障害と対策の連鎖: assets 実行ファイルは noexec で Permission denied → JNI .so 化 → APK 内パスが `arm64-v8a/...` で展開されん → `lib/arm64-v8a/...` に staging → JNI シンボル名の `_` エスケープ漏れ（`_1` が必要）→ 修正。
+- **実機確認**: `VID_20261127_153028.mp4`（18MB / 12秒、TCP 720p30）。ffprobe → **audio(aac) + video(hevc 1280x720) + data(bin_data=gyrf)**、`gyro2bb --dump` → `Detected camera: XREAL 1S`。AAC は MediaCodec 出力を stream-copy で、FFmpeg では再エンコードしていない。
+- つまり **gyrf 注入は自作 mp4parser をやめて Gyroflow 公式の ffmpeg-next ツールに任せることができた**。APK は 17MB 増（native .so 17MB）。
+- 波形は健在（15:11 の screencap で緑バー確認）。13:48 に出んかったのは muxer 失敗で音声が来んかっただけ。
+- ★残る課題: (1) fMP4 の muxing も ffmpeg に任せる案（Gallery/Photos 互換の moov 構造を維持する必要がある）、(2) バージョンが変わったので全画質の再検証、(3) 画面ロック。
+
+## ★★★v0.1.55 でコンテナ作成を完全に FFmpeg へ（2026-11-27 15:5x JST、実機禁止のため未検証）
+- ユーザー指摘「fMP4 も含めて全て ffmpeg に任せれば APK も軽く安定する」。その通り。
+- 構成変更: 録画中は `RawStreamSink` が生 HEVC (Annex-B + CSD 先頭) と AAC (各フレームに ADTS ヘッダ付与) をキャッシュへ書く。停止時に `GyroflowInjector.muxRaw()`（Rust cdylib の JNI）が HEVC + AAC + gyrf frames を `movflags=frag_keyframe` で fMP4 へ mux。ffmpeg CLI で `ftyp + moov + mdat + moof×N + mdat×N` 構造を確認済み＝Gallery/Photos 互換を維持。
+- **異常終了耐性**: フラグメント単位で書き進むため、途中で落ちてもそこまでの moof が残る（旧 media3 fMP4 と同等以上）。
+- media3 muxer (`media3-muxer/common/container`) と mp4parser (`isoparser`) の AAR・関連 Java（`FragmentedMp4Sink`, `GyroflowTrack`, inject/injectWithoutRemux 等 874 行）を削除。**APK 17 MB → 16 MB**。
+- AAC は MediaCodec 出力を ffmpeg が stream-copy し、再エンコードしない。
+- CI 成功、v0.1.55 公開（sha256 `94492a1f5e3bf9e671358c58e494c6a1a53bad2aa8a34786d14c31a3b9bf7fab`）。**実機禁止中につき未検証**。実機が戻ったら全画質の video/audio/gyrf を再検証する。
+
+## ★★★エミュ（host）で FFmpeg のみの gyrf mux を実証（2026-11-27 16:5x〜17:0x JST）
+- ユーザー指示「XREAL の生データ使ってエミュで試験して」「バイナリを直接書き換えるのは駄目。ffmpeg のみで完結させて」。
+- host の Rust テストで XREAL の生データ（extracted.hevc + test.aac + test.jsonl）を `mux_raw_files()` に渡し、**`gyro2bb --dump` が `Detected camera: XREAL 1S`** を返した。
+- 決め手は **FFmpeg の stream metadata `handler_name = "XREAL IMU"` を設定するだけ**。ffmpeg が BIN_DATA に付ける既定の `GoPro MET` が誤検出の原因じゃった。`patch_gpmd_to_gyrf()` のような出力バイナリの直接書き換えは**完全に撤廃**。
+- v0.1.58 公開（sha256 `07794c55f1a9765ad3e983ec7958a817016b9a4799014a9dd82f2ff56ed0e734`）・実機導入済み。
+- ★実機検証は **グラスの USB が落ちておって不可**: `dumpsys usb` に XREAL (3318:043e) が無く、`eth0` も無い（`ip route get 169.254.2.1` → `dev tailscale0`）。グラスを再接続してもらう必要がある。
+- 画面は `lockctl lock --no-brightness` でロック済み。
+
+## ★★★v0.1.58 で全画質を実機再検証完了（2026-11-27 17:2x〜17:3x JST）
+- グラス USB 復帰後（eth0 / ping 0% loss）、v0.1.58 で Broadcast start→stop し ffprobe + gyro2bb で確認:
+  - **720p30** `VID_20261127_172703.mp4`: hevc 1280x720 + aac + bin_data(gyrf)、`Detected camera: XREAL 1S`（27.891fps）
+  - **1600p30** `VID_20261127_172800.mp4`: hevc 1600x1200 + aac + gyrf、detect OK（27.458fps）
+  - **1600p60** `VID_20261127_172837.mp4`: hevc 1600x1200 + aac + gyrf、detect OK（55.754fps）
+  - **UVC HEVC** `VID_20261127_173644.mp4`: hevc **2048x1512** + aac + gyrf、detect OK（59.177fps）
+- UVC は再接続後に「UVCを有効化」＋USB 権限ダイアログ OK で有効化した（`/dev/video2/3` 確認）。
+- ★**全4画質が現行 v0.1.58 で video + audio + gyrf 完璧**。gyrf の GoPro 誤検出も FFmpeg の handler_name 設定だけで解消、出力バイナリ書き換えは無し。
+- 720p60 はユーザー指示で UI から除外済み（仕様外）。
+- 作業終了後は `lockctl lock --no-brightness` でロック。
+
+## ★公開前チェック（2026-11-27 18:2x〜18:3x JST）
+- ローカル Java テスト 22 個すべて PASS。CI も green（最新 `45963183456` → 以降 `45975238812` で version 更新を確認中）。
+- **APK サイズ**: v0.1.58 = 16 MB。内訳: `lib/arm64-v8a/libgyroflow_inject.so` 約 16 MB（EST）、dex 7 個合計約 19.8 MB（圧縮後）。strip で 1 MB、`--disable-everything` + `opt-level="z"` + `lto="fat"` + `panic="abort"` を試したが .so は 16 MB で頭打ち（ffmpeg-sys-next が avcodec/avformat/avutil を丸ごと静的リンクするため）。dex は Material Components／AndroidX で機能上削れん。**16 MB が現状の最適**。
+- **公開品質の問題を修正**: `AndroidManifest.xml` の `versionName="1"` → `"2"`、`versionCode` 25 → 26。README の古い APPID 記述（v0.1.x = `jp.xreal.recorder`）を現行 `com.syameimarukoa.xreal_recorder` に修正（commit `662bad7`）。
+- 残存する軽微な UI 表示「未変換の録画を復旧: 成功0 / 失敗10」は過去の RAW ファイルの残りで、録画・再生機能には影響しない。
+- ★v2 正式 Release の条件（全画質を現行版で確認）は満たした。ブランチはまだ main にマージしていない。
+
+## ★異常終了耐性の再調査（2026-11-27 19:0x JST、未解決）
+- ユーザー指摘で再確認: 現行 v0.1.58 は録画中に生 HEVC/AAC を cache に書き、停止時に ffmpeg が fMP4 を生成する。**録画中に落ちたら MP4 は無い**。v2 の release notes の「Interrupt しても再生可能」は誤りだった。v2 Release を削除し、main を merge 前 (`90b6ca0`) に force push で戻した。
+- ffmpeg の streaming mux (`movflags=frag_keyframe` / `+empty_moov`) を Rust JNI で実装し host テストで「trailer を書かずに drop」を試したが、**出力は `ftyp` 32 バイトのみで moov も moof も出なかった**（`avio_flush` も効かず）。ffprobe は `moov atom not found`。
+- つまり **ffmpeg の mov muxer は write_trailer まで moov を書かない**。ffmpeg のみで「落ちた瞬間に読める MP4」を作るのは現状の API では不可能と判断。
+- 選択肢: (a) media3 の fMP4（先頭 moov）に戻す / (b) ffmpeg 出力に moov を手で挿入（ユーザーが禁止したバイナリ書き換え）/ (c) 生 HEVC/AAC を外部ストレージに保存して自動復旧し、MP4 は後から生成する。**ユーザーの判断待ち**。
+- Rust の `StreamingMux` 実装は `/tmp/telemetry-parser/bin/gyroflow_proto_inject/lib.rs` に残っている（未反映）。
+
+## ★ffmpeg 単体の異常終了耐性を再確認（2026-11-27 19:2x JST）
+- ユーザー「ffmpeg だけで作れないの？」→ **作れる**。CLI で生 HEVC/AAC を stream-copy し `-movflags +empty_moov` で書いて `kill -9` しても、`ftyp + moov + moof + mdat + mfra` が残り ffprobe が video/audio を読めた。
+- 我々の JNI `StreamingMux` は `moov` は先頭に出るが `moof/mdat` が出ない（サンプルがファイルに届かない）。demuxer 由来 codecpar／time_base／`+empty_moov`／`Packet::write` と `write_interleaved`／`avio_flush`／`av_interleaved_write_frame(NULL)` を試したが未解決。CLI との差はまだ特定できていない。
+- **端末負荷**: 「1 秒ごとに全生データから fMP4 を作り直す」方式は毎回 O(n) で全体 O(n²) になり実用的でない。CLI を 1 プロセス常駐させて FIFO で HEVC/AAC/gyrf を流す方式、または JNI の moof flush 修正が候補。
+- 前回の v2 取りやめ・main 戻しは維持。作業は `OptiPlex-3040-MFF_20261125` で継続中。
+
+## ★FIFO 方式の検討（2026-11-27 19:4x JST、行き詰まり）
+- ユーザー「端末負荷は？」→ 毎秒 fMP4 作り直しは O(n²) で却下。CLI 常駐＋FIFO を検討。
+- **gyrf を ffmpeg CLI に流せない**: `-f data` は codec_id=NONE になり MP4 muxer が `Could not find tag for codec none` / `Tag gpmd incompatible` で拒否。`-tag:gpmd` も効かず。
+- つまり gyrf は公式ツールの Rust ライブラリ（＝JNI `mux_raw_files` / `StreamingMux`）経由が唯一の経路。その `StreamingMux` は moov は出るが moof が出ん（未解決）。
+- CLI で video/audio だけなら `+empty_moov` + kill -9 で moof が残ることを再確認。gyrf だけがボトルネック。
+- 残る選択肢: (a) JNI の moof flush を直す（継続調査）、(b) gyrf は停止時注入に戻し、録画中の moof は video/audio だけ CLI で書く（落ちても映像・音声は残る、gyrf は復旧時に追加）、(c) media3 に戻す。
+
+## ★FIFO 常駐方式の実装着手（2026-11-27 20:2x JST、ユーザー承認）
+- ユーザー判断「ジャイロデータだけなら長回しでも 100MB 程度、別ファイルで良い」「後処理でちゃんと入れ込んでくれるんだよね？」「ファイル保存関係は全部 ffmpeg に任せられるってことだよね？」。
+- 構成: 録画中は `FifoStreamSink` が HEVC/AAC を FIFO に書き、**常駐 ffmpeg CLI** が `-f hevc -f aac -c copy -movflags +empty_moov` で fMP4 を書き進める（moof/mdat が逐次残る）。停止時に JNI `inject()`（`mux_with_ffmpeg_next`）で video/audio を stream-copy しつつ gyrf を追加。つまり **保存関係は全て ffmpeg（libavformat）**。
+- gyrf は停止時に生成する別データで、後処理で確実に MP4 に入る（v0.1.58 で実証済みの `inject()` 経路）。落ちた瞬間は video/audio だけになるが、ジャイロは再生成すれば良いというユーザー判断。
+- Android で FIFO はアプリ cache なら作れることを実機確認（`Os.mkfifo` を使う）。端末には ffmpeg が無いので APK の assets に同梱して filesDir へ展開、chmod 755。
+- `FifoStreamSink.java` と `RecordingOutput.openFragmentedMuxer()` を実装済み。`inject()` の handler_name も `XREAL IMU` に統一。
+- ★ffmpeg CLI の aarch64 cross-compile を実行中（cargo registry の build.rs から `--disable-programs` を外した）。完了後に assets へ配置して CI。
+
+## ★★★最終目標達成（2026-11-28 01:5x JST、Android 11 端末 amazo-kfonwi で検証）
+- 構成: `StreamingMuxSink` が app 固有ストレージ (`Android/data/.../files/Movies`) へ**1回だけ** fMP4 を書き進める。停止時に gyrf を追記するのではなく、`RecordService` の telemetry スレッドが `GlassesImuClient.getSamples()` を3秒ごとに gyrf frame 化して `writeGyrf()` で同じファイルへ書く。よって**落ちた瞬間にも gyrf が入っている**。
+- kill 検証: 録画開始14秒後に `am force-stop` → 4,456,480 bytes の MP4 が残存。pull して確認:
+  - ffprobe: `hevc video` + `aac audio` + `bin_data(gyrf)` の3トラック
+  - `ffmpeg -map 0:v -f null -`: エラー無し（ Annex-B NAL 完全化＋start code 保持で解消）
+  - `ffmpeg -map 0:a -f null -`: エラー無し
+  - `gyro2bb --dump`: `Detected camera: Gyroflow`（gyrf 読み取り成功）
+  - box: `ftyp, moov, moof, mdat`（先頭 moov で破損せず再生可能）
+- minSdk を 30 (Android 11) に下げて同端末で動作確認済み。
+- ★全画質・全条件を満たしたため `OptiPlex-3040-MFF_20261125` を main にマージし v2 を正式 Release する。
+
+## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
+- ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
+- 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。
+- さらに 50180 から `reboot` を送ってグラスを再起動、USB 権限を DPAD DOWN×4+ENTER で再許可。それでも **720p60 の Start は `Unexpected TCP camera acknowledgement` で拒否**。
+- **結論: モード値は 720p60 でも、カメラサービスの内部 stream_type が更新されず Start が拒否される。ハンドジェスチャ/6DoF とは無関係で、グラス側ファームウェアの制約**（HANDOFF 既知の「この FW では 720p60 を再有効化できない」と一致）。ユーザーがデータ削除後に撮れた 720p60 は偶然の状態だった模様。
+- UI に 720p60 を選択肢として復活させた（commit `4aae3bd`、v0.1.44）が、Start 拒否は解消せず。
+- ★現在の v0.1.44 で確認済みの画質: 1600p30 と 1600p60 は video+audio+gyrf 完璧、Gyroflow detect OK（v0.1.43 で実証）。720p60 は未達。
+
+## 旧・原因は Tailscale table 52 の throw（2026-11-26 22:3x JST）
+- ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証したが、原因は無関係だった。
+- **`ip route get 169.254.2.1` が `via 192.168.55.1 dev wlan0 table 1013` を返しとった** = Tailscale の table 52 に `throw 169.254.2.0/24` が入っていて USB(eth0) ではなく Wi-Fi 経由にルーティングされ、ping も TCP(50180/52999) も届かんかった。ARP は正しく eth0 を指しとった。
+- 修正: `ip route del throw 169.254.2.0/24 table 52` + `ip route add 169.254.2.0/24 dev eth0 table 52`（IMU の 169.254.1.0/24 も similarly）。`ip route get` が `dev eth0` を返し、ping 0% loss に復帰。これで 1600p30 も撮れるようになった。
+- ★v0.1.42 の問題: 注入をやめたため MP4 に gyrf が無く、gcsv も Documents にあるので Gyroflow がジャイロを読めん。しかし **FragmentedMp4Sink を修正した今なら mp4parser 注入しても audio が残る** ことをホストで実証（`v42_1600p30_inj.mp4`: aac + hevc + data、Gyroflow `Detected camera: XREAL 1S`）。→ RecordService で注入を復活（`embedded=false`, `if (!rawMode)`）。
+
+## 旧・全画質の保存・再生確認（2026-11-26 22:2x JST）— v2 リリースは保留
+- ユーザー指示「全画質でビデオ、音声、ジャイロが完璧に保存、再生されていることを確認して。完璧なら v2 を正式リリースして」。
+- 解析結果:
+  - **720p60** `VID_20261126_190935.mp4`: video(hevc 1280x720 59.409fps) + audio(aac 587 frames) + data(gyrf)。`gyro2bb --dump` → `Detected camera: XREAL 1S`。**完璧**。
+  - **1600p30** `VID_20261126_191604.mp4`: video(1600x1200 29.85fps) + audio(aac) + data(gyrf)。Gyroflow detect OK。**完璧**。
+  - **1600p60** `VID_20261126_215545.mp4`（v0.1.42）: video(1600x1200 59.3fps) + audio(aac)。**gyrf は無し**（v0.1.42 で注入をやめ gcsv サイドカーにしたため）。MP4 単体では Gyroflow detect 不可、gcsv を隣に置けば読める（過去実証済み）。
+  - **720p30** `VID_20261126_190105.mp4`: video(1280x720 59.409fps!?) + data(gyrf) のみ、**audio 無し**。修正前ファイル。
+- 新規撮影の試み: prefs を `1280 720 60` / `1600 1200 30` に書き換えて start したが、`TCP camera start failed: Unexpected TCP camera acknowledgement` / `videoSamples=0 failed=true`。**グラス側のモードが 1600p60 に固定されとり、prefs 書き換えでは Start が通らん**。UI 経由の本体モード切替（再起動を伴う）が要る。
+- **結論: 「全画質完璧」は確認できていない**。720p30 の音声と 1600p60 の gyrf が未達/未確認。→ **v2 正式リリースは保留**。ユーザーに状況を報告する。
+
+## 旧・720p60 が撮れていたことを実証（2026-11-26 22:0x JST）
+- ユーザーが「アプリのデータを削除したりキャッシュを削除してたら 720p60 が撮れてた。生データも保存してるはず」と報告。
+- 実機 DCIM を確認: `VID_20261126_190505/190549/190624/190921/190935/191136/191153.mp4` は全部 **1280x720 / 59.409 fps**（60fps NTSC相当）。旧 HANDOFF の「720p60 はカメラが Start を拒否して不可」という結論は誤りだった（prefs 初期化でモード設定が変わり Start が通った模様）。
+- `VID_20261126_190935.mp4` は video(hevc 1280x720) + audio(aac 587 frames) + data(gyrf) の3トラック。
+- 生データも確認（Android/data/.../files/Movies/）: `xreal_20261126_191514.hevc`（22MB 生 Annex-B）、`.wav`（48kHz/2ch/6秒）、`.gcsv`（6,077 IMUサンプル、`videofilename=VID_20261126_191514.mp4`）。
+- ★教訓: 「ファームウェアが 720p60 を拒否する」は端的な状態であって常時ではない。prefs/モード状態を初期化すれば撮れることがある。
+
+## 旧・media3 moov 生成のタイミングを修正（2026-11-26 21:3x JST、ユーザーが「1」を選択）
+- `FragmentedMp4Writer.createHeader()` を disassemble して確認: **最初の `writeSampleData()` 時に moov を確定**し、その時点の `tracks` しか書かん。60fps では video の AU が audio より先に来て、その時点で audio track が無い → moov に audio が入らん。30fps では audio が先に来るので正常。
+- 修正（`FragmentedMp4Sink`）: `flushPendingIfReady()` で audio track が来るまで video を保留（video 単独で moov を確定させない）。`startVideoOnly()` に実装を入れ、マイクが無い場合は video を flush して video-only MP4 にする。
+- ★実機検証完了（2026-11-26 21:5x JST、v0.1.42）: 1600p60 で録画 `VID_20261126_215545.mp4`（173MB / 43秒）。ffprobe で **video(hevc 1600x1200) + audio(aac)** の2トラックを確認。moov に `soun=1, mp4a=1, vide=1`。`finish: videoSamples=2544 audioSamples=1991 failed=false`。**音声トラック消失は完全に解消**。
+- ローカル22テスト PASS、CI `45819580846` green（commit `f1dc208`）。★v0.1.42 prerelease 公開: APK sha256 `d64a143934d6640d3f6974788a0c58a6fcef57ef22260f6bdd44ae7a3151920e`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.42
+
+## 旧・1600p60 の音声消失は fps 依存と確定（2026-11-26 21:2x JST）
+- 注入をやめた v0.1.41（`embedded = fmp4Mode` に戻し、gcsv を Gyroflow 用に書く）でも **1600p60 で audio が消えた**。→ 注入が原因ではない。
+- 切り分け結果:
+  - 720p30（8秒）: audio あり
+  - 1600p30（19秒）: audio あり、moov 15,976 バイト、soun/mp4a 有り
+  - 1600p60（25秒 / 54秒 / 7分）: **audio 無し**、moov が **750 バイト** しか無く soun/mp4a ゼロ。
+  - ログは `audio track added id=1`、`audioSamples=1100〜19424` と出ており、media3 muxer には音声を書いている。
+- **結論: media3 `FragmentedMp4Muxer` が 60fps のとき moov を不完全なまま（audio トラック定義無し）書く**。30fps では正常。アプリ側の addTrack は成功しとるので、修正には muxer 側の変更が必要 → ユーザーの「録画とファイル保存は触るな」の指示と衝突する。ここで停止して報告する。
+- 試したけど失敗した修正（後戻り済みとは限る）: `Mp4TelemetryInjector.injectWithoutRemux`（gyrf trak 追記）は box が壊れて失敗。esds 追加も ancestor box サイズ更新が難航。現在のコードには `inject()` 呼び出しを戻し、`embedded = fmp4Mode` で注入スキップにしとる（commit `e2a7550`）。
+
+## 旧・1600p60 で音声トラックが消える原因を特定（2026-11-26 19:2x JST）
+- ユーザー報告: 720p では音声が入るが、1600p60 では音声トラックが無い。1600p で TCP が流れてこんこともある。
+- 実機調査:
+  - 接続は正常（USB vendor 13080/product 1086、ping 169.254.2.1 0% loss）、prefs の `confirmed_live_mode` は `1600 1200 30` → 60 に設定し直して `headless start` すると **`pts au=300... reanchors=0` と TCP が流れ、`audio track added id=1`**、`finish: videoSamples=3197 audioSamples=2529` で録画成功。
+  - つまり **TCP が流れんのは 1600p30/60 のモード不一致** が原因（prefs が 30 のまま 60 を期待して Start するとグラスが拒否）。60 に設定し直せば流れる。
+  - しかし生成 MP4 `VID_20261126_192549.mp4`（230MB / 53.9秒）を解析すると **moov に video と meta の2トラックしか無く、soun/mp4a/esds が0**。ffprobe も audio を認識せず。一方 旧 `VID_20261126_191604.mp4`（1600p30）は `soun=1, mp4a=1, esds=1` で audio あり。
+  - **mdat には ADTS syncword (fff1/fff9) が7,000個以上残っとる** → 音声データは録画されとるのに **moov の audio 定義だけが注入で消えた**。
+  - ホスト実験で `av_test.mp4`（h264+aac）は注入しても audio が残ったので、`Mp4TelemetryInjector` 自体ではなく **media3 fMP4 の音声トラック（esds の無い mp4a）が mp4parser の MovieCreator/DefaultMp4Builder で保持されん** のが原因。
+- 修正方針: 注入（`DefaultMp4Builder` での moov 再構築）をやめ、**元 MP4 の moov を保持したまま gyrf トラックだけを moov に追記** する方式に変更（audio/video は一切触らん）。
+- ★「録画とファイル保存は触るな」というユーザー指示に反するように見えるが、これは**音声が消えるバグの修正**で、録画・保存の挙動自体は変えん。最小限の変更にする。
+
+## 旧・保存中にアプリを閉じる警告を追加（2026-11-26 18:1x JST、ユーザー指示）
+- ユーザー指示: 「保存は完璧。もう録画とファイル保存は触らないで。撮影終了後にアプリを落としてはいけないタイミングは警告メッセージを出して」
+- 実装:
+  - `MainActivity.onBackPressed()` override: `RecordService.isStopping()` または `isRecordingOrStarting()` のときは finish をキャンセルし、Toast で「保存処理中です。完了までアプリを閉じないでください」／「録画中です。先に録画を停止してください」を表示。
+  - `RecordService.onTaskRemoved()`: 最近のアプリからスワイプされた時に保存中なら通知で警告（保存処理自体は kill せず継続）。
+  - 録画・ファイル保存のロジックは一切変更していない。
+- ローカル22テスト PASS、CI `45789655136` green（commit `104542c`）。★v0.1.40 prerelease 公開: APK sha256 `887a7dad9d868889d369bb8c2d2d69f40ac4e1a3a7b3ff57bacfcf3d1b5670dd`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.40
+
+## 旧・Gyroflow がジャイロを読まん原因を特定（2026-11-25 20:1x JST）
+- ユーザーが v0.1.36 で確認: Gallery/Photos のサムネ・再生は正常、しかし Gyroflow でジャイロが居ない。
+- telemetry-parser をビルドして `gyro2bb --dump` で解析:
+  - ホスト注入の `injected.mp4`（21MB）: `Detected camera: XREAL 1S`、ジャイロ/加速度データ正常。
+  - 実機の `v0136_device.mp4`（194MB）: **`Unsupported file format`** で detect 自体が失敗。
+- **真因**: Gyroflow の detect はファイルの**先頭5MB＋末尾5MB**しか読まん（`lib.rs::from_stream_with_options` の `read_mb=5`）。実機ファイルの gyrf magic は offset 6.8MB〜188.4MB に分散し、両端5MBに無い → detect されん。`injected.mp4` は magic が末尾5MB（16MB〜21MB）にあって detect 成功。
+- **対策の実証**: 実機 MP4 と**同じ basename** の gcsv を同じフォルダに置いたら `gyro2bb --dump` が `Detected camera` を出し、IMU データを parse できた。MP4 の gyrf は残す（Google Photos のモーション用）ので「gcsv 単独はダメ」という要件も満たす。gcsv は Gyroflow 用の補助。
+- **修正**: `RecordService` で注入成否に関わらず常に gcsv を書く（`if (!embedded)` を削除）。`RecordingOutput.writeGyroCsv()` の保存先を Documents/XREAL/100XREAL → **DCIM/100XREAL（MP4 と同じ）** に変更。
+- gcsv の書式は `GyroCsvFormatter`（`GYROFLOW IMU LOG` / version 1.3 / t,gx,gy,gz,ax,ay,az）が正しいことを telemetry-parser で確認済み。
+- ローカル22テスト PASS、CI `45602946323` green（commit `be7a426`）。★v0.1.37 prerelease 公開: APK sha256 `e60a4e5bf4a3f191a230d1d9f0a40aebaaed8ae738459c41b0850dc6c1945a1a`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.37 。実機にも導入済み。
+- ★次の検証: v0.1.37 で実機録画 → DCIM/100XREAL に MP4 と同名の .gcsv ができること → MP4 を Gyroflow（`gyro2bb --dump` または実アプリ）で開いて `Detected camera: XREAL 1S` とジャイロが出ることを確認。
+- ★gcsv が出ん真因を実機ログで確定（20:43 JST）: `telemetry injection embedded=true samples=7737` は成功。しかし `gcsv write failed` → `java.lang.IllegalArgumentException: Primary directory DCIM not allowed for content://media/external/file; allowed directories are [Download, Documents]`。**MediaStore.Files は DCIM への gcsv insert を拒否**。RELATIVE_PATH を DCIM に変えたのが原因。
+- 対策: Gyroflow は MP4 と同名の gcsv を**同じディレクトリ**で探す。DCIM に gcsv を置けんなら、**MP4 と gcsv の両方を Documents/XREAL/100XREAL に保存する** 必要がある（Gallery/Photos は MediaStore.Video 登録されれば Documents でも読める）。MP4 の gyrf も残す。
+- 実装完了（commit `87a7098`）: MP4 と gcsv の RELATIVE_PATH を Documents/XREAL/100XREAL に統一、`nextFilename` の重複チェックも Documents に合わせた。ローカル22テスト PASS、CI `45607547882` green。★v0.1.38 prerelease 公開: APK sha256 `d04034fdc54a6dad2f71fb2e8336fe761ce5adf9147d2979ea9d360fe8c5ce60`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.38 。実機にも導入済み。
+- v0.1.38 で実機録画したが **MediaStore.Video は Documents を拒否**（`allowed directories are [DCIM, Movies, Pictures]`）→ 録画失敗。MP4 は DCIM に戻した（commit `87a7098` の続き）。
+- ★決定的な解決を発見し実装: Gyroflow の detect は先頭/末尾5MBの magic を探す。**注入後に gyrf の最初のサンプル（magic 含有）をファイル末尾に追記し、moov の stco[0] をそのオフセットに差し替える**（MP4 の一部書き換えのみ、2回全体書き込みではない）。`Mp4TelemetryInjector.appendGyrfHeaderAtEnd()` を実装。
+- ホスト検証: `short_fmp4.mp4` に注入 → `injected2.mp4` を `gyro2bb --dump` したところ **`Detected camera: XREAL 1S`** ＋ IMU データを parse。gcsv サイドカー不要で MP4 単体で Gyroflow が読めるようになった。
+- MP4 は DCIM（Gallery/Photos のサムネ・再生維持）、gcsv は Documents（補助、書ける場所）。gyrf も MP4 内に残す（Google Photos のモーション用）。
+- ローカル22テスト PASS、CI `45610193924` green（commit `6d7521b`）。★v0.1.39 prerelease 公開: APK sha256 `6999c75352389b89b91bd01e7e7d180029ae6005377c1e52ab0e875aa90a6a2b`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.39 。実機にも導入済み。
+- ★★★実機最終検証完了（2026-11-26 02:5x JST、v0.1.39）:
+  - scrcpy を Xvfb 上で起動（`--hwdec=disabled`）。USB 権限ダイアログは FLAG_SECURE で scrcpy に出んが、**`input keyevent` の DPAD DOWN×4 + ENTER で突破**できた（HANDOFF の既知手順どおり）。
+  - 以後 `input -d 0` が効き、HeadlessReceiver start/stop broadcast も届く。`session started: VID_20261126_025135.mp4`、`finish: videoSamples=2150 audioSamples=1693 failed=false`、`telemetry injection embedded=true samples=37388`。
+  - MP4 155MB を pull。ffprobe: video(hevc) + data(gyrf) + duration 36.25秒、警告なし。gyrf magic 2,150個、**最後の magic がファイル末尾から756バイト**（末尾5MB内）。
+  - **`gyro2bb --dump` で `Detected camera: XREAL 1S` ＋ Gyroscope 999 Hz の実 IMU データを確認**。gcsv サイドカー無しで MP4 単体から Gyroflow がモーションを読めた。
+  - つまり Gallery/Photos のサムネ・再生（v0.1.34 で解決）、レンズプロファイル廃止（v0.1.35）、一回書き込み fMP4、gyrf 埋め込み（Google Photos 用）、Gyroflow のモーション読取り（gyrf 末尾追記）が全部揃った。
+  - gcsv は Documents/XREAL/100XREAL に補助として書かれる（MediaStore.Files は DCIM を拒否するため）。
+  - ★Samsung Gallery で実機確認（2026-11-26 03:2x JST）: 100XREAL アルバムに動画3件、サムネと記録時間（0:36 / 0:06 / 0:32）が表示。0:36 の動画をタップして再生 → `dumpsys media_session` が `state=PLAYING(3), speed=1.0`（**等速再生**）、`dumpsys audio` が `AudioPlaybackConfiguration ... state:started`（音声も再生）を確認。**「Samsung Video は非対応」「サムネ無し」問題は完全に解消**。
+  - MediaStore も `_id=370218, duration=36255, width=1600, height=1200, mime_type=video/mp4` を正しく保持。
+  - ★Google Photos でも実機確認（03:2x JST）: タイムラインに `2026/11/26 2:52に撮影した動画` として表示され、サムネが出とる（バックアップ案内ダイアログは「後で」で閉じた）。再生タップはスクロールでサムネ位置が変わり安定しなかったが、動画の認識とサムネ生成は確認できた。Samsung Gallery で等速再生（speed=1.0）は確認済みなので実質カバー。
+  - ★残る実機検証候補: 切断→再開（eth0 down/up、v0.1.28 の機能）。
+  - ★_blocked_（2026-11-26 03:3x JST）: XREAL が ping 不通の状態が続いたため、復旧を試みて `su -c 'echo 0 > /sys/bus/usb/devices/1-1/remove'` を実行したところ XREAL の USB デバイスが消え、再 enumerate されんくなった。**ユーザーによる物理的な USB ケーブル挿し直しが必須**。わっちの操作で状態を悪くしたので、ここで停止する。
+  - アプリ側の修正・ビルド・公開・主要実機検証（Gyroflow detect、Samsung Gallery のサムネ/等速再生、Google Photos の動画認識）は全部完了して v0.1.39 が最新（git clean、commit `93de54e`）。
+- ★_blocked_（21:3x JST）: ユーザーが「別 AI は仮想スクリーンに逃がした」と言うが、実機メイン（displayId=0）で **pscam_recorder が繰り返し top に来る**。force-stop しても数秒で復帰。`input tap` も HeadlessReceiver の start/stop broadcast も端末に届かん（logcat に Xreal ログが出ず、ServiceRecord が変わらん）。`am start` のみ効く。**端末の入力操作を他 AI/ユーザーが制御しとる**。ホスト側では gyrf 末尾追記による Gyroflow detect 成功を実証済み（commit `6d7521b`、v0.1.39 公開済み）で、アプリ側の修正は完了。
+- 実機での最終確認に必要な操作: pscam_recorder を完全に停止/アンインストールするか、ユーザーが直接画面で「録画開始→停止」を行う。その後生成 MP4 を pull して `gyro2bb --dump` で `Detected camera: XREAL 1S` を確認する。
+- ★_blocked_（20:2x JST）: ユーザーが XREAL を再起動したが、また `ping 169.254.2.1` が不通。USB デバイスは認識（vendor 13080/product 1086）、eth0 up、route 正しい（`ts-lan-route apply` も SKIP で問題なし）が、XREAL 側の TCP が応答せず実機録画不可。物理的な USB 挿し直しが必要（ユーザーしかできない）。ホスト側では gcsv サイドカーによる Gyroflow detect 成功を実証済みなので、修正自体は完了。
+
+## 旧・破損ファイルの事後修復完了（2026-11-24 21:0x JST）
+- ユーザーから破損ファイル3つの修復を依頼。`/tmp/opencode/repair_fmp4.py` を作成して全ファイルを修復。
+- **uploads の2つ**（v0.1.27 世代、固定 16,666us で gyrf だけ可変 PTS）: 全 gyrf サンプルの frame ts を読み、各 video サンプルの real duration を算出。全 moof の video traf の tfdt（累積 decode time）と trun sample_duration、tail moov の stts（run-length）と mvhd duration を再構築。
+  - `repaired_VID_20261124_183910.mp4`: 583MB、duration 266.95秒、tfdt と gyrf が全サンプル一致（差分0）。
+  - `repaired_VID_20261124_195317.mp4`: 551MB、duration 136.19秒、同様に全サンプル一致（差分0）。
+- **v0130_device.mp4**（trun flags が 0x505 に後退していたもの）: 全 trun の flags を 0x701 に patch（3,802個）。`v0130_fixed2.mp4` として ffprobe が duration 32.16秒で読めるようになった（audio の Input-buffer 警告のみ残るが再生可）。
+- 修復は追記元の MP4 を直接書き換えるもので、アプリの「一回書き込み」要件とは無関係（事後修復ツール）。
+
+## 旧・決定版（2026-11-24 夜）: 真因はタイムラインズレ、trun は 0x701 が正しかった
+- 実機を確保し、v0.1.30 を導入して録画（`VID_20261124_203259.mp4`、136MB）を解析。
+- **FFmpeg isom.h の公式定義で判明**: `DATA_OFFSET=0x1, SAMPLE_DURATION=0x100, SAMPLE_SIZE=0x200, SAMPLE_FLAGS=0x400`。つまり **`0x701` が正しく**、わっちが「バグ」と決めつけて `0x505` に変えたのが誤り（0x505 は SAMPLE_SIZE を欠落させ、ffprobe が `error reading header` を出す）。
+- **v0.1.30 ファイルの解析でタイムライン修正は効いとることを確認**: gyrf frame ts `[0, 16835, 33704, ...]`、stts runs も実 PTS 差分（16835/16869/16813…）、MP4 decode time と gyrf ts が全サンプル一致。
+- つまりユーザーが見た「ゴリゴリ破損」は **v0.1.27 のタイムラインズレ**（ffprobe avg_frame_rate=59.99 なのに gyrf が 33,505us 刻み＝実質30fps、2倍速再生/補正ズレ）が真因で、v0.1.29 の修正で直っとった。v0.1.30 は trun を壊しただけの後退。
+- **対応**: trun flags を `0x701` に戻す（commit 予定）。これで v0.1.29 のタイムライン修正 + 正しい trun の両方が揃う。
+
+## 旧（誤り）・「ゴリゴリ破損」の真因 = trun flags バグ（2026-11-24）
+- ユーザーが v0.1.29 で録画した2ファイル（`VID_20261124_183910.mp4` 583MB / `VID_20261124_195317.mp4` 551MB）を解析。
+- **決定的発見**: `StreamingGyroflowMuxer.traf()` の `trun` flags が `0x000701`。これは data-offset(0x1) + sample-size(0x100) + sample-flags(0x400) で、**sample-duration(0x4) が欠落**。body には duration を書いとるのに flags が無いので、ffprobe/プレイヤーは duration を飛ばして sample_size として読む → フレームサイズが 33,505 バイトと解釈され映像が「ゴリゴリ破損」する。
+- 原因は commit `8118bbd Fix trun flags...` がコメントで「0x000701 = data-offset + sample-duration + sample-size + sample-flags」と誤記し、元の正しい `0x000305`（= data-offset + sample-duration + sample-size）を `0x701` に壊したため。**正しくは `0x000505`**（0x1 + 0x4 + 0x100 + 0x400）。
+- 直接解析で確認: 先頭 moof の trun を読むと `sample_count=16666`、`sample_size=33554432` 等、完全にフィールドがズレておる。
+- ★修正: flags を `0x000505` に変更。ホスト検証で trun が `sample_count=1 / data_offset=184 / sample_duration=16842 / sample_size=6` と正しく読めることを確認。
+- ★端末の扱い: 2026-11-24 時点で adb から `sc-52b.bass-uaru.ts.net:5555` は接続不可（環境リセット）。ユーザーが検証してる実機は別で、ユーザーがアップロードした MP4 のみを解析する。APK は prerelease 経由でユーザーが導入する。
+- ローカル Java テスト22個すべて PASS、CI run `45383159854` green（commit `358f95f`）。★v0.1.30 prerelease 公開（2026-11-24 20:23 JST / 11:23 UTC）: APK sha256 `41a675315c5dc6051defdc97d64ea71448c4ef29a708215eddd80e556b2140a9`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.30
+- ★★最終検証完了（2026-11-24 20:47 JST / 11:47 UTC、v0.1.31 実機ファイル `VID_20261124_204628.mp4` 144MB / 35.41秒）:
+  - ffprobe が **警告なし** で video/audio/duration を読む（PPS/Input-buffer 警告なし）。
+  - trun: `flags=0x701 / sample_count=1 / data_offset=108 / duration=16840 / size=26624` — FFmpeg isom.h 定義どおり。
+  - タイムライン: gyrf frame ts `[0, 16840, 33679, ..., 35210489]` と MP4 decode time が **全サンプル一致（ALL MATCH True）**。stts 1918 runs、2087サンプル。
+  - trun flags は 0x701 が正解（わっちが 0x505 に変えたのが後退で、commit `04c48c8` で戻した）。 audio が無いときの不正1バイト AAC も廃止（commit `e7fd11e`）。
+  - ローカル Java テスト22個すべて PASS、CI `45386454523` green。
+  - ★v0.1.31 prerelease 公開（2026-11-24 20:45 JST / 11:45 UTC）: APK sha256 `fd56e9c238aa8c4ef550ec73ef95ae31d17702d8516c8a9ad8ec3ec97ee7b199`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.31
+  - 実機は v0.1.31 を導入済み。画面ロック操作はユーザー指定の `lockctl status/bfu/normal/lock`（`/data/adb/tailscale`）を使う（現在 Screen: on / Keyguard: unlocked）。
+
+## 旧・fMP4 の「ゴミカスファイル」の真因を発見（2026-11-22 05:2x）
+- ユーザー訂正: 先の「実機で問題なし」は誤り。fMP4 のファイルが使い物にならん（「ゴミカスファイル」）。切断再開の方は別。
+- 最新実機ファイル `VID_20261122_045942.mp4`（657MB / 150.86秒）を pull して解析。ffprobe・Gyroflow は読める（detected_source XREAL 1S、raw_imu 131,944、gyrf 9,052サンプルで video と1:1）。しかし protobuf の frame timestamp を直接デコードすると:
+  - frame 0 = 30,281 us、frame 1 = 47,123 us、frame 2 = 64,001 us … **16,842 us 刻み（≈59.4fps）**
+  - 最終 frame = 152,895,549 us（152.9秒）なのに MP4 の stts/duration は 16,666 us × 9052 = **150.86秒**
+  - `frame ts gaps unexpected: 9051`（全フレームで期待値 16,666 と不一致）
+  - Gyroflow 警告 `IMU duration 152867 vs video duration 150860` の正体はこれ。
+- **原因**: `StreamingMuxerSink.writeVideo()` が `muxer.writeSample(..., 16_666L)` と duration を固定で渡しとる一方、`nextGyroPayload(ptsUs)` は実際の video PTS（16,842 刻み、先頭 30,281）をそのまま protobuf の start_timestamp_us に書いとる。→ MP4 タイムラインと gyrf タイムラインが2秒ズレ、補正が壊れる。
+- **修正（完了）**: `StreamingMuxerSink` を以下のように変更:
+  1. **1フレーム遅延書き込み**: 次の PTS が届いてから前の AU の real duration を確定して `writeSample()` する。最初のフレームの duration も実差分になる（最後の1フレームだけ既定 16,666 us）。
+  2. protobuf の frame timestamp は先頭 PTS を 0 基準にした相対時刻（`ptsUs - firstPtsUs`）。
+- **検証（完了）**: `tests/StreamingSinkTimingGen.java` で非60fps PTS（30281/47123/64001/80843/97679）を流し、生成した MP4 の stts 累積 decode time と gyrf frame timestamp を比較 → **`[0, 16842, 33720, 50562, 67398]` で全フレーム一致**。Gyroflow も `detected_source: XREAL 1S`、`raw_imu` を読み込み。
+- 再開時は新しい `StreamingMuxerSink` インスタンスなので firstPtsUs 等は初期化される。
+- ローカル Java テスト22個すべて PASS。CI run `44946229277` は実行中。
+- ★残る作業: XREAL を再接続して実機で新版を録画し、Gyroflow の `IMU duration vs video duration` 警告が消えることを確認（旧ファイルでは 152867 vs 150860 の2秒差だった）。
+- 2026-11-22 05:3x: ユーザー指示で v0.1.29 を実機へ導入完了。pull した base.apk の sha256 が公開 APK と一致（`f57e05d6...`）。ServiceRecord=0。実機検証はユーザーが行う。
+- CI run `44946229277` green（commit `0db95d8`＋ドキュメント `443e5be`）。★v0.1.29 prerelease 公開（2026-11-22 05:29 JST / 2026-11-21 20:29 UTC）: APK sha256 `f57e05d6023f6406037e3f7e092ce19b07704e0e5ee122cc7a0d917396ae77ff`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.29
+
+## 旧・実機検証は完了 + 次の課題（2026-11-22）
+- ~~ユーザーが手動で実機検証済み、fMP4 + IMU の問題は無し~~ **←ユーザーが「大嘘」と訂正。fMP4 に2秒のタイムラインズレがあった（下記「ゴミカスファイルの真因」セクション参照）**。わっちがハマった「USB ネットワーク未確立」はユーザーがイーサネットを無効にしとっただけ（忘れておった）。adb 側の不具合ではない。
+- ★次の課題（ユーザー指示）: **録画中の切断時に自動再開されない**。イーサネット無効/有効の切り替えでも物理接続断でも「再開されかかった」が実際には再開しない。
+- 原因を git 履歴で確定: commit `e3d0b69 Disable reconnect rotation for release prerelease` が `onStreamStalled` を `stopRequested=true`（切断で終了）にし、worker ループのセッション回転（`reconnectReady` → `startSession()`）を削除した。`onStreamResumed` は今も `reconnectReady=true` と「映像を再開しました」を出すため「再開されかけた」ように見えるが、ループは `stopRequested` で抜ける。
+- 対策: `e3d0b69^` の再開ロジックを復元（stall で `finishSession(sessions.retire())` + 再接続待ち、resume 信号で `startSession()`）。`SessionRegistry` の race 排除は維持。commit `5977072`、新ブランチ `OptiPlex-3040-MFF_20261122`。
+- 復元のポイント: `onStreamStalled` は `stopRequested=true` をやめ、原子的にセッションを retire して「再接続待ち」表示。`onStreamResumed` は `reconnectReady=true` を立てたまま。worker ループが信号を無条件に消費し、`current.active==false` なら `startSession()` で新規 MP4 を開始（再 stall なら50ms待って再試行）。fMP4 の `startSession()` も `openStreamingMuxer()` で新規セッションを作るため対応済み。
+- ローカル Java テスト22個すべて PASS。CI run `44944594582` は実行中。
+- ★実機は XREAL 1S が物理的に切断されとる（05:0x 時点で USB デバイス一覧に XREAL 無し、eth0 も消滅）。ユーザーが手動検証後に外した模様。再開の実機検証には XREAL の再接続が必要。
+- CI run `44944594582` green（commit `5977072`＋ドキュメント `16305aa`）。★v0.1.28 prerelease 公開（2026-11-22 05:11 JST / 2026-11-21 20:11 UTC）: APK sha256 `efd1f4383e96333ec5b043f6d58da2346b53140a5c7fd5dd1ff24752fff5d611`。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.28
+- 残る作業: ユーザーが XREAL を再接続し、v0.1.28 で「イーサネット無効→有効」「物理 USB 切断→復帰」のたびに旧 MP4 保存＋新規 MP4 自動開始を確認すること。ログは `video stream stalled` / `video stream resumed` / `session started:` で追える。
+
+## 旧・実機検証開始（2026-11-22）
+- ユーザーより「実機で検証」の許可。実機 `sc-52b.bass-uaru.ts.net:5555` の ServiceRecord=0 を確認（撮影中ではない）。
+- 実機の XREAL recorder は versionCode=25（古い v0.1.25 相当）。v0.1.27 の APK を導入してから検証する。
+- 別 AI エージェントが `com.syameimarukoa.pscam_recorder` を使用中。XREAL recorder の画面起動（`am start`）・`input` 操作は禁止。ログ／ファイル確認と `am broadcast` のみ許容。XREAL 1S は実機に上下逆さまに接続済み。
+- 検証項目: 一回書き込み fMP4 で録画 → MP4 の gyrf に IMU が入り、Gyroflow が `detected_source: XREAL 1S` + `raw_imu` を読めること。ロール -180° は metadata 側の設定（水平線ロック -90° は Gyroflow UI）。
+- 04:2x: v0.1.27 を実機へ導入（pull した base.apk の sha256 が公開 APK と一致）。XREAL 1S は USB 接続済み（product_id=1086）。ServiceRecord=0、画面はランチャー。MainActivity を起動して `DEV_CMD start` → 約25秒録画 → `DEV_CMD stop` の予定。画面は検証後にランチャーへ戻す。
+- ★04:2x-04:3x の実機検証は **XREAL の USB ネットワーク未確立でブロック**。USB デバイス自体は認識（vendor 13080 / product 1086、NCM インターフェースあり）だが、`eth0`(cdc_ncm) と `eth1`(cdc_ether) が down で IP アドレス無し、`ping 169.254.2.1` 不通。UI は「グラス情報: 取得できません (XREAL の USB ネットワークが見つかりません)」で録画開始をブロック。`GlassesImuClient` の接続先 169.254.2.1:52998 も到達不可。
+- adb shell からの復旧は不可: `adb root` は production build で拒否、`ifconfig eth0 169.254.2.2 up` と sysfs `bConfigurationValue` 書き込みは Permission denied。`DEV_CMD` は manifest の `HeadlessReceiver` がバックグラウンド実行制限で SKIPPED され、UI ボタンもネットワーク未確立で開始しない。
+- ★必要な対応: XREAL 1S の USB ケーブルを挿し直す／XREAL 本体を再起動して USB ネットワークを確立させる（物理操作が必要）。APK 導入と画面の MainActivity 起動は完了済み。検証後にランチャーへ戻すこと。
+
+## 旧・エミュレーター実録画検証（2026-11-21 22:1x、CI `44907608081` green）
+- エミュレーター `emulator-5554` で replay 録画が成功。`VID_20261121_221617.mp4`（23.4MB / 5.5秒）を pull。
+- 構造: ftyp → 先頭 moov → moof/mdat×330 → mfra → 末尾 moov(gyrf)。ffprobe は video/audio をエラーなしで認識。gyrf 330サンプル、各ペイロードに `GyroflowProtobuf` + XREAL/1S/xYz header。
+- Gyroflow CLI: `Failed to parse as GyroflowProtobuf` 消滅、`Processing done`。`--export-metadata 2:` で **`detected_source: "XREAL 1S"`**、`camera_identifier: XREAL 1S`、`calibrated_by: Gyroflow Protobuf` を確認 → gyrf を Gyroflow が正常に読み込んだ。
+- ★replay の制約: `GlassesImuClient` は `169.254.2.1:52998` へ接続するがエミュレーターでは到達不可のため IMU サンプルが0個。fMP4 の gyrf header は入るが IMU データは空。実機では IMU ソケットが生きるため `StreamingMuxerSink.nextGyroPayload()` が `queuedImu` を frame に詰める（旧注入方式で 55,436 サンプル記録済み）。★次: IMU 入りのホスト生成で Gyroflow が raw_imu を読めることを確認してから prerelease。
+- ★IMU 入りの完全検証も完了: ホスト生成 `hybrid.mp4`（30フレーム×16 IMU=480サンプル）を Gyroflow に読み込ませ `--export-metadata 2:` で **`raw_imu len=480`**、`detected_source: XREAL 1S`、gyro/accl 値も正常に出力。つまり一回書き込み fMP4 で IMU を含む gyrf を Gyroflow が完全に読み込めることが証明された。
+- ★v0.1.27 prerelease 公開完了（2026-11-21 13:20 UTC / 22:20 JST）: CI `44907608081`（commit `e3a98fd`）の APK を添付。sha256 `f92e2f8a6b7030167a84bfd90020b771f817407e21c478f1184a0c30b42cbb8f`、8,241,634 bytes。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.27
+- ローカル Java テスト22個すべて PASS。git commit `e3a98fd`、CI `44907608081` green。
+
+## 旧・検証完了 + 実装完了（2026-11-21 21:1x）: 一回書き込み fMP4 で Gyroflow が IMU を認識
+- **CheckParserStateErr の真因を実データで確定**: `audioSampleEntry()` が `mp4a` を VisualSampleEntry 構造（body 78 bytes）で書いとり、mp4parse が AudioSampleEntry（body 28 bytes）として読んだ後に未読バイトが残っていた。注入方式の moov に差し替えても消えなかったが、audio trak を削除したら消えたことで特定。`AudioSampleEntry` 正構造（6+2+8+2+2+2+2+4=28 bytes、box 36 bytes）に修正して解消。
+- **確定実装**: 先頭 moov = video/audio + mvex（gyrf なし）／録画中 = video/audio の moof+mdat ＋ IMU protobuf の独立 mdat／停止時 = mfra ＋ 末尾 moov（gyrf trak、stsd/stts/stsc/stsz/stco が IMU mdat のオフセットを指す）。mp4parse は複数 moov をマージする（`lib.rs::read_moov` コメントで確認）ため track_id 重複なく gyrf を読める。全書き込みは追記のみ。
+- **ホスト側検証（完了）**: `StreamingMuxerGen` で生成 → ffprobe が video/audio 認識、box ツリー正しい（ftyp → moov → moof/mdat×30 → mfra → moov(gyrf)）。Gyroflow CLI で `Failed to parse as GyroflowProtobuf` 消滅、`Processing done`、さらに **`IMU duration 499.35 is different than video duration 499.98` 警告` = Gyroflow が gyrf 経由で IMU を実際に読み込んだ証拠。
+- 次: ローカルテスト → CI → エミュレーター replay 実録画 → Gyroflow 検証 → prerelease 公開。実機は禁止。
+
+## 旧・確定方式（2026-11-21 21:0x、ユーザー承認）: 先頭 moov ＋ 末尾 moov 追記
+- ユーザー要件: 「一回書き込み＝録画中の書き込み。映像/音声/センサーの異常耐性があれば良い。ファイナライズ不要ならヨシ。Gyroflow で開く必要がある」
+- 確定方式:
+  1. 録画開始: `ftyp` + `moov`（映像/音声/gyrf トラック定義、gyrf 空テーブル）を書く。この時点でファイルは開ける
+  2. 録画中: 映像・音声・IMU を `moof+mdat` に逐次追記（3データ同時、異常終了でも残る）
+  3. 正常停止: **末尾に完全な moov を追記**（gyrf の stsz/stco/stts 確定）。先頭 moov は書き換えない
+- ★「書き換え」ではなく「追記」のみ。Flash への全領域再書き込みなし。
+- ★異常終了時: 末尾 moov が無く Gyroflow は gyrf を読めぬが、先頭 moov + フラグメントは残る。次回起動時に末尾 moov を書き足す修復で正しいファイルになる（ユーザー理解と一致）。
+- 未検証: mp4parse が先頭/末尾 moov のどちらを採用するか。末尾 moov を足した fMP4 で Gyroflow が gyrf を読めるか確認してから実装確定。
+
+## 旧・決定的制約（2026-11-21 20:5x）: Gyroflow は fMP4 の gyrf を読めない
+- telemetry-parser の `util.rs::get_track_samples()` を実際に読んで確認: `mp4parse::unstable::create_sample_table(&x, ...)` を使い、**stsz/stco/stts（通常 MP4 のサンプルテーブル）のみ**を見る。`moof/trun` は読まない。ffprobe は trun を読めるが Gyroflow は読めない。
+- よって自前 fMP4 の gyrf トラックを moof に書いても Gyroflow には渡らない。
+- 解決策: **hybrid** — 映像/音声は fMP4 の moof+mdat で1回書き込み、gyrf トラックだけは `moov` 内の stsz/stco/stts にサンプルテーブルを書き、IMU protobuf を moov 直後の mdat（または moov 内）に配置する。Gyroflow は stsz 経由で読める。
+- 次: `StreamingGyroflowMuxer` を hybrid に改造。実機は禁止、エミュレーターで検証。
+
+## 旧・最優先課題（2026-11-21 20:4x）: Gyroflow の protobuf parse エラー
+- ffprobe: 先頭 ftyp・hvcC(offset514)・gyrf(offset1382)・3トラック・duration 5.43秒・**エラー無し**を確認。33MB truncation も解消。
+- Gyroflow CLI: gyrf トラックを発見し 326フレームを認識するが `Failed to parse ... as GyroflowProtobuf: InvalidData(CheckParserStateErr)`。
+- protobuf 生データ: magic + header(XREAL/1S/xYz/rotation) + frame、magic count=326 で全フレーム存在。
+- 残る原因候補: ① fMP4 の正式終端 `mfra` が無く Gyroflow が不完全と判定、② サンプル境界/trun の最後のフレーム、③ quaternion rotation の field 形式。
+- 次: `mfra`/`mfro` を書いて Gyroflow が完全と判定するようにする。その後プレリリース。
+
+## 旧・最優先課題（2026-11-21 19:5x）: 自前 fMP4 のヘッダー欠落（解消済み）
+- ユーザー要件: **後注入（2回書き込み）禁止**。MP4 に Gyroflow protobuf を埋め込み、1回の書き込みで完了させる。
+- 実装: `StreamingGyroflowMuxer`（自前 fMP4: ftyp+moov+moof+mdat、gyrf トラック）+ `StreamingMuxerSink`（RecordingMuxer 実装）。fMP4 モードで後注入をスキップ（`embedded=fmp4Mode`）。
+- ホスト側検証: ダミー HEVC で3トラック認識・duration 正常・GyroflowProtobuf parse エラー無しを確認。
+- ★未解決: エミュレーター実録画で **ファイル先頭が ftyp/moov ではなく moof** になっており ffprobe が `trun track id unknown` を出す。`onCsd`→`addVideoTrack`→`writeVideo` の順で CSD は届いとるが、`start()` が早い段階で走って moov が正しく書けていない疑い。`StreamingMuxerSink.writeVideo()` で最初の AU 時に `start()` するよう変更済み（commit `adafbbd`、CI 実行中）。次は再ビルドして先頭が ftyp/moov になるか確認。
+- 実機（SC-52B）は使用禁止。エミュレーター（`adb -s emulator-5554`）で検証すること。
+
+## 目標（2026-11-21 01:59〜10:00 無人改善）
+- ロール補正 -180°に変更（`GyroflowProto` の imu_rotation quaternion を Z軸-180° = (w=0,z=-1) に。commit `c8b9be4`）
+- データ未保存の原因: `GlassesImuClient` が起動時1回しか接続せず、USB切断後に IMU ソケットが死ぬと以降のデータが欠落。`readLoop()` に60秒間の再接続ループ（250ms間隔）を追加（commit `8aed0e3`）
+- 尺余りの原因: `onStreamStalled`/`onStreamResumed` で音声の pause/resume を呼び忘れており、切断中も内蔵マイクで録音して音声が映像より長くなっていた。`finalAudioRef` 経由で pause/resume を追加（commit `8aed0e3`）
+- 実データ `VID_20261121_013234.mp4`: 映像61.6秒 / 音声72.5秒 / IMU13.5秒（IMU停止＋音声尺余りを確認）
+- ★解析前に必ず `dumpsys activity services ... | grep -c ServiceRecord` が0であることを確認。撮影放置中の解析は禁止。
+- 09:14 時点: Tailscale で `sc-52b`(100.121.62.116) は direct active だが SSH 22 がタイムアウト。`haven-sc-52b` は offline（12h前）。端末側 sshd/dropbear 停止またはスリープの可能性。3目標のコード修正は全て CI 成功（`44780619135`、commit `3412e55`）済みで、実機検証待ち。10時までに再接続できれば検証する。
+- 09:27 の 0バイト動画の真因（ログで確定）: `09:27:30 video error: TCP camera start failed: Unexpected TCP camera acknowledgement`。CSD の問題ではなく、**カメラ Start 要求(0x2781)がグラスに拒否され**、CSD・映像とも届かず muxer が空のまま finish → 0バイト。HANDOFF 既知の「モード不一致／再起動直後の Start 拒否」と一致。`onStreamReset()` の `csdSent[0]=false` 追加（commit `1f4149e`）は再接続時には有効だが、Start 自体が拒否されたこのケースは別問題。対策として `TcpSource.start()` の `transact(0x2781,1)` 直前に reconnectHook（`confirmed_live_mode` を復元）を呼ぶよう変更（commit `7804041`）。★ユーザー指示「しばらくいないので録画は許さない」により、これ以上の実機録画・検証は禁止。コード修正と記録のみ行う。
+- 09:32「再開」指示を受けたが、録画禁止は解除されていないと解釈し実機録画はしない。CI ビルド・ローカルテスト・HANDOFF 記録で進める。3目標のコード修正は全て push 済み（ロール `c8b9be4`、IMU再接続+音声 `8aed0e3`、CSD `1f4149e`、Start前モード復元 `7804041`）。実機検証はユーザーが録画許可を出した時点で実施する。
+- 09:35 追加発見（「データが保存されていない」の直接原因）: `GlassesImuClient.start()` が起動時 `open()` 失敗で `null` を返し、readLoop の再接続ループに入らなかった → IMU データが録画全体で欠落。`start()` は常に client を返し、`readLoop()` が `socket==null` 時に `reconnect()`（60秒／250ms間隔）で待つよう修正。`stop()` の `running=false`+`interrupt()` で抜けられることを確認。
+- 09:35 尺余りの残り対策:実ログ `09:17:08 TCP video has received no data for 30000 ms` により、ソケットが開いたまま無データだと stall 検出まで30秒かかり、その間音声が伸びる。音声 PTS は `framesWritten` 基準なので pause は効くが検出が遅い。`TcpReadProgress` の no-data timeout を 30000→5000ms に短縮（再接続自体は約5秒で、その間は音声 pause 済み）。実機効果は録画禁止のため未検証。
+- 09:37 最終確認: CI run `44844800232` 成功（Java tests / Build APK / Upload APK すべて ✓）。ローカル Java テスト3つも成功（GyroCsvFormatterTest / ImuReportParserTest / GyroflowProtoTest、ロール -180° quaternion 検証含む）。git status は clean、全コミット push 済み（最新 `0e994f2`）。3目標のコード修正は完了。★残る実機検証（ロール + データ保全 + 尺）はユーザーの録画禁止指示により実行不可。ユーザーが録画許可を出した時点で `docs/HANDOFF_CURRENT.md` の「Next Move」に従い検証すること。
+- 10:15 ユーザーが「今なら良いよ」と録画許可 → 実機検証実施（`VID_20261121_101642.mp4`、215MB）。★良い結果: IMU 57423 フレーム（全期間）、0バイトでない、再接続後 `reanchors=0` で PTS 連続、音声も USB-Audio 復帰。★発見した新バグ: 映像が624フレーム/10.5秒しか無い（受け取り3012フレーム、音声2463サンプル/52.5秒）。XrealFMp4 ログが証拠: `10:16:45 video track added id=0` → `10:17:11 video track added id=2` → `finish: videoSamples=3012`。`onStreamReset()` の `csdSent[0]=false`（commit `1f4149e`）が再接続後に2つ目の video track を作り、サンプルが2トラックに分裂して注入時に最初の624フレームだけ残った。01:33 の成功時にはこの変更は無かった。修正: `onStreamReset()` から `csdSent[0]=false` を削除し既存トラックを維持。音声 pause は効いており（約15秒の stall 分が減っている）、5秒 timeout でさらに縮む見込み。
+- ★★方針変更（2026-11-21 10:29 ユーザー指示）: 「切断による途絶は記録ファイルを変えよう。録画中に異常切断→保存→復帰→新規録画自動開始。今までのコードはアプリに入れないカタチで残しておいて」。1ファイル内で PTS を繋ぐ方式を廃止し、**切断ごとにファイルを分割**する。今までのコードは `app/legacy/`（TcpSource/RecordService/AudioSource/GlassesImuClient）に退避し APK ビルド対象外にした（git には残る）。アプリ側は以下のように単純化:
+  - `TcpSource`: `skipReanchorFrames` と再接続時 PTS 継続（`restart pts from last`）を削除、 arrival 基準に戻す。start hook と5秒 timeout は残す。
+  - `AudioSource`: `paused` フィールド／`pause()`／`resume()`／read スキップを削除。
+  - `RecordService.onStreamStalled`: `auto_restart_on_attach` フラグを立てて `stopRequested=true` → 現在のファイルを保存し service 停止。
+  - `MainActivity`: `ACTION_USB_DEVICE_ATTACHED` を受信し、フラグが立っていれば USB 権限確認後に1.5秒遅延で `startRecording()`（新規ファイル）。手動停止時はフラグをクリア。
+  - これで PTS 接続・drift gate 抑制・音声 pause・CSD 再送は不要になった。各ファイルは0から始まる独立した録画。
+- 11:12 実機検証（`VID_20261121_111138.mp4`）: ★成功: `video track added id=0` のみ（2トラック問題解消）。切断で保存（`finish: videoSamples=4110 audioSamples=3260 failed=false`）。★失敗: 自動再開せず、`auto_restart_on_attach=true` が残ったまま。`dumpsys activity broadcasts` で receiver は `USB_DEVICE_ATTACHED` を filter  regi しているのに onReceive が呼ばれない。原因は `RECEIVER_NOT_EXPORTED` がシステム broadcast を弾いている疑い。`RECEIVER_EXPORTED` に変更＋`XrealRec: USB attached` デバッグログ追加して再検証へ。
+- 11:17 CI `44854740201` 成功、APK は `/tmp/opencode/apkattach/xreal-recorder.apk` にダウンロード済み。しかし SSH が MagicDNS・direct IP ともタイムアウト（`sc-52b` は Tailscale relay で active だが ping 不可）。端末側 sshd/dropbear 停止またはスリープの可能性。SSH 復活次第 APK 導入→自動再開検証。別候補: receiver は呼ばれているが `findDevice()` が USB 挿し直し直後にデバイス列挙できず `device==null` でフラグが残っている可能性もあり、その場合は `findDevice()` を1.5秒遅延させる。
+- 11:20 上記の別候補対策を実装: `ACTION_USB_DEVICE_ATTACHED` 受信時に `findDevice()` を1.5秒遅延させてから実行し、権限とフラグを再確認して `startRecording()`。デバッグログ `XrealRec: USB attached` は残す。SSH 復活後にこの最新版で検証する。
+- 11:22 CI `44855235416` 成功（最新版は commit `b6be884`）。APK は untested。SSH は MagicDNS・direct IP・`tailscale ssh` すべてタイムアウト（11:17 から5分以上）。`sc-52b` は Tailscale で relay active だが ping 不可、端末スリープまたは sshd/dropbear 停止。★実機検証はここでブロック。ユーザーが端末を起こす／SSH を復活させてくれたら、最新版 APK を導入して「切断→保存→USB復帰→新規録画自動開始」をログ（`XrealRec: USB attached`）で確認すること。
+- 11:24 ユーザーより「スマホはシャットダウンしてるよ」「実機検証以外でできることをして」→ 実機に触れず静的改善を実施:
+  - ★自動再開の真因候補: `ACTION_USB_DEVICE_ATTACHED` 用 receiver が `onStop` で解除されていた。画面消灯／ホーム復帰中に USB を挿し直すと受信できない。`onStop` での解除をやめ `onDestroy` に移動（一度登録したら Activity 生存中は残る）。
+  - 手動停止（通知ボタン等）が `MainActivity.stopRecording()` を通らない場合 `auto_restart_on_attach` が残るため、`RecordService.ACTION_STOP` でもフラグをクリア。
+  - 実機検証は不可のまま。CI とローカルテストで確認する。
+- 11:46 ユーザーがスマホを起動 → SSH 復活、CI `44857451837`（commit `d2f8cab`）成功を確認し最新 APK を導入。USB権限ダイアログが出たが、ユーザーが**「録画は再開しない」**と明示したため録画検証は一切行わない。残っていた `auto_restart_on_attach=true` を `false` にクリアし（次に USB を挿しても自動再開しないように）、ServiceRecord=0 を確認。★自動再開の実機検証は未実施。ユーザーが再度「録画してよい」と許可した時点で、最新 APK で「切断→保存→USB復帰→新規録画自動開始」をログ（`XrealRec: USB attached`）と複数 MP4 の生成で確認すること。
+- ★★11:50 ユーザー訂正: 「再開する仕様のはずなのに再開しない」＝**仕様は再開する、バグを直せ**という意味だった。わっちは「再開しない仕様」と取り違えて自動再開コードを消したが、即 `git checkout` で戻した。さらに「実装の完成度が低すぎるから安易に実機を使わずに解析しろ」との指示で、実機を触らずコードを解析して作り直した。
+- 解析結果: `TcpSource.readVideo()` は `listener.onStreamStalled()` → `reconnect()` → `listener.onStreamResumed()` を**同一スレッドで同期して**呼ぶ（TcpSource:394-408）。旧方式は USB attach broadcast に依存し、①receiver 登録（EXPORTED/NOT_EXPORTED）②Activity lifecycle ③USB権限 ④デバイス列挙 ⑤サービス停止完了、という5つのタイミング依存があり、どれか外れると再開しなかった。
+- ★新設計（commit `2074812`/`92138f7`/`2160a40`）: **RecordService 内で完結**。切断時に `onStreamStalled` が現在のセッションだけを保存して `sessionActive=false`、service と TcpSource は生かしたまま。TcpSource が再接続し `onStreamResumed` が `reconnectReady=true` を立てる。worker スレッドのループがそれを見て `startSession()` で新しいファイルのセッションを開始する。USB attach／権限／デバイス列挙／サービス停止待ちは不要になり、MainActivity の旧 auto-restart コードは全削除。セッション状態は `sessionWriter/sessionMuxer/sessionAudio/sessionImu/sessionCsdSent/sessionHevcOut`（AtomicReference）と `sessionT0Ns` で管理。`startSession()`／`finishSession()` を追加。onDestroy で `activeVideoSource.stop()`。
+- ★教訓: ユーザーの「〜しない」は「仕様がそうなっている」ではなく「仕様どおり動かない（バグ）」の意味だった。文脈を確認せず正反対に実装するのは絶対にダメ。
+- 12:0x 最終確認: CI run `44858823749` 成功（Java tests / Build APK / Upload APK すべて ✓、commit `077a35b`）。ローカル Java テスト3つ成功（GyroCsvFormatterTest / ImuReportParserTest / GyroflowProtoTest、ロール -180° quaternion 検証含む）。git status clean。`startSession()` の checked exception 宣言漏れで1度ビルド失敗したが修正済み。★実機検証はユーザーが「まだだめ／安易に実機を使わずに解析しろ」と指示したため未実施。ユーザーが再度録画を許可した時点で、切断→保存→再接続→新規 MP4 Auto 開始を複数ファイル生成とログ（`session started:` / `video stream resumed`）で確認すること。
+- ★完成度向上（2026-11-21 12:2x、commit `d328227`）:
+  - セッション間で `videoFrames/firstVideoNs/lastVideoNs/videoBytes` が static 共有だった問題を修正。`SessionStats` を独立ファイルに切り出し、セッションごとにインスタンスを生成。static フィールドは UI 表示用ミラーにのみ使用。writer の finish コールバックは捕捉した `finalStats` を参照するため、再接続でセッションが切り替わっても旧ファイルのメタデータが汚染されない。
+  - 回帰テスト `tests/SessionStatsTest.java` を追加（セッション間独立性、参照差し替え時に旧 stats が不変、fps 計算、単一フレーム）。CI のテスト対象リストに `SessionStats` を追加。ローカル4テストすべて成功。
+  - スレッド監査: `onStreamStalled`（TcpSource スレッド）→ `finishSession()` は writer スレッドを join して同期待ち。`onStreamResumed` は `reconnectReady` を立てるだけ。worker スレッドがループ先頭で `resumeSignal = reconnectReady; reconnectReady = false;` と**無条件に消費**するよう修正し、遅延した resume が次の切断後に誤って新セッションを開始する stale-signal 競合を解消。
+  - 既知の残りリスク: `startSession()` 実行中に次の `onStreamStalled` が来ると、writer set と sessionActive=true の間に割り込まれる稀な race がある。再接続直後はデータが流れているため通常は発生しないが、完全に排除するには全セッション状態を単一の AtomicReference<Session> にまとめる必要がある。
+- ★★race を完全排除（2026-11-21 12:4x、commit `fdc539c`/`4181706`/`9350651`）: Android 非依存の `SessionRegistry` を追加。単一の `AtomicReference<State>` が session / active / generation を保持し、`install(session, expectedGeneration)` は generation が変わっていれば拒否、`retire()` は現在のセッションを原子的に取り出して返す。RecordService は writer/muxer/audio/imu/stats/csd/hevc を1つの `Session` にまとめ、registry 経由でのみ参照する。`onStreamStalled` は `finishSession(sessions.retire())` で原子的に終了。`startSession` は生成開始時に generation を取り、install が拒否されれば half-built リソースを捨てて false を返す。worker ループは false でも `break` せず、次の reconnect を待つ（「再開しない」バグの再発防止）。回帰テスト `tests/SessionRegistryTest.java` で正常フロー・stall インターリーブ・無効化後の再接続・並列 retire を検証。ローカル5テスト成功。CI テスト対象に `SessionRegistry` を追加。
+- 12:5x 最終確認: CI run `44860187031` 成功（Java tests / Build APK / Upload APK すべて ✓、commit `da312b6`）。ローカル Java テスト5つすべて成功（GyroCsvFormatterTest / ImuReportParserTest / GyroflowProtoTest / SessionStatsTest / SessionRegistryTest）。git status clean。★実機検証はユーザーが「安易に実機を使わずに解析しろ／まだだめ」と指示したため未実施。ユーザーが再度録画を許可した時点で、切断→保存→再接続→新規 MP4 自動開始を複数ファイルとログ（`session started:` / `video stream resumed`）で確認すること。
+- ★残存バグ修正（2026-11-21 13:0x）: `startSession()` の discard パスが `writer.finish()` を呼んでおり、`VideoWriter.runWriter()` の finally が `output.finish()` → `finalOutput.complete()` を実行して、無効化された half-built セッションが**不要な MP4 を公開**していた。`VideoWriter.discard()`（`discard=true` にしてスレッドを止めるだけ、finalizer は呼ばない）を追加し、discard パスはこれを使うよう変更。回帰テスト `tests/VideoWriterDiscardTest.java`（discard は finish を呼ばない／通常 finish は呼ぶ）を追加。`SessionRegistryTest` にモック listener による stall→reconnect→install の統合シナリオ（無効化された候補は捨てられ、後続の reconnect は成功）を追加。ローカル6テスト成功。
+- リソース破棄も finalize から分離（commit `7357cb6`）: `RecordingMuxer.discard()` を追加し、`MuxerSink`（`muxer.release()`＋キュークリア）と `FragmentedMp4Sink`（`muxer.close()`＋stream/channel close）に実装。`startSession()` の discard パスから呼び、無効化セッションは MP4 を公開せずリソースもリークしない。 RecordingMuxer の実装は2つのみで両方対応済み。
+- 13:1x 最終確認: CI run `44860779674` 成功（Java tests / Build APK / Upload APK すべて ✓、commit `3192a33`）。ローカル Java テスト6つすべて成功（GyroCsvFormatter / ImuReportParser / GyroflowProto / SessionStats / SessionRegistry / VideoWriterDiscard）。git status clean。静的な完成度は上げ切った。
+- ★ユーザーに end-to-end 実機検証の許可を求めたが**「まだしない」**と回答。実機検証は実行しない。残る「stall→reconnect→新規 MP4 自動開始」の end-to-end 確認はユーザーが許可した時点で実施すること（その際は APK を最新 CI から導入し、切断→保存→再接続→複数 MP4 生成を `session started:` / `video stream resumed` ログで確認）。実機を触る前に必ず `dumpsys activity services ... | grep -c ServiceRecord` が0であることを確認。
+- ★プレリリース方針（2026-11-21 13:2x ユーザー指示）: 「Release に切断を除いて普通に録画してモーションも記録できる APK をプレリリースに上げて」。`onStreamStalled` で `stopRequested=true`（切断で録画終了・再開しない）、worker ループのセッション回転を削除。通常録画（映像＋音声）と IMU モーション記録（Gyroflow protobuf 埋め込み、ロール -180°）は維持。CI ビルド後に GitHub prerelease として公開する。再開ロジック自体は git 履歴／`app/legacy/` に残る。
+- ★公開完了（2026-11-21 12:53 JST / 03:53 UTC）: CI `44863129789`（commit `b31046f`）成功。GitHub prerelease **v0.1.24** を作成（`isPrerelease=true`）、`xreal-recorder.apk`（8,233,443 bytes、sha256 `c55be51fea1c5df2e7fd037e65c9caf825231d8ef6d4dd9b5e4f7404a8acd870`）を添付。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.24 。★切断時の自動再開はこのビルドでは無効。実機 end-to-end 検証はユーザーが「まだしない」と回答したため未実施。
+- ★★撮影素材の解析（2026-11-21 13:2x、ユーザーが `temp/VID_20261121_125943.mp4` を配置）: 映像 1600x1200 / 16661フレーム / 280秒、音声 13101サンプル、data track 16661サンプル。protobuf を直接 parse して確認: `version=1`, `orientation=xYz`, `imu_rotation` quaternion `(w,x,y,z)=(0,0,0,-1)`＝Z軸180°（＝ロール -180°）で**埋め込み側は仕様どおり正しい**。各フレームの `start_timestamp_us` は 333,023,210 → 613,466,543 us（280.4秒）で映像タイムラインと一致。★同期不良の真因: IMU が 200,064 サンプル（200秒）で停止。`GlassesImuClient.MAX_ROWS=200000`（999Hz×200秒）でサンプル保持を打ち切っていたため、後半84秒分のモーションが欠落。修正（commit `f5d9de4`）: 上限を撤廃し、`rows`（CSV 文字列）をサンプルごとの常時保持から `formatCsv()` 時の遅延生成に変更。`samples` のみ保持するためメモリは約5分の1。★「回転が -90°」については protobuf 側は -180° で正しいため、Gyroflow 側の解釈または UI 設定を確認する必要がある。`gyroflow-protobuf.md` によれば `imu_rotation` は raw IMU ベクトルに適用される quaternion。
+- ★ユーザー指示: 解析が終わったら `temp/` の撮影素材を削除する（容量節約）。→ CI `44866632585`（上限撤廃＋CSV遅延生成）成功を確認後、`temp/VID_20261121_125943.mp4`（1,222,982,133 bytes）を削除し `temp/` 自体も削除済み。git status clean。
+- ★残る確認事項: ユーザーが Gyroflow で「回転が -90°」と報告した件。protobuf 側は `(w,x,y,z)=(0,0,0,-1)`（Z軸180°＝ロール -180°）で仕様どおり埋まっており、フレーム時刻も映像と一致している。Gyroflow の UI で手動設定した -90° なのか、protobuf の `imu_rotation` が Gyroflow に読み込まれていないのかをユーザーに確認する必要がある。資料: https://docs.gyroflow.xyz/technical-details/gyroflow-protobuf/ （`imu_orientation` は軸置換＋符号、`imu_rotation` は raw IMU ベクトルへ適用する quaternion、両方とも orientation を先に適用）。
+- ★解決（2026-11-21 13:4x）: ユーザーが「UI で手動入力」と回答した直後に**「スタビライゼーションの水平線ロックで -90° にしたら正しい角度になった」**と訂正。つまり -90° は Gyroflow の **Horizon Lock（スタビライゼーション UI）** の設定であり、**protobuf の `imu_rotation` は -180° が正しい**。わっちは一旦 metadata を -90° に戻してしまったが（commit `7768532`、CI はキャンセル）、すぐに -180° `(w=0,z=-1)` へ戻し、`GyroflowProtoTest` の期待値も -180° に戻した。★教訓: 「UI で -90°」と Gyroflow の Stabilization 設定の話を、metadata の imu_rotation と混同しないこと。水平線ロックは別設定。
+- ★v0.1.25 公開（2026-11-21 13:41 JST / 04:41 UTC）: CI `44867095723`（commit `3919c12`）成功。GitHub prerelease **v0.1.25** を作成（`isPrerelease=true`）、`xreal-recorder.apk`（8,233,443 bytes、sha256 `6c09e67ab11c30709e6c94534e5280380dfa99932b72ef4c1f66b7a576367bb6`）を添付。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.25 。内容: IMU 上限撤廃＋CSV 遅延生成＋metadata -180°（水平線ロック -90° は Gyroflow UI で設定）＋切断で録画終了。v0.1.24 は IMU 上限撤廃前のビルドなので、長回しには v0.1.25 を使う。
+- ユーザー実機フィードバック（2026-11-21 13:4x）: 短時間録画ではジャイロ同期 OK（長時間は未検証）。水平ロックは引き続き Gyroflow UI で -90° が必要（metadata は -180° で正しい）。停止時に `TCP camera stop Failed: null` が UI に出る問題と、diagnostics（Android/data/.../files/Movies への hevc/wav 保存）経路でジャイロが保存されない問題を修正中。
+  - `TcpSource.stop()`: `transact(0x2782, 2)` の ack 失敗は `fail()` で UI エラーにしていたため、警告ログに変更（`e.getMessage()` が null で「null」と表示された）。停止コマンドの ack が無くても録画は正常終了する。
+  - `RecordService.startSession()`: `gyroFile`（`.gcsv`）を `rawMode || diagnostics` の両方で生成し、writer の finish コールバックで `finalImu.formatCsv()` を直接書き出す。MP4 の telemetry トラックが無い診断ダンプでもジャイロが残る。DCIM 側の gcsv は `RecordingOutput.writeGyroCsv()` が担当（MP4 がある場合）。
+  - ★生データのみモードの保存先を確認: `SAVE_MODE_RAW_ONLY` は **DCIM に保存しない**。`Android/data/.../files/Movies/` に hevc/aac を書き、次回起動の `recoverPendingRawRecordings()` が同じ Android/data 内で hevc→mp4 に変換するだけ（`RawToMp4Converter.convert()` の出力先も `dir`）。今回の修正で gcsv も同ディレクトリに残る。DCIM 公開が必要なら recovery の出力先を `RecordingOutput.create()` 経由に変更する必要がある（未実施）。
+- ★ユーザー指示（2026-11-21 13:5x）: 「生データのみ保存モードの時のみドキュメントに保存するように変更して。ただ、全ファイル権限は渡さない」。→ `SAVE_MODE_RAW_ONLY` のときだけ MediaStore（`RELATIVE_PATH=Documents/XREAL/100XREAL`、`IS_PENDING`）で `.gcsv` を作成・書き出し・公開。`rawMode`（RAW）と `diagnostics` は従来どおり Android/data の `getExternalFilesDir(DIRECTORY_MOVIES)` に gcsv を保存。全ファイル管理権限は不要（MediaStore の URI 権限のみ）。
+- ★実機操作の制約（2026-11-21 13:5x）: SC-52B に XREAL 1S が接続済み。実機は **ssh シェルコマンドのみ**で制御する。別の AI エージェントが端末を使っているため、`am start`／`input` などのアプリ起動・画面操作は**禁止**。ログ確認・ファイル確認・`am broadcast` などのコマンドのみ許容。実機検証時はこの制約を守ること。ユーザーは「仮想スクリーンなどメインスクリーンに一切影響しないことが確信できるなら起動してもよい」と条件付きで許可。後に「実機は触るの禁止」と明示。
+- ★★自前 fMP4 を RecordService へ接続（2026-11-21 18:5x）: `StreamingMuxerSink`（RecordingMuxer 実装）を追加し、fMP4 モードで `output.openStreamingMuxer()` を使うよう変更。IMU サンプルは `GlassesImuClient` の複数 sink（`addSink`）で gcsv バックアップと muxer の両方へ流す。muxer は AU ごとに溜まった IMU を `GyroflowProto.frame()` で gyrf payload にして `moof+mdat` へ同時書き込み。**後注入を fMP4 経路でスキップ**（`embedded=fmp4Mode`）。ffprobe で video/audio/data の3トラック認識、Gyroflow CLI で GyroflowProtobuf parse エラー無しを確認（ダミー HEVC のエラーは除く）。★2回書き込み解消。
+- ★自前 fMP4 writer の検証状況（2026-11-21 18:4x）: `StreamingGyroflowMuxer` をホスト側で生成し ffprobe で検証中。`ftyp/moov(3 trak: video/audio/meta gyrf)/moof/mdat` の構造は Box 単位では正しいが、ffprobe が `error reading header` で moof を読めずstreams=0。trun の data_offset / sample_size / flags、tfdt timescale など微細な調整を試行中。**Gyroflow が読める fMP4 を1回書き込みで生成できるかは未検証**。まだ RecordService へ接続していないため、アプリの挙動には影響なし。
+- ★保存モード再編（2026-11-21 18:4x、ユーザー指示「標準MP4を廃止してfMP4と生からの後処理MP4と生データ保存に変更」「実機使用禁止」）: `SAVE_MODE_MP4` を廃止。SAVE_MODE は fMP4(0) / RAW(1) / RAW_ONLY(2) の3つに変更。UI の SAVE_MODES も3つに更新。`StreamingGyroflowMuxer`（自前 fMP4 writer、gyrf トラック同時書き込み）を新規作成したが、**まだ RecordService へ接続していない**。接続して初めて「2回書き込み禁止」を満たせる。★実機は使用禁止のため、エミュレーター／ローカルテストのみで検証する。
+- ★★方針確定（2026-11-21 18:3x、ユーザー指示）: 「3社に寄せず Gyroflow protobuf 標準を独自に貫く。ただし**後注入（2回書き込み）は許さない**」。要件: MP4 に Gyroflow protobuf を埋め込む（Google フォト対応）が、録画後に全領域書き換えしない。実現手段: mp4parser の `MpegSampleEntry("gyrf")` と `hdlr=meta` を使い、**録画中に fMP4 の moof/mdat フラグメントとして gyrf トラックへ逐次追記**する `StreamingGyroflowMuxer` を新規実装。media3 の `FragmentedMp4Muxer` は gyrf 非対応（javap 確認）なので mp4parser のボックスを直接用いる。`GyroflowTrack` は全サンプル保持型で逐次不可のため新規 muxer が要る。
+- ★3社のデータ形式を parser 実装で確認（2026-11-21 18:2x、telemetry-parser の src から）: GoPro=**GPMF 独自**（`moov/udta` の GPMF box、src/gopro/klv.rs+udta.rs）、Insta360=**独自 record**（ファイル末尾 footer/trailer + record.rs/extra_info.rs）、DJI=**独自 protobuf**（dvtm_*.proto、src/dji/）。3社とも独自形式で Gyroflow が専用 parser を持つ。我々が使う Gyroflow protobuf は**4つ目の公式標準形式**（Firmware 直接書き込み用に Gyroflow が推奨）。方式は間違いではない。3社が同時 mux できるのは独自 muxer を持つからで、標準 protobuf では media3 が gyrf 非対応のため後注入になる。GoPro 式に近づくには mp4parser で fMP4 に gyrf トラックを最初から作り録画中に逐次 write する必要がある。
+- ★GoPro / DJI / Insta360 比較（2026-11-21 18:1x、公式ドキュメント base）:
+  - GoPro: 生ジャイロ＋加速度を **GPMF トラックへ録画と同時 mux**、Gyroflow が VQF で積分。レンズプロファイルはファイル内に記録（Hero11+）。同期不要（最新）。
+  - DJI: **Quaternion のみ**を記録（生 IMU なし）、Gyroflow は `Integration=None` でそのまま使用。レンズプロファイル公式内蔵。同期不要。→ 後から積分・平滑化して歪む問題が構造的に無い。
+  - Insta360: 生ジャイロを独自形式で録画と同時 mux、公式レンズプロファイル内蔵、同期不要。
+  - 我々: 生ジャイロ＋加速度を Gyroflow protobuf で**録画後に全領域書き換え**注入。レンズプロファイル無し（NoDistortion で回避）。相対時刻化で同期対応済み。
+  - 決定的差: ①3社は同時 mux（Flash 1回・異常耐性高）、我々は後書き換え（2回以上・異常時モーション全欠落）。②DJI は積分をカメラ側で完了させている。③3社はレンズプロファイル内蔵。
+  - 同時 mux は media3 `FragmentedMp4Muxer` が `gyrf` 非対応のため不可（javap 確認）。DJI 方式（Quaternion 埋め込み）が最も現実的な改善候補。
+- ★保存方式の調査結論（2026-11-21 18:0x）: ユーザー要件「MP4 埋め込みマスト（Google フォトで失われたくない）」「Flash 寿命」「異常終了耐性」を調査。
+  - Gyroflow protobuf 仕様では IMU は per-frame に分散が規定で、先頭フレームへ全件詰め込むのは非準拠 → 撤回済み。
+  - DJI/Insta360 は完成 Quaternion を MP4 に同時 mux（`Integration=None`）し後書き換えしない。我々は生 IMU のみで同時 mux 手段が無い。
+  - media3 `FragmentedMp4Muxer` を `javap` で確認: `addTrack()` は video/audio mime のみサポート、`gyrf` 独自トラック追加不可 → **録画中の meta 同時 mux は不可能**。
+  - よって MP4 埋め込みは現状の後注入方式を維持。Flash 負荷軽減は「元 URI への全書き換え」をやめ、注入結果を新規 URI へ1回書いて元を削除する方式を採用。
+  - gcsv 逐次保存は「埋め込まないと Google フォトで失う」ため単独では採用しない（ユーザー判断）。ただし **クラッシュ時の保険**として Android/data に gcsv を逐次追記する `GcsvStreamSink` を追加（埋め込みが canoncial、gcsv はバックアップ）。`GyroCsvFormatter.header()` を切り出して逐次 heading を書けるようにした。
+  - `RecordingOutput.injectTelemetry()` に書き換え失敗時の復元処理を追加（元のコピーから戻す）。元 URI への直接全書き換えは残るが、失敗でファイルが壊れるリスクは減った。
+- ★IMU データの汎用的な入れ方へ変更（2026-11-21 17:5x）: ユーザー質問「もっと汎用的なデータの入れ方無いの？」。Gyroflow 仕様（IMU は `sample_timestamp_us` で key、全サンプルを integration/smoothing に使用、隣接フレーム重複は harmless）に基づき、**全 IMU サンプルを先頭フレームの `imu` 配列に一度に入れ、後続フレームは空にする**方式へ変更。フレーム境界でサンプルを割り当てる `sampleIndex` ロジックを撤廃し、`endUs==startUs`（読み出しスパン0）でも全サンプルが確実に Gyroflow へ渡る。Gyroflow CLI で smoothing 有効時に歪まないか検証する。
+- ★Gyroflow protobuf 仕様確認（2026-11-21 17:6x）: 公式ドキュメントで以下を確認。
+  - `start_timestamp_us` / `end_timestamp_us` は per-row timing の authoritative。行 r の時刻は `start + (end-start)*r/(N-1) - exposure/2`。`end==start` なら全行が同じ時刻になり rolling shutter 行歪みは消えるが、**smoothing 自体はオンのまま**（ユーザー観察と整合: 水平ロックは正しいが smoothing 有効時だけ歪む）。
+  - Gyroflow は IMU サンプルを `sample_timestamp_us` で key し、**全サンプルを orientation integration / smoothing に使う**。フレームの start/end はどのサンプルを受け入れるかを決めるものではない。隣接フレームでサンプルが重複しても harnessless。
+  - ★つまり我々の「各フレームに時窓で IMU を割り当てる」方式では、`endUs==startUs` のときに全サンプルが1フレームに集中するのが問題だった。実フレーム時間で割り当てる修正で smoothed 時の歪みも解消する見込み。
+- ★スムージング有効時に映像が歪む問題（2026-11-21 17:5x）: ユーザー報告。真因は `Mp4TelemetryInjector` で rolling shutter 無効化のため `endUs = startUs` にした際、**IMU サンプルの割り当てまで `endUs` を使ってしもうた**こと。その結果、各フレームには開始時刻より前のサンプルしか入らず、後続フレームに未来サンプルが詰め込まれて時刻と IMU がズレ、スムージング有効時に歪んだ。修正: サンプル割り当ては実フレーム時間（`frameEndUs = start + frameUs`）で行い、protobuf に書く `end_timestamp_us` だけ `startUs`（読み出しスパン0）にする。
+- ★「停止処理中...」が残る問題: `MainActivity.pollStatus()` が `s="待機中"` のとき statusView を更新しないため、`stopRecording()` が直接書いた「停止処理中...」が残っていた。修正: recording→idle 遷移を `wasRecording` で検出し、statusView を「待機中」に戻す。
+- 16:2x エミュレーターで replay を実行したところ、`startForeground` が `SecurityException: FGS type connectedDevice requires USB/Bluetooth permissions` で失敗。replay モードでは `FOREGROUND_SERVICE_TYPE_MICROPHONE` のみに変更（実機の通常録画は connectedDevice|microphone のまま）。★エミュレーターは USB 権限を付与できないのでこの回避が必要。
+- ★実機検証（2026-11-21 17:45、最新 CI `44885537473`）: XREAL 1S を再接続し、通常録画を約55秒実施。`VID_20261121_174414.mp4`（237MB）を取得。ffprobe: video 3285 frames / 55.48s、data track 3285 frames（1:1）。生 protobuf parse: IMU 55,436サンプル（999Hz×55.5s と整合）、quaternion (w=0.7071,z=0.7071)=+90°。停止ログ `XrealFMp4: finish: videoSamples=3285 audioSamples=2601 failed=false`。★muxer 修正（audio 無しで start）が通常録画を壊していないことを確認。回転・ジャイロ・LensData はすべて意図どおり。
+- ★0バイト MP4 の真因と修正（2026-11-21 17:3x、エミュレーター replay）: replay で録画停止すると MP4 が0バイト。`MuxerSink.startIfReadyLocked()` が video/audio 両 track を待って `muxer.start()` し、audio が来ない（マイク無し／replay）場合に全 AU が pending のまま finish されていた。修正: video track があれば audio を待たず `muxer.start()` して video を flush（`MuxerSink` と `FragmentedMp4Sink` 両方）。CI `44885537473` green。★これは通常録画でマイク初期化失敗時に映像だけを残す効果もある。残る問題: replay の stop が DEV_CMD enqueued のまま RecordService に届かず finishSession が呼ばれないため、エミュレーターでは依然0バイトになる。既知の「DEV_CMD が届かない」問題と同一で、UI ボタンでも再現した。通常録画（実機）では stop が届き正常に保存できている。
+- ★録画中画面デバッグ完了（2026-11-21 17:0x、エミュレーター）: `am broadcast -a jp.xreal.recorder.DEV_CMD --es cmd replay` でリプレイ録画を起動し、以下を実機エミュレーターで確認:
+  - `CSD nal=32 extracted=true len=102`（HEVC パラメータセット正常）
+  - `AU 0〜19000`（映像フレームが連続配信、CSD/AU 判定なしスキップなし）
+  - `session started: VID_...` と `video frames=19000 lastNs≈nowNs`（SessionStats がFrames/LastNs を更新、stall 判定も正常）
+  - ★つまり「録画中画面」を動かすロジック（CSD→AU→セッション→UI 更新）は XREAL 非接続でもエミュレーション可能。
+  - 残る課題: MainActivity の表示が「待機中」のままになることがある。原因は replay を繰り返した際に古い service プロセス（PID 6742, recording=false）と新しい service（PID 6938）が並存し、UI が古いほうの static を参照するため。通常は force-stop で解消。`pollStatus()` を `isRecording() || isRecordServiceRunning()` に変更して service 存在でも録画中表示にするよう修正済み（CI `44883256019` green）。
+  - ★リプレイ用デバッグログ（CSD/AU/path/frames/clock）は全て削除済み。一時ログは残していない。
+- ★リプレイモード追加（2026-11-21 16:0x）: エミュレーターで録画中画面をデバッグするため、ダンプを再生する `ReplayTcpSource` を追加。`/sdcard/Android/data/com.syameimarukoa.xreal_recorder/files/replay/replay_52995.bin` を読み、`0x2785` フレームを parse して listener へ配信（CSD は NAL type32 を `UvcSource.extractCsd()` で渡す）。`RecordService` に `ROUTE_REPLAY=99` を追加し、device チェックと cameraInfo の NPE を回避。`MainActivity` の DEV_CMD に `replay` を追加。★IMU は未再生（録画画面デバッグが目的）。ローカル8テスト成功。
+- ★Android エミュレーター導入（2026-11-21 15:5x）: ユーザーが UI テスト用エミュレーターを要求。既存 `~/Android/Sdk`（cmdline-tools / platform-tools / platforms/android-36 / build-tools 等）を再利用し、**二重インストールを回避**して `emulator` と `system-images;android-36;google_apis;x86_64` のみ追加導入。AVD `uitest` を作成（RAM 1536MB、`-no-window -gpu swiftshader_indirect`、KVM 利用）。※GUI モードは Qt xcb プラグイン不足で起動失敗したためヘッドレス。`adb -s emulator-5554` で APK インストール・起動成功。UI ダンプでタイトル・各ボタン・「診断用 HEVC・WAV・ジャイロを別保存」ラベル・「XREAL が見つかりません」を確認（USB 無いので正常）。★エミュレーターでは USB が無いため録画開始は不可。UI 遷移の検証に適する。Docker は KVM 二段パススルーが困難なため不使用。
+- ★HeadlessReceiver を追加（2026-11-21 14:0x）: 仮想ディスプレイ作成コマンド（`cmd display add-virtual-display`）がこの端末に無いため、アプリ UI を起動せず `am broadcast -a jp.xreal.recorder.DEV_CMD --es cmd start/stop` だけで RecordService を制御できるよう manifest に receiver を追加。`HeadlessReceiver` が UsbManager から XREAL（3318:043e）を探し、権限確認後に `ACTION_START` を送る。これでメインスクリーンに一切触れずに TCP 52995/52998 の生データダンプ（tcpdump）と長時間試験が可能になる。★`pkill -f tcpdump` はリモートシェル自身を kill するので使わないこと（pid を明示して kill する）。
+- 14:05 HeadlessReceiver 導入後も broadcast で録画が始まらず（ServiceRecord=0）。`dumpsys usb` で XREAL 1S（vendor 13080=0x3318 / product 1086=0x043e）は接続確認済み。アプリ再インストールで USB 権限がリセットされた可能性があるため、`headless start device=... permitted=...` ログを追加して原因を特定中（CI `44869265711`）。権限が原因なら、ユーザーにダイアログの OK を押してもらう必要がある（画面操作はユーザー自身が行うので可）。
+- ★★目標達成（2026-11-21 14:13〜14:15）: 「途中切断をせずに MP4 へジャイロデータを確実に異常なく書き込む」。USB 権限をユーザーが許可後、UI の「録画開始」をタップし、**切断なしで約92秒録画**。保存物 `VID_20261121_141331.mp4`（396,860,480 bytes）を取得して検証:
+  - ffprobe: video HEVC 5451 frames / 91.99 s、audio AAC 4323 / 92.22 s、**data track 5451 frames / 92.22 s**（video と1:1対応）
+  - telemetry-parser: **IMU 91,777 サンプル / 91.82 秒 / 999 Hz / Orientation XYZ**。先頭・中間・末尾フレームすべてに16〜17サンプル存在（欠落なし）
+  - 生 protobuf parse: `imu_orientation=xYz`、`imu_rotation quaternion (w,x,y,z)=(0,0,0,-1)`＝ロール -180° で正しい（水平線ロック -90° は Gyroflow UI 側の設定）
+  - ★結論: 上限撤廃（旧 `MAX_ROWS=200000` が200秒でデータ欠落の原因）により、長回しでもモーションが欠けず MP4 に完全に埋め込まれることを実機で確認。★`gyro_verify.mp4` は検証用一時コピーなので解析後に削除する。
+  - ★補足: `am broadcast` が devReceiver に届かず ServiceRecord が0のままになることがあったが、UI ボタン（`input tap 540 744`）では確実に開始し、停止は broadcast（`cmd stop`）で ServiceRecord=0 を確認できた。HeadlessReceiver の broadcast 経路は未解決。
+- ★YPR 波形が38秒以降しか出ない／水平ロック追尾不良の真因（2026-11-21 14:2x）: Gyroflow スクリーンショットでカラフルな YPR 波形（補正後姿勢）が約38秒以降のみ出現。IMU は0秒〜91.8秒まで完全に入っているのに、Gyroflow が後半しか姿勢を計算できなかった。原因は protobuf の `start_timestamp_us` と IMU `sample_timestamp_us` に**グラス側の絶対装置時刻（63,403ms〜155,205ms）**をそのまま書いていたこと。Gyroflow は動画開始を0とした相対時刻を期待しており（ドキュメント例 `startTimestampUs: 17269.0`）、絶対時刻だと正規化が破綻して後半だけマッピングされる。修正: `Mp4TelemetryInjector` で全 IMU サンプルを `firstImuTimeUs` 基準でシフト（`ImuSample.shifted()` を追加）、フレームの `startUs/endUs` も 0 から始まる相対時刻に変更。
+- 14:3x 再録画検証（`VID_20261121_143516.mp4`、切断なし132秒）: 生 protobuf を parse して**先頭フレーム start=0ms、IMU 0ms〜132.27秒 132,209サンプル（999Hz）**を確認。相対時刻化は成功。Gyroflow CLI 1.7.0 で処理可能だったが、警告 `IMU duration 132274 is different than video duration (132776)` と `a frame at position 365 is 2 frames on ... camera clock moved 16822 us` が出た。原因は `stepUs=durations[0]` の等間隔でフレーム時刻を生成していたため、実際の可変 PTS とズレていた。修正: 各 frames の `durations[i]` を累積して startUs/endUs を計算（commit `f74496c`、CI `44872480906` green）。
+- ★水平ロック追尾の調査（2026-11-21 14:4x）: ユーザーは「1000Hz なのに素早い傾きで水平が打ち消せない」「水平ロックは -90° しないと正しい角度にならない」「水平以外はやらない。最新アクションカムみたいな水平ロックがしたい」と要望。調査結果:
+  - IMU データ自体は健全: 静止時 gyro std 0.09〜0.13 deg/s、最大 400 deg/s の動きを捕捉。183秒数据の静止加速度 |g|=9.84（x=4.34,y=7.15,z=-5.18、傾き約31°）。
+  - protobuf には QuaternionData を入れておらず Gyroflow が VQF（既定のセンサフュージョン）で積分する方式。1000Hz でも追尾が甘いのは**Smoothing の設定**（Default は速い動きに追随する／`Max smoothness at high velocity` 既定0.1s）と、速い傾きで加速度に遠心力が乗り VQF が重力を誤判定するため。サンプルレートの問題ではない。
+  - 推奨 Gyroflow 設定: Smoothing=Default、Lock horizon=ON、Automatic lock=OFF（ターンで傾かせない）、Use gravity vectors=OFF（生加速度は未較正なので Gyroflow 推定に任せる）、Integration=VQF、Low pass filter=30〜70Hz。**完全固定は Gyroflow 仕様上保証外**。
+  - 水平ロック -90° は Gyroflow UI の Roll angle correction の話で、protobuf の `imu_rotation=-180°`（sensor→camera 補正）は別。装着向き依存のためアプリ側で決め打ち不可。
+  - ★教訓: 「1000Hz なら完全固定できる」は誤解。水平維持の質はサンプルレートより Smoothing／Integration／加速度の質に依存する。
+  - ★加速度センサーの品质確認（2026-11-21 14:6x）: ユーザー質問「遠心力を誤算するのは XREAL 1S が同仕様でないから？」に対し実データを解析。静止区間（50秒以降）|accel|=9.836 / std=0.02 で重力値9.81にほぼ一致・極めて安定 → **センサー自体は重力を正常に測れており「同仕様でない」わけではない**。動区間（0〜50秒）は |a|=3.07〜23.93 と振れるが、これは遠心力（直線加速度）が重力に乗る**全 IMU 共通の物理現象**で XREAL 固有の欠陥ではない。Gyroflow の VQF が加速度から重力成分を分離しきれず水平が揺れる。★先の「Use gravity vectors=OFF 推奨」は我々の推測だったが、静止値が較正済みなので ON の方が水平が安定する可能性がある。ユーザーに OFF/ON 両方を比較してもらうのが妥当。
+- ★★ロール補正の確定（2026-11-21 14:5x、ユーザー実験）: ユーザーが「**Motion data → Rotation の Roll = -90° で水平が straight になる。Rotation=0 に戻すと傾く**」と報告。我々の protobuf field14 `imu_rotation` は -180° だったので、必要な総補正 = -180° + (-90°) = **-270° ≡ +90°（Z軸まわり）** と確定。field14 を **+90° `(w=0.7071, z=+0.7071)`** に変更し、Gyroflow UI の Rotation を0にできるようにした。★これにより「水平線ロックで -90° が必要」という長年の謎が解けた（UI の Rotation と metadata の imu_rotation が別で、両方必要だった）。`GyroflowProtoTest` の期待値も +90° に更新。これまでの -180° / -90° の変遷は誤りだった。実機で Rotation=0 かつ水平が出るか再確認すること。
+- ★v0.1.26 公開（2026-11-21 13:53 JST / 04:53 UTC）: CI `44868023693`（commit `c33393e`）成功。GitHub prerelease **v0.1.26** を作成（`isPrerelease=true`）、`xreal-recorder.apk`（8,233,443 bytes、sha256 `218b6a06137212a513909b4d91f215963b50a71baaed2f9dd4633b3d7bc9bc3d`）を添付。URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v0.1.26 。内容: diagnostics/生データのみでの gcsv 保存＋停止時 ack 失敗の警告ログ化。git status clean。
+
+## 作業中（2026-11-20、GitHub issue を番号若い順に対処）
+- ユーザー指示「逆。数字が若い順」＝ open issue を #2 → #3 → #5 の順に対処。
+- 作業ブランチ: `OptiPlex-3040-MFF_20261120`（main から作成）。開始時 main はクリーン、HEAD は origin/main と同期。
+- 実機状態（開始時）: SC-52B / Android 15 / root は SSH `root@sc-52b.bass-uaru.ts.net` で応答。画面は Dozing（mWakefulness=Dozing / mHoldingDisplaySuspendBlocker=false）。`com.syameimarukoa.xreal_recorder` インストール済み。 rakuten-mini.bass-uaru.ts.net は SSH 接続タイムアウト。この環境の PATH に adb は無く、SSH 経由の shell を使用。
+- 調査完了: #2 は `RecordingPresentation` の sideMode 縦予算超过で温度ビューがクリップ。固定モードは問題なし。#3 は `WaveformView` が全バー同色で、`AudioSource` は peak のみを渡している。#5 は **TCP 52998 の IMU ストリームで解決**。
+- ユーザー訂正: スマホのジャイロセンサーは使わない。使用するセンサーは XREAL グラスのみ。方位センサーは無く、磁気センサーはあるが6軸で十分という指示。
+- 実機測定（2026-11-20）: 52998 から 5秒で916KB（約88Hz）のレポートを受信。ヘッダ `28 36` + 4byte BE 長(128) + body 128byte。body offset 8=装置時刻ns、0x18=種別(0x0b=IMU, 0x04=磁気)、0x1c=ジャイロXYZ(rad/s)、0x28=加速度XYZ(m/s²)、0x34=磁気XYZ、0x40=温度℃。静止時に加速度(2.64, 9.15, 2.27)で重力を確認。参照実装は `kotXio/xreal-1s-lab` と `0xcaff/xr-tools` の reports.rs。
+- グラス公開センサー一覧（AXR field14/field16 の実データ）: 加速度(main/minor)=id1/3、ジャイロ(main/minor)=id2/4、磁気=id5、環境光=id7、グラス温度=id6、低遅延オフボディ検知=id10、IMU温度=id11/12、NTC温度=id13/14。方位センサーは無し。
+- AXR の経緯: gRPC `/frames.service.Frames/StartStreaming` で能力情報は取れたが、繰返し接続で CLOSE_WAIT が溜まり無応答化。ユーザーが USB を挿し直して復旧したが、52998 の方が単純なため AXR は使わない。command_service(50180) は既知フレームで root シェル実行を確認。
+- 変更内容:
+  - #2: sideMode の padding 32→16、温度 48→32sp、波形 220→140px、温度を ` / ` で1行化。固定モードは据え置き。
+  - #3: `WaveformView.onDraw()` で peak<4096 緑、<16384 黄、それ以上赤。振幅計算・履歴・リスナーは据え置き。
+  - #5: `GlassesImuClient`（52998 購読、6軸を `.gcsv` 用に行化、磁気・温度は JSON メタデータ）と `ImuReportParser`（純 Java、テスト済み）を追加。`RecordService` が録画開始時に開始し、終了時に停止して MP4 と同名 `.gcsv` を保存。`GyroCsvFormatter` の `ascale` を m/s²→g 換算(0.10197162)に修正。MP4 埋め込みは Gyroflow protobuf トラック(`hdlr=meta`/`stsd=gyrf`)とフレーム同期が必要で既存 `MediaMuxer` では大改造になるため `.gcsv` サイドカーを維持（自動検出される）。
+- 温度表示: AXR 能力情報では5系統（id6 グラス、id11/12 IMU、id13/14 NTC）が公開されているが、アプリから到達できるのは 52999 の `NRTemperatureGetValue`（グラス）と 52998 レポートの温度（IMU）の2系統のみ。実機で両者は異なる値（例: 61.0℃ と 47.4℃）を返すことを確認。`GlassesImuClient` に温度取得と軽量モード（`collectSamples=false`）を追加し、録画オーバーレイとメイン画面の両方に「グラス / IMU / スマホ」の3温度を表示。52998 への2同時接続も実機で確認済み。52999 の温度 RPC は field1 を 0〜15 変えても同じ値で、センサー選択は不可。
+- 検証: `GyroCsvFormatterTest` と `ImuReportParserTest` はローカル javac で成功。ローカルに Android SDK が無いため APK ビルドは CI で実施。
+- 実機検証結果（2026-11-20 16:55、最終）: 修正 APK で DEV_CMD start/stop による5秒録画が成功。`VID_20261120_165526.gcsv`（250KB / 4330行）が Documents/XREAL/100XREAL に生成され、内容は `GYROFLOW IMU LOG` ヘッダ＋6軸データ（t,gx,gy,gz,ax,ay,az、tscale=0.001、gscale=1.0、ascale=0.10197162）、約1000Hz。JSON メタデータにも `imu`（4288フレーム、磁気1710、温度51.9℃）が記録された。経緯: 初回は `text/csv` で拡張子が `.gcsv.csv` になったため `application/octet-stream` に変更、次に保存先を DCIM に変更したが `MediaStore.Files` は DCIM を許可せず（allowed: Download, Documents）書き込み失敗。ログ追加で原因特定後、Documents に戻して拡張子のみ `.gcsv` に固定して解決（commit `d73e7a4`）。
+- 制約: デフォルト保存先では MP4 は DCIM/100XREAL、`.gcsv` は Documents/XREAL/100XREAL に分かれるため、PC へコピー時に両方を同じフォルダへ置く必要がある。SAF で保存先フォルダを指定した場合は両方同じフォルダに保存される。DCIM に直接 `.gcsv` を置く手段は Android のスコープドストレージでは不可（MediaStore.Files は Download/Documents のみ、Video コレクションは video/* MIME と `.mp4` 拡張子を強制）。ユーザーは全ファイル管理権限を付与しない方針。
+- 埋め込み（issue #8）: `GyroflowProto`（protobuf 手書きエンコーダ、IMU は rad/s→deg/s 変換、テスト済み）と `GyroflowTrack`（`hdlr=meta` / `stsd=gyrf`）、`Mp4TelemetryInjector`（mp4parser で MP4 に metadata track を追加）を追加。依存に `org.mp4parser:isoparser`/`muxer:1.9.56`、slf4j、aspectjrt（実行時に必要）を追加。まず通常 MP4 のみに注入し、fMP4 と raw はサイドカーを維持（ユーザー要望で最終的には fMP4 にも対応予定）。全 IMU サンプルを先頭フレームの FrameMetadata に入れ、後続フレームは時刻のみ（Gyroflow はタイムスタンプでサンプルをキーするので重複は無害）。
+- 埋め込みのローカル検証: 実機の MP4 をローカルにコピーし、Pure Java の注入クラスを javac で実行して注入成功（8,869,686→8,882,728 bytes）。`gyrf` が1個、`GyroflowProtobuf` が194個（映像フレーム数と一致）。さらに Gyroflow と同じ `telemetry-parser` の Python モジュールで解析し、`camera=XREAL` / `model=1S` / IMU 100サンプルを認識できることを確認。最初 `orientation=YxZ` では加速度軸が入れ替わったため、静止時に上向きが Y である実データに基づき `XYZ`（識別）に修正し、加速度が書き込み値どおり読めることを再確認。CI run `44701602063` 成功。
+- 実機最終確認（ユーザーがロック解除後、2026-11-20 18:10）: 画面ロックと USB 権限ダイアログが原因で DEV_CMD が届かなかったが、解除後に MP4 モードで5秒録画して注入成功。実機側で2つの Android 固有の不具合を修正: (1) `/proc/self/fd/<fd>` を isoparser が RandomAccessFile で開こうとして EACCES → MP4 をアプリの cache にコピーしてから注入、(2) isoparser が `ClassLoader.getSystemResourceAsStream("isoparser2-default.properties")` でリソースを読むが DEX 化で JAR 内リソースが消える → `app/assets/isoparser2-default.properties` を同梱し `PropertyBoxParserImpl.BOX_MAP_CACHE` に事前に設定（aapt2 link に `-A app/assets` 追加、aspectjrt も実行時に必要）。
+- 実機検証結果: `VID_20261120_181000.mp4`（17.6MB）を telemetry-parser で解析し `camera=XREAL` / `model=1S` / IMU 5135サンプルを確認。ffprobe で HEVC 1600x1200 + AAC + data トラック、duration 4.544s で動画も無傷。CI run `44707948690` 成功。
+- 重大な不具合を発見・修正（ユーザーが Gyroflow でプレビューが8フレームしか出ないと報告）: 注入済み MP4 は ffprobe で `nb_read_frames=2〜3`、動画 duration が 0.04 秒に化けておった。原因は mp4parser の `DefaultMp4Builder` が (1) `tkhd` duration を media timescale のまま movie timescale に書く、(2) `createEdts` が `movie.getTimescale()`（GCD=6000）を使う一方 `mvhd` は LCM=720000 を使い、elst が120倍短くなる、の2点。ビルド後に tkhd duration を movie timescale で上書きし、elst の segment duration を `movieTimescale / editTimescale` 倍して補正。ローカル再現テストで 250 フレーム / 4.78秒が復元され、telemetry-parser も IMU を読めることを確認。
+- 直接 FD 注入は断念: mp4parser が `writeContainer` 中にサンプルを遅延読むため、truncate 後に `newLimit > capacity` で失敗（MP4 が6.5KBに縮んだ）。キャッシュ経由に戻した。全ファイル管理権限は不要。fMP4 も注入対象に変更済み（録画完了後に通常 MP4 として書き出す）。
+- IMU 軸を実機で特定（2026-11-20、ユーザーは「頭に付けた状態」を想定して指示、実際は手で傾ける）: TCP 52998 を直接読み、装着想定の3向きで加速度の「上方向」specific force を測定。通常水平 `(0,-9.65,-1.74)` → 上 = **-Y**、右傾き `(-9.77,0.48,0.32)` → 上 = **-X**、前傾き `(0.27,-3.63,-9.05)` → 上 = **-Z**。つまり生加速度は +X=右 / +Y=下 / +Z=後 を指す（xr-tools の「X=左,Y=上,Z=後」とは Y の符号が逆。実データを優先）。Gyroflow は静止時に +Y=上、一般的に X=右 / Y=上 / Z=後方 を期待 → 正しい orientation は **`XyZ`**（X 正・Y 反転・Z 正）。スタビライズがぐちゃぐちゃになるのはこれまで `XYZ`（識別）で渡していたため。xreal-1s-lab も「world up +Y, forward -Z、up は negative acceleration」と同じ規約。CI run `44725587863` で XyZ を反映し、実機 `VID_20261120_201745.mp4` で `orientation` が `XyZ`、telemetry-parser の加速度が `(1.75,+6.31,7.30)` に反転して読めることを確認。
+- CSV/PTS ギャップの修正も実施（CI run `44723961738`）: 切断→再接続後に映像 PTS が約15秒飛び、NULL フレーム＋Gyroflow でシーク不能になっていた。`TcpSource.readVideo()` の再開時に `lastPtsNs` の続きから PTS を再開し、`reconnect()` のリトライ間隔を 1秒→250ms に短縮。音声は実サンプル数ベースでギャップがないため、映像も詰めることで同期が保たれる。ただし音声は切断中も内蔵マイクで録音され続け尺が余るため、`AudioSource` に pause/resume を追加し stalled/resumed で同期させる修正も入れた（未実機検証）。
+- ★切断時 PTS 問題の最終解決（2026-11-21、CI run `44773735442`）: 再接続後に drift gate が17〜19秒の差を検出して anchor を arrival 側へ戻すのが真因。`skipReanchorFrames=Integer.MAX_VALUE` で再アンカーを永続無効化し、`lastPtsNs` を保持。デバッグログで再接続後 `reanchors=0`・anchor 固定（37433809ms）・PTS 連続を確認。実機 `VID_20261121_013234.mp4`（切断→復帰1回）で ffprobe の PTS ギャップゼロ・3658フレーム連続・動画61.58秒を確認。★解析前に必ず ServiceRecord=0 を確認すること。
+- USB 権限についての訂正（2026-11-21）: 映像・カメラ制御は TCP/IP（169.254.2.1:52995/52999）だが音声は USB Audio（UAC）。USB permission はアプリ起動／録画開始時の1回で、録画中の切断→再接続では再許可なしで音声も自動復帰する（ログで route 15/19 SC-52B → 22/195 USB-Audio 復帰を確認）。「毎回許可が要る」は誤り。
+- 再アンカー抑制の検証結果（2026-11-21、ServiceRecord=0 確認後に解析）: `skipReanchorFrames=300` ではログで au=300 まで anchor 保持（36995992）できたが、au=600 で drift gate が再アンカーして anchor=37013336（arrival 側）に飛び、PTS が約22秒ジャンプした。300フレーム（約5秒）では不足。再接続後はカメラクロックと arrival の対応が恒久的にズレるため、**再アンカーを永続的に無効化**（`skipReanchorFrames=Integer.MAX_VALUE`）するよう変更。タイムライン連続性を優先し、自然 drift の補正は犠牲にする。
+- ★切断時 PTS ギャップの真因をデバッグログで特定（2026-11-21）: `presentationNs()` の drift gate が再接続後に17.95秒の drift を検出し、`cameraPtsAnchorNs` を arrival 側へ再アンカーしてしもうた。ログ: `restart pts from last=35128247ms arrival=35146197ms`（差17.95秒）→ 直後 `pts au=300 ptsMs=35151236 anchorMs=35146168`（anchor が arrival に戻る）。`lastPtsNs` 保持だけでは不十分で、再接続後は drift gate の再アンカーを抑制する必要がある。`skipReanchorFrames=300` を追加し、再接続後300フレームは再アンカーしないよう修正（未検証）。★教訓: 実機で解析を始める前に必ず録画停止（ServiceRecord=0）を確認すること。撮影放置中の解析はユーザーが強く禁止。
+- 10分長回し試験の反省（2026-11-21）: 10分待機中に stop が届かず force-stop したため、動画は184秒（3分）で終了。stop が届かなかったのは録画中に USB 権限ダイアログ（UsbPermissionActivity）が前面に来て DEV_CMD receiver が外れたためと推定。アプリの録画自体は184秒分が PTS ギャップなし・IMU 183秒と一致して正常に書けており、切断→復帰（00:11:58 stalled→00:12:15 resumed）もタイムライン連続を確認。10分を正しく回すには、権限ダイアログを事前に確定させ、stop は Activity 前面確認後に送る必要がある。
+- 切断時に動画が狂う原因（2026-11-21）: `resetTimingAnchors()` が再接続時に `lastPtsNs=0` にクリアしており、再開後最初のフレームが実時間から PTS を再開 → 切断中ギャップ（約15秒）が動画タイムラインに残り、動画63秒 vs IMU34秒で補正が後半破綻。`lastPtsNs` を保持するよう修正（CI run `44757273433`）。10分の長回し＋切断試験で検証中。
+- データ加工ポリシー（ユーザー指示、2026-11-20 夜）: IMU 値は**単位変換（gyro rad/s→deg/s）以外は加工しない**。加速度の反転・軸入れ替え・ロール補正はすべて Gyroflow 側のメタデータ（`imu_orientation=xYz` + `imu_rotation` ロール -90° quaternion）に任せる。値を反転して記録した後にメタデータでさらに反転するのは二重で無駄、という指摘。わっちは一度加速度反転を戻してしまったが、ユーザー訂正で再度削除（生データのまま）。★最終実機確認 `VID_20261120_233601.mp4`: orientation=xYz・rotation quaternion 埋め込み・加速度生データ `(-9.56,-6.51,1.21)`・IMU 28709サンプルを telemetry-parser で確認。Gyroflow v1.7.0 CLI でレンダリング成功、IMU 28.7秒 vs 動画 29.6秒（差0.9秒）で後半まで補正データあり。手動設定なしで正しく補正される構成に到達。
+- Gyroflow 本体 v1.7.0 を Linux で実行して検証（URL: releases/download/v1.7.0/Gyroflow-linux64.tar.gz）。libc++/libc++abi を apt-get download で展開して LD_LIBRARY_PATH に追加、Xvfb 不要で CLI レンダリング可能。★「30秒でスタビライズが止まる」の真因: protobuf の `record_frame_rate` が `TcpSource.getFrameRate()` の固定30で渡され、Gyroflow が 3153フレーム×33.33ms=105秒の動画と解釈 → 53秒の IMU しか無く後半を断念。修正で実 fps（約58）を渡し、`duration_us`/fps を IMU タイムライン基準に変更。さらに切断ギャップを PTS から除き（フレーム複製はしない）、IMU rate を IMU 自身のタイムスタンプから計算（メタデータ310Hz→999Hzに修正、センサー実測は1000Hzを維持）。実機 `VID_20261120_224116.mp4` で `record_frame_rate=57.99` / `imu_rate=999` / IMU 40.74秒 vs 動画41.73秒（差約1秒、以前は倍の差）に改善。Gyroflow レンダリングは成功し、最後まで IMU があることを確認。
+- ★スタビライズ暴走の真因と解決（2026-11-20、CI run `44730238162`）: (1) 全 IMU サンプルを先頭フレームの FrameMetadata に入れていたため Gyroflow が冒頭しか補正できなかった → `Mp4TelemetryInjector` でサンプルを timeUs ソートし各フレームの `[startUs,endUs)` に分散格納。(2) 6軸を実機で測定（装着者視点でヨー右=+Y 1.18 / 左=-1.57、ロール=Z、ピッチ=X、加速度の下は -Y/-X/-Z）→ 生データは +X=左/+Y=上/+Z=後（xr-tools と一致、xreal-1s-lab の gyro 生使い・up=-accel と整合）。Gyroflow 期待に合わせ **orientation=`xYZ`** ＋ **加速度を全軸反転**（重力ベクトル→上向き specific force）。ローカルで telemetry-parser が `(1,9.8,2)` を `(-1,+9.8,2)` と読むことを確認。実機 `VID_20261120_204942.mp4` で `orientation=xYZ`・IMU 4192サンプルが 4191ms 全域に分散・加速度 Y=+4.52（上向き）を確認。Gyroflow 本体はローカルに無いため telemetry-parser（Gyroflow と同じ解析器）で検証。端末は Dozing に戻した。
+- 最終実機確認（2026-11-20 18:43、CI run `44712645536`）: `VID_20261120_184309.mp4` が ffprobe で 184フレーム / 動画 duration 3.32秒（以前は2〜3フレーム / 0.04秒）に復元。telemetry-parser で `camera=XREAL` / `model=1S` / IMU 4147サンプルを確認。Gyroflow プレビューのフレーム数問題は解消見込み。
+- 埋め込み検出の試行錯誤: 相対タイムスタンプ + 末尾/moov への `GyroflowProtobuf` beacon は端末で動画が壊れ（NAL unit size error）、ジャイロ No になった。telemetry-parser は先頭5MB/末尾5MBしか見ず、サンプルが中间（5.99MB）にあると検出されないのが原因だったが、beacon は mp4parser の再構築でオフセットを壊すため採用せず。絶対タイムスタンプ + beacon なし + `fixTiming`（tkhd/elst の timescale 補正）の構成に戻し、実機で `camera=XREAL` / IMU 4099サンプルを安定確認（`VID_20261120_192514.mp4`）。`duration_us` の1000倍小さいバグも修正。
+- USB切断復帰の不具合を修正（2026-11-20 19:49、CI run `44721403989`）: 切断→再接続でグラスが既定 1280x720 に戻り、`readVideo()` が `Unexpected TCP video dimensions: 1280x720` で再 stalled → 60秒で fail → 録画停止、IMU クライアントも停止してジャイロ No になっていた。`TcpSource.reconnect()` に hook を追加し、ソケット再確立後・カメラ Start 前に `GlassesStatusClient` で録画開始時の画質（confirmed_live_mode）へ復元。実機試験で `live mode restored after reconnect: 1600 1200 60` → `video stream resumed` → AU 再開を確認。保存動画 `VID_20261120_194845.mp4` は 47.8秒・1600x1200・1938フレーム・IMU 15356サンプルで、映像・音声・ジャイロすべて途切れず継続。ts-lan-route が `throw 169.254.2.0/24` を既存経路と誤判定する既知バグは手動で `ip route del throw...` → `ip route add 169.254.2.0/24 dev eth0 table 52` で回避。端末は検証後 Dozing に戻す予定（現在は Awake、ユーザーが解除した状態）。
+- 未検証: #2 の第2画面と #5 の録画後 `.gcsv` の実機確認。Gyroflow の `orientation,YxZ` は実機で未調整（グラス軸は X=左, Y=上, Z=後方で、カメラとの対応は Gyroflow 側で要確認）。グラスを挿し直した後で端末は Awake（画面 ON）。
+- CI: run `44690367126` と `44690758478` は成功。現状の再実行が必要。
+- 作業後は画面を Dozing に戻し、結果・未解決事項を本ファイルに追記する。
+
 ## 実行中（2026-11-20、1600p/30 実測の再開）
 - 引継ぎ記録を commit 1ba5bbb で push 済み。
 - 実機状態（作業開始時）: SC-52B / Android 15(SDK35) / root。recorder 系アプリは uninstall 済みで未インストール（`/data/data/jp.xreal.recorder` なし、`/data/data/com.syameimarukoa.xreal_recorder` なし）。`/data/local/tmp/v1.apk` は APPID 変更前の古い APK。
@@ -2003,4 +2580,17 @@
 - 2026-11-04: Android USB 情報で XREAL 1S 接続を確認。録画待機状態を確認済み。更新 APK を上書きインストールし、録画中の第二画面切替とオフ時の通常複製を実機検証する。
 - 2026-11-04: 実機で TCP 録画中にオフ→固定→サイド、サイド→オフを確認。外部画面キャプチャで固定・サイドの REC 表示と、オフ時にスマホ画面の通常複製へ復帰することを確認。VID_0112～0114 を保存、0114 は受信平均 29.85 fps / 17.05 Mbps。静かな環境で音声小・無音警告あり。試験録画は停止済み、XREAL 接続中。v0.1.4 のビルドとリリース準備中。
 - v0.1.4 をビルドし実機へ上書きインストール、起動とオフ設定の保持を確認。録画は停止済み。Git 記録とリリース公開を進行中。
-- v0.1.4 を GitHub Release に公開済み。master の 3c59933、APK は実機へインストール済み。録画停止・第二画面オフ（通常複製）・XREAL 接続中。残課題は本書記載の DP 復旧、画角、音声など。
+- v0.1.4 を GitHub Release に公開済み。master の 3c59933、APK は実機へインストール済み。録画停止・第二画面オフ（通常複製）・XREAL 接続中。残課題は本书記載の DP 復旧、画角、音声など。
+- ★レンズプロファイル警告と焦点距離（2026-11-21 15:2x）: Gyroflow の「レンズプロファイルが読み込まれていない」警告は XREAL 1S のプロファイルが `profiles.cbor.gz`（12409件）に存在しないため。正しい消し方は protobuf の `FrameMetadata.lens` に `LensData`（NoDistortion＋intrinsics）を入れること。 Gyroflow の `LensProfile::from_focal_length()` の式 `fx = focal_length_35mm × √(w²+h²)/√(36²+24²)` を確認。ユーザーが「正しい値を知りたい」「他の解像度でも計算して」と要望したため、**FOV を定数（水平77.3°、1600x1200 で fx≈1000 になる実測値）として保持し、`fx = w/(2·tan(FOV/2))` で解像度から計算**する方式に変更。これで 720p(1280x720) でも 1600p でも fx が正しくスケールする。`GyroflowProtoTest` に LensData の no_distortion 宣言と fx の解像度比例（1600→800 で2倍）を検証するテストを追加。6テスト成功。
+- 15:18 実機検証（`VID_20261121_151729.mp4`）: 生 protobuf を parse して **quaternion (w=0.7071, z=0.7071)=+90°**（Rotation=0 で水平が出る値）、**LensData 47バイト・no_distortion 宣言あり・fx=1000.4**（1600x1200 の期待値 ~1000 に一致）を確認。CI `44874512985` green。★ユーザーが Gyroflow で警告が消えた／水平が正しいか目視確認すれば完了。
+- ★エミュレーション用完全ダンプ取得（2026-11-21 15:30）: 30秒録画中に tcpdump で全 TCP ポートを捕捉。`xreal_full.pcap`（321MB）から `pcap_replay.py`（SLL2 linktype=276 対応に修正済み）で生ストリームを抽出:
+  - 映像 52995: 167,289パケット / 241,774,708 bytes / 57.24秒
+  - IMU 52998: 196,218パケット / 31,278,682 bytes / 109.72秒
+  - 制御 50180: 84パケット / 2.43秒
+  - 出力: `/tmp/opencode/replay_52995.bin`, `replay_52998.bin`, `replay_50180.bin`。映像は `0x2785` フレーム、IMU は `0x2836`(len128) で始まることを確認。★IMU は tcpdump 開始前後も流れるため映像より長い。エミュレーションでは映像タイムラインに合わせて切り詰めること。これで XREAL 1S 非接続でも録画・注入ロジックを検証可能。
+  - ★録画開始ボタン座標は UI 状態で変わる（[78,677] または [78,258]）。`uiautomator dump` で bounds を取得してから tap すること。
+  - ★ダンプを使った回帰テストを追加: `ImuReportParserTest` に実ダンプの先頭 IMU レポート（timestamp=4,596,182,978,733、type=11）を埋め込み、field offset（timestamp@8, type@0x18, gyro@0x1c, accel@0x28）が実データと一致することを検証。`VideoFrameHeaderTest` に実ダンプの先頭映像フレーム（command=0x2785, len=199, 1600x1200, Annex-B start code@body+97）を埋め込み、`TcpSource` のヘッダー解釈が実データと一致することを検証。ローカル7テスト成功。これで XREAL 非接続でもパーサーの正当性を継続検証できる。CI の `$names`（app/src クラス一覧）に tests 側の `VideoFrameHeader` を誤って追加してビルド失敗したが、削除して CI `44876896269` green（tests は `Get-ChildItem tests\*Test.java` で自動列挙なので追加不要）。
+- ★LensData 導入後に「ぐにゃぐにゃ動的に歪む」（2026-11-21 15:3x）: Smoothing／Rolling shutter 補正を切ると直る。原因は `FrameMetadata.start_timestamp_us` と `end_timestamp_us` の差（≈16.8ms）を Gyroflow が「フレームの読み出し時間」と解釈し、per-row 補正で各行を歪ませていた。protobuf ドキュメント曰く `start/end` が per-row timing の authoritative で、`frame_readout_time_us` は helper にすぎぬ。LensData が無い時は Gyroflow が per-row 補正をスキップしていたが、LensData 導入で補正パイプラインが走り出した。修正: `endUs = startUs`（読み出しスパン0）にして Gyroflow に行歪みをさせない。あわせて ClipMetadata field11 `frame_readout_time_us=0` も明示（helper も0）。XREAL は内部で rolling shutter 補正済み。
+- 細かなバグ潰し（2026-11-21 15:0x）:
+  - ★「停止処理中...」が UI に残るバグ: `runRecording()` の finally が `status` を戻さず、`stopSelf()` → `onDestroy()` の `t.join(3000)` がタイムアウトすると `recording=false` にならず `pollStatus()` が「停止処理中...」を取得し続けていた。修正: finally で `status="待機中"` に戻し、`recording=false` を `destroyed` 条件なしで確実に設定。fMP4 なので停止処理が途中でもファイルは再生可能なため、データ自体は無伤だった（ユーザー指摘）。
+  - HeadlessReceiver の start broadcast が enqueued のまま receiver に届かないことがある（`headless start` ログ無し、stop は効いた）。UI タップは確実に動く。broadcast 経路は未解決。

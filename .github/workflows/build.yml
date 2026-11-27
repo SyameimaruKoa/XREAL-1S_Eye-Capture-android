@@ -76,7 +76,8 @@ jobs:
           $out = Join-Path $env:RUNNER_TEMP "xreal-tests"
           New-Item -ItemType Directory -Force $out | Out-Null
           $names = @('AudioSilenceDetector','GlassesCommandProtocol','GlassesLivePlan',
-                     'GlassesRecoveryPlan','GlassesStartupPlan','TcpDriftGate',
+                     'GlassesRecoveryPlan','GlassesStartupPlan','GyroCsvFormatter','GyroflowProto',
+                     'ImuReportParser','SessionRegistry','SessionStats','TcpDriftGate',
                      'TcpReadProgress','TcpTimestampRecovery','UsbMicrophoneSelector',
                      'VideoProgressWatchdog','VideoWriter')
           $src = $names | ForEach-Object { "app\src\com\syameimarukoa\xreal_recorder\$_.java" }

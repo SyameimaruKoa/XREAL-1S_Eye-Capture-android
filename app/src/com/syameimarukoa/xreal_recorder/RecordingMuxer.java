@@ -12,9 +12,14 @@ interface RecordingMuxer {
 
     void writeAudio(byte[] data, long ptsUs);
 
+    void writeGyrf(byte[] data, long ptsUs);
+
     void startVideoOnly();
 
     void finish();
+
+    /** Release resources without publishing the output file. */
+    void discard();
 
     boolean isFailed();
 

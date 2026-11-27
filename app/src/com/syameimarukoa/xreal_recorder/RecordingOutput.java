@@ -4,6 +4,7 @@ import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Environment;
 import android.os.ParcelFileDescriptor;
@@ -11,63 +12,53 @@ import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 /** Creates a user-visible MP4 without requiring direct filesystem access. */
 final class RecordingOutput {
+    private final Context context;
     private final ContentResolver resolver;
     private final Uri uri;
     private final boolean pendingMedia;
     private final String filename;
     private final Uri tree;
+    private final File outputFile;
+    private RecordingMuxer rawSink;
     private boolean completed;
 
-    private RecordingOutput(ContentResolver resolver, Uri uri, boolean pendingMedia,
-                            String filename, Uri tree) {
+    private RecordingOutput(Context context, ContentResolver resolver, Uri uri,
+                            boolean pendingMedia, String filename, Uri tree, File outputFile) {
+        this.context = context;
         this.resolver = resolver;
         this.uri = uri;
         this.pendingMedia = pendingMedia;
         this.filename = filename;
         this.tree = tree;
+        this.outputFile = outputFile;
     }
 
     static RecordingOutput create(Context context, Uri tree, long captureTimeMs) throws IOException {
-        ContentResolver resolver = context.getContentResolver();
-        Uri uri;
-        boolean pending = tree == null;
-        String extension = "mp4";
-        String mimeType = "video/mp4";
-        String filename = nextFilename(resolver, tree, extension, captureTimeMs);
-        if (tree != null) {
-            Uri directory = DocumentsContract.buildDocumentUriUsingTree(tree,
-                    DocumentsContract.getTreeDocumentId(tree));
-            uri = DocumentsContract.createDocument(resolver, directory, mimeType, filename);
-        } else {
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Video.Media.DISPLAY_NAME, filename);
-            values.put(MediaStore.Video.Media.MIME_TYPE, mimeType);
-            values.put(MediaStore.Video.Media.RELATIVE_PATH,
-                    Environment.DIRECTORY_DCIM + "/100XREAL");
-            values.put(MediaStore.Video.Media.DATE_TAKEN, captureTimeMs);
-            values.put(MediaStore.Video.Media.IS_PENDING, 1);
-            uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
+        File dir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+        if (dir == null) {
+            dir = new File(context.getFilesDir(), "Movies");
         }
-        if (uri == null) {
-            throw new IOException("Could not create MP4 in the selected location");
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new IOException("Could not create output directory");
         }
-        String actualName = filename;
-        try (Cursor cursor = resolver.query(uri, new String[]{OpenableColumns.DISPLAY_NAME},
-                null, null, null)) {
-            if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) {
-                actualName = cursor.getString(0);
-            }
-        }
-        return new RecordingOutput(resolver, uri, pending, actualName, tree);
+        String filename = "VID_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+                .format(new Date(captureTimeMs)) + ".mp4";
+        return new RecordingOutput(context, context.getContentResolver(), null,
+                false, filename, tree, new File(dir, filename));
     }
 
     private static String nextFilename(ContentResolver resolver, Uri tree,
@@ -106,7 +97,8 @@ final class RecordingOutput {
             while (cursor.moveToNext()) {
                 String name = cursor.getString(0);
                 if (name != null && (name.equalsIgnoreCase(base + ".mp4")
-                        || name.equalsIgnoreCase(base + ".json"))) {
+                        || name.equalsIgnoreCase(base + ".json")
+                        || name.equalsIgnoreCase(base + ".gcsv"))) {
                     throw new IOException("Recording name already exists: " + base);
                 }
             }
@@ -125,27 +117,32 @@ final class RecordingOutput {
         }
     }
 
-    /** Open a fragmented MP4 sink (mode 3). The sink owns and closes the channel. */
-    FragmentedMp4Sink openFragmentedMuxer() throws IOException {
+    /** Open a single-write fMP4 sink with an embedded Gyroflow metadata track. */
+    StreamingMuxerSink openStreamingMuxer(byte[] csd, int width, int height)
+            throws IOException {
         java.io.OutputStream stream = resolver.openOutputStream(uri, "rw");
         if (stream == null) {
             throw new IOException("Could not open fMP4 in the selected location");
         }
-        java.nio.channels.WritableByteChannel ch =
-                java.nio.channels.Channels.newChannel(stream);
-        return new FragmentedMp4Sink(ch, stream);
+        StreamingGyroflowMuxer muxer =
+                new StreamingGyroflowMuxer(stream, csd, width, height);
+        // start() is deferred until addVideoTrack() supplies the real CSD, so
+        // the hvcC in moov is valid.
+        return new StreamingMuxerSink(muxer);
+    }
+
+    /** One continuous write to the app-owned file; MediaScanner publishes it. */
+    RecordingMuxer openFragmentedMuxer() throws IOException {
+        if (outputFile.exists() && !outputFile.delete()) {
+            throw new IOException("Could not clear " + outputFile.getName());
+        }
+        rawSink = new StreamingMuxSink(outputFile);
+        return rawSink;
     }
 
     synchronized void complete() throws IOException {
         if (completed) {
             return;
-        }
-        if (pendingMedia) {
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Video.Media.IS_PENDING, 0);
-            if (resolver.update(uri, values, null, null) != 1) {
-                throw new IOException("Could not publish the MP4 in shared storage");
-            }
         }
         completed = true;
     }
@@ -190,6 +187,69 @@ final class RecordingOutput {
             if (resolver.update(metadataUri, values, null, null) != 1) {
                 throw new IOException("Could not publish recording metadata");
             }
+        }
+    }
+
+    void writeGyroCsv(String csv) throws IOException {
+        String name = filename.replaceFirst("(?i)\\.(mp4|mkv)$", "") + ".gcsv";
+        Uri gyroUri;
+        if (tree != null) {
+            Uri directory = DocumentsContract.buildDocumentUriUsingTree(tree,
+                    DocumentsContract.getTreeDocumentId(tree));
+            gyroUri = DocumentsContract.createDocument(resolver, directory,
+                    "application/octet-stream", name);
+        } else {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
+            // Same folder as the MP4 so Gyroflow's same-basename sidecar lookup
+            // finds it. MediaStore.Files only allows Download/Documents here.
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH,
+                    Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL");
+            values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+            gyroUri = resolver.insert(MediaStore.Files.getContentUri("external"), values);
+        }
+        if (gyroUri == null) {
+            throw new IOException("Could not create recording gyro CSV");
+        }
+        try (OutputStream stream = resolver.openOutputStream(gyroUri, "w")) {
+            if (stream == null) {
+                throw new IOException("Could not open recording gyro CSV");
+            }
+            stream.write(csv.getBytes(StandardCharsets.UTF_8));
+        }
+        if (tree == null) {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            if (resolver.update(gyroUri, values, null, null) != 1) {
+                throw new IOException("Could not publish recording gyro CSV");
+            }
+        }
+    }
+
+    /**
+    /** Append gyrf to the MP4 already written to the uri; no second copy. */
+    boolean injectTelemetry(int width, int height, float fps, long durationUs,
+                            int imuRateHz, String orientation,
+                            List<GyroflowProto.ImuSample> samples, long firstImuTimeUs)
+            throws Exception {
+        if (tree != null) {
+            return false;
+        }
+        if (!(rawSink instanceof StreamingMuxSink)) {
+            return false;
+        }
+        StreamingMuxSink sink = (StreamingMuxSink) rawSink;
+        try {
+            Mp4TelemetryInjector.appendGyrf(sink, width, height, fps,
+                    durationUs, imuRateHz, orientation, samples, firstImuTimeUs);
+            MediaScannerConnection.scanFile(context,
+                    new String[]{outputFile.getAbsolutePath()},
+                    new String[]{"video/mp4"}, null);
+            return true;
+        } catch (Exception e) {
+            sink.discard();
+            return false;
         }
     }
 }

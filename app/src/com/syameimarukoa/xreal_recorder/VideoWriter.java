@@ -33,6 +33,7 @@ final class VideoWriter {
     private final Thread thread;
     private long queuedBytes;
     private boolean closing;
+    private volatile boolean discard;
     private volatile String error = "";
 
     VideoWriter(Output output) {
@@ -94,7 +95,10 @@ final class VideoWriter {
                 }
             }
             try {
-                output.finish();
+                // A discarded session must not publish its incomplete MP4.
+                if (!discard) {
+                    output.finish();
+                }
             } catch (Throwable t) {
                 if (error.isEmpty()) {
                     error = "Video output finalization failed: " + t.getClass().getSimpleName()
@@ -102,6 +106,12 @@ final class VideoWriter {
                 }
             }
         }
+    }
+
+    /** Stop the writer without running the finalizer that publishes the MP4. */
+    void discard() {
+        discard = true;
+        finish();
     }
 
     boolean finish() {

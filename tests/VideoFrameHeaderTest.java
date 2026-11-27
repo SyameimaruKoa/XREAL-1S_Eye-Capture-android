@@ -1,0 +1,51 @@
+package com.syameimarukoa.xreal_recorder;
+
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+
+/** Verifies the TCP 52995 frame header against a real tcpdump capture. */
+public final class VideoFrameHeaderTest {
+    public static void main(String[] args) {
+        // First message of the captured stream: 6-byte header (0x2785, len=199)
+        // followed by the body. Width/height live at body offsets 12/16 and the
+        // Annex-B start code at body offset 97.
+        int[] captured = {
+            0x27,0x85,0x00,0x00,0x00,0xc7,0x00,0x10,0x00,0x70,0x7f,0x00,
+            0x00,0x00,0x66,0x00,0x00,0x00,0x40,0x06,0x00,0x00,0xb0,0x04,
+            0x00,0x00,0x40,0x03,0x00,0x00,0x97,0x79,0xda,0x64,0x37,0x04,
+            0x00,0x00,0x0c,0x46,0xfe,0x00,0x00,0x00,0x00,0x00,0x00,0x02,
+            0x00,0x00,0x10,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x00,
+            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0x40,
+            0x01,0x0c,0x01,0xff,0xff,0x01,0x60,0x00
+        };
+        byte[] data = new byte[captured.length];
+        for (int i = 0; i < data.length; i++) {
+            data[i] = (byte) captured[i];
+        }
+        require(((data[0] & 0xff) << 8 | (data[1] & 0xff)) == 0x2785, "command");
+        long length = ((long) (data[2] & 0xff) << 24) | ((long) (data[3] & 0xff) << 16)
+                | ((long) (data[4] & 0xff) << 8) | (data[5] & 0xff);
+        require(length == 199, "body length");
+
+        byte[] bodyBytes = new byte[data.length - 6];
+        System.arraycopy(data, 6, bodyBytes, 0, bodyBytes.length);
+        ByteBuffer body = ByteBuffer.wrap(bodyBytes).order(ByteOrder.LITTLE_ENDIAN);
+        int width = body.getInt(12);
+        int height = body.getInt(16);
+        require(width == 1600 && height == 1200, "dimensions " + width + "x" + height);
+        int frameHeader = 97;
+        require(data[6 + frameHeader] == 0 && data[7 + frameHeader] == 0
+                && data[8 + frameHeader] == 0 && data[9 + frameHeader] == 1,
+                "Annex-B start code at frame header");
+        System.out.println("VideoFrameHeaderTest passed");
+    }
+
+    private static void require(boolean value, String message) {
+        if (!value) {
+            throw new AssertionError(message);
+        }
+    }
+}
