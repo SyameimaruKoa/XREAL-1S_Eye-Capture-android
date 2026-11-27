@@ -1,78 +1,83 @@
-# XREAL 1S + Eye キャプチャ＆レコーダー (Android)
+# XREAL 1S Eye Capture (Android)
 
-XREAL 1S と XREAL Eye を Android スマートフォンに USB 接続し、Eye のカメラ映像と音声を録画するアプリです。
-TCP（USB 上の NCM/ECM ネットワーク）経由の HEVC 受信を主経路とし、UVC HEVC 経路も選択できます。
+XREAL 1S（XREAL Eye 搭載グラス）の映像・音声・ジャイロ（IMU）データを、Android 端末単体で録画・記録するためのネイティブアプリです。
 
-## 主な機能
+&lt;img src=&quot;docs/images/screenshot-main.png&quot; width=&quot;320&quot; alt=&quot;メイン画面（待機中）&quot;&gt;
 
-- **TCP HEVC 録画（既定・最優先）** — XREAL Eye の RGB カメラストリームを MP4（HEVC + AAC）として保存。
-- **UVC HEVC 録画** — UVC 経由の HEVC（2048×1512 / 約59 fps）を保存できますが、実測ビットレートは約2 Mbps で TCP 経路より低く、画角も異なります。
-- **フレーム時刻の安定化** — フレームヘッダー offset 24 のカメラ時刻を PTS に採用し、必要に応じて不正な時刻を補正。TCP 受信では 2 MB の受信バッファでバースト到着による間隔乱れを低減しています。受信の揺れやフレーム欠落を完全に解消する機能ではありません。
-- **XREAL 第2画面オーバーレイ** — 固定表示（右上）とサイド表示（中央・拡大）に対応。録画中であること、経過時間、音声状態を表示。
-- **録画停止の防止** — 消灯中の継続、省電力対象外、焼き付き対策、音声取得失敗時も映像録画を継続。
-- **音声状態の可視化** — 完全ゼロと小さい非ゼロを区別して表示。
+## 主な特徴
 
-## スクリーンショット
+- **2系統の映像受信に対応**: USB Ethernet 経由の TCP ストリーム（`169.254.2.1`）と、USB Host API を用いた UVC Bulk 転送（`2048×1512`）の両方に対応しています。
+- **クラッシュセーフな MP4 録画**: Gyroflow 公式の FFmpeg（`libavformat`）をベースにしたネイティブライブラリ（`libgyroflow_inject.so`）で Fragmented MP4（`ftyp + moov + moof + mdat`）を直接書き出します。録画中にアプリが強制終了しても、直前までの映像・音声・ジャイロデータが破損せず再生できます。
+- **Gyroflow 連携（`gyrf` トラック内蔵）**: 録画中にグラスの IMU データを 3 秒ごとに MP4 内の `gyrf` トラックへ追記するため、撮影後の動画をそのまま Gyroflow（`gyro2bb` 等）で手ブレ補正できます。
+- **USB オーディオ録音と波形表示**: XREAL USB オーディオデバイスを優先的に選択し、48 kHz / 32-bit PCM で集音します。MP4 内には AAC-LC（48 kHz / モノラル / 128 kbps）で格納しつつ、解析用のステレオ 32-bit PCM WAV サイドカーも出力します。
+- **外部ディスプレイ・省電力対応**: 外部ディスプレイ出力（`Presentation`）でのリアルタイム音声波形・ステータス表示や、長時間録画向けのスクリーンセーバー／画面常時点灯の切り替えに対応しています。
 
-<img src="docs/images/screenshot-main.png" width="320" alt="メイン画面（待機中）">
+## 映像ルート・画質モード
 
-メイン画面（待機中）。録画の開始／停止、画質（720p/30・1600p/30・1600p/60・UVC HEVC）、保存モード、第2画面設定を配置しています。
+| モード名 | 受信方式 | 仕様・特徴 |
+| :--- | :--- | :--- |
+| **720p/30 (広い画角)** | TCP over USB Ethernet | 1280×720 / 30 fps の広画角 HEVC ストリーム |
+| **1600p/30 (高画質)** | TCP over USB Ethernet | 高解像度 30 fps の HEVC ストリーム |
+| **1600p/60 (高レート)** | TCP over USB Ethernet | 1600×1200 / 60 fps の高フレームレート HEVC ストリーム |
+| **UVC HEVC** | USB UVC Bulk 転送 | 2048×1512（IF10 alt 0 / EP `0x89`）の UVC HEVC ストリーム |
 
-## アプリID（APPID）アプリケーションID
+> **保存方式の切り替え**: デフォルトの fMP4 単一書込み（`SAVE_MODE_FMP4`）のほか、生ストリーム保存後に録画停止時へ MP4 変換する方式や、生データのみ保存するモードも利用できます。
 
-- 現行（v0.1.x / v2）: `com.syameimarukoa.xreal_recorder`
+## 動作要件
 
-過去のプレリリースで使われていた `jp.xreal.recorder` は現在のアプリとは別のアプリです。
+- **OS**: Android 11（API 30）以上（`minSdk 30` / `targetSdk 35`）
+- **ハードウェア**: USB Host（OTG）に対応した `arm64-v8a` 端末（`android.hardware.usb.host` 必須）
+- **必要な権限**: マイク（`RECORD_AUDIO`）、カメラ（`CAMERA`）、通知（`POST_NOTIFICATIONS`）、フォアグラウンドサービス（接続デバイス・マイク）
 
-## 実測値（TCP HEVC／実機・ffprobe）
+## 使い方
 
-| モード | 解像度 | 平均 fps | 映像ビットレート | 音声 |
-|---|---|---|---|---|
-| 720p/30 | 1280×720 | 29.85 | 13.43 Mbps | AAC mono 48 kHz / 128 kbps |
-| 1600p/30 | 1600×1200 | 29.85 | 16.01 Mbps | AAC mono 48 kHz / 128 kbps |
-| 1600p/60 | 1600×1200 | 約59 | 約34 Mbps | AAC mono 48 kHz / 128 kbps |
+1. [Releases](https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases) から最新の `xreal-recorder.apk` をダウンロードし、Android 端末にインストールします。
+2. XREAL 1S を USB-C で端末に接続し、表示される USB デバイスおよびマイク・通知の権限を許可します。
+3. UVC 経路を使う場合は画面上の「UVC 有効化」ボタンから USB HID 経由で有効化し、使用する画質モードを選択します。
+4. 録画開始ボタンで録画を開始し、終了時は停止ボタンでファイルを確定します。
 
-1600p/30 は `VID_20261120_011318.mp4`（2451 フレーム / 82.1 秒）、720p/30 は `VID_20261120_002712.mp4` を ffprobe で解析した値です。いずれも HEVC で、音声は UAC 由来のモノラル複製を 1ch で保存しています。
+### 保存先と出力ファイル
 
-## 現在の状態と既知の制限
+- **ファイル名規則**: `VID_yyyyMMdd_HHmmss.mp4`（同名ファイルがある場合は連番を付与）
+- **デフォルト保存先（MediaStore）**:
+  - 動画（`.mp4`）: `DCIM/100XREAL/`
+  - メタデータ（`.json`）・ジャイロデータ（`.gcsv`）: `Documents/XREAL/100XREAL/`
+- **任意フォルダ指定**: SAF（Storage Access Framework）で保存先ディレクトリを指定した場合、そのフォルダ配下に `.mp4` / `.json` / `.gcsv` をまとめて出力します（フォールバック時はアプリ固有の `Movies` 領域を使用）。
 
-- TCP 経路は実機で長時間録画を検証済み（626 秒 / 18,701 フレーム、全フレーム復号エラーなし）。
-- **TCP 60 fps 切替は試験機能**。グラス側の root 権限を使う再起動なしの切替で、1600×1200 / 約60 fps と 1280×720 / 約30 fps の往復および短時間録画を実機で確認しています。720p より左右の画角は狭く、往復切替後にグラス内で映像が表示されることを1回確認しています。切替中の一時的な表示途切れや長時間の安定性は未確認です。非 root の切替と 1280×720 / 60 fps の再現方法は未解決です。別の準備操作では本体を再起動し、DP 映像が消える場合があります。
-- スマートフォンの手動ロックやスリープ時に XREAL 側の第2画面を維持する方法は未解決です。録画中のスマートフォン常時点灯と画面保護を選択できます。
-- 過去の `VID_0022.mp4` は TCP HEVC 1280×720、約59.44 fps・34.03 Mbps で保存されましたが、この状態の発生条件と再現方法は未確認です。
-- 音声は UAC（USB 音声）経由で取得した 2ch が左右同一のモノラル複製であることを実データで確認済みのため、AAC 1ch で保存します。静かな環境では「音声が3秒以上非常に小さい」警告が表示されますが、設計どおりの閾値によるもので音声データは保存されます。
-- UVC HEVC 経路は実装済みですが、低ビットレート（約2 Mbps）ため TCP を優先してください。MJPEG 経路は削除しました。
+## ビルド方法
 
-## ビルド
+このプロジェクトは Gradle を使用せず、`scripts/build.ps1`（Windows）または `scripts/build.sh`（Linux / macOS）から Android SDK ツール（`aapt2`, `javac`, `d8`, `zipalign`, `apksigner`）を直接呼び出してビルドします。
 
-Android SDK（build-tools 35.0.0、platform android-35）と JDK 21 が必要です。
+### 必要な環境
+
+- **JDK 21**（`build.ps1` は `jdk-21.0.12`、`build.sh` は `javac --release 8` でコンパイル）
+- **Android SDK**: `build-tools/35.0.0` および `platforms/android-35/android.jar`
+
+### ビルド手順
+
+**Windows（PowerShell）**
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\build.ps1
+# 初回のみ Material Components (1.14.0) 等の依存ライブラリを取得する場合
+python scripts/fetch_material_deps.py
+
+# APK のビルド
+.\scripts\build.ps1
 ```
 
-Linux / macOS:
+**Linux / macOS**
 
 ```bash
-scripts/build.sh
+export ANDROID_SDK_ROOT=/path/to/android-sdk
+./scripts/build.sh
 ```
 
-APK は `build/xreal-recorder.apk` に生成されます。署名用キーストアは `.secrets/local.keystore`（リポジトリ外・初回生成）を使用します。
+ビルドが成功すると `build/xreal-recorder.apk` が出力されます（`KEYSTORE` 未指定時はデバッグ用キーストアで署名されます）。
 
-## インストール
+## プロジェクト構成
 
-```bash
-adb install -r build/xreal-recorder.apk
-```
-
-## 保存先
-
-通常は `DCIM/100XREAL/VID_yyyyMMdd_HHmmss.mp4`。標準時の同名 JSON は `Documents/XREAL/100XREAL` に保存されます。同名ファイルが存在する場合は上書きせず録画を開始しません。
-
-## ドキュメント
-
-調査記録と現在の引継ぎは `docs/` にあります。最新の状態は `docs/HANDOFF_CURRENT.md` を参照してください。
-
-## ライセンス
-
-未設定（必要に応じて追加してください）。
+- `app/AndroidManifest.xml`: アプリ設定・権限定義（`com.syameimarukoa.xreal_recorder`）
+- `app/src/com/syameimarukoa/xreal_recorder/`: アプリ本体（UI・`RecordService`・TCP/UVC/HID 通信・音声処理・Gyroflow Muxer 等）
+  - `HeadlessReceiver.java`: `jp.xreal.recorder.DEV_CMD` インテントによる ADB 制御用レシーバー
+- `app/src/main/jniLibs/arm64-v8a/libgyroflow_inject.so`: Gyroflow 公式 FFmpeg ベースの MP4 / `gyrf` 生成ネイティブライブラリ
+- `scripts/`: ビルドスクリプト（`build.ps1`, `build.sh`）、依存取得・検証用スクリプト群
