@@ -146,6 +146,17 @@
 - ★実機検証は **グラスの USB が落ちておって不可**: `dumpsys usb` に XREAL (3318:043e) が無く、`eth0` も無い（`ip route get 169.254.2.1` → `dev tailscale0`）。グラスを再接続してもらう必要がある。
 - 画面は `lockctl lock --no-brightness` でロック済み。
 
+## ★★★v0.1.58 で全画質を実機再検証完了（2026-11-27 17:2x〜17:3x JST）
+- グラス USB 復帰後（eth0 / ping 0% loss）、v0.1.58 で Broadcast start→stop し ffprobe + gyro2bb で確認:
+  - **720p30** `VID_20261127_172703.mp4`: hevc 1280x720 + aac + bin_data(gyrf)、`Detected camera: XREAL 1S`（27.891fps）
+  - **1600p30** `VID_20261127_172800.mp4`: hevc 1600x1200 + aac + gyrf、detect OK（27.458fps）
+  - **1600p60** `VID_20261127_172837.mp4`: hevc 1600x1200 + aac + gyrf、detect OK（55.754fps）
+  - **UVC HEVC** `VID_20261127_173644.mp4`: hevc **2048x1512** + aac + gyrf、detect OK（59.177fps）
+- UVC は再接続後に「UVCを有効化」＋USB 権限ダイアログ OK で有効化した（`/dev/video2/3` 確認）。
+- ★**全4画質が現行 v0.1.58 で video + audio + gyrf 完璧**。gyrf の GoPro 誤検出も FFmpeg の handler_name 設定だけで解消、出力バイナリ書き換えは無し。
+- 720p60 はユーザー指示で UI から除外済み（仕様外）。
+- 作業終了後は `lockctl lock --no-brightness` でロック。
+
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
 - 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。
