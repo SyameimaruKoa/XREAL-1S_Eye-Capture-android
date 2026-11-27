@@ -160,6 +160,19 @@ if ($LASTEXITCODE -ne 0) { throw "d8 failed" }
 $dexFiles = @(Get-ChildItem (Join-Path $build "dex") -Filter 'classes*.dex' | Sort-Object Name)
 $jarArgs = @("uf", (Join-Path $build "base.apk"))
 foreach ($d in $dexFiles) { $jarArgs += @("-C", (Join-Path $build "dex"), $d.Name) }
+# Native libraries must land in lib/<abi>/ so Android extracts them to an
+# executable app-nativeLibraryDir (filesDir/assets are mounted noexec).
+$jniRoot = Join-Path $root "app\src\main\jniLibs"
+if (Test-Path $jniRoot) {
+    foreach ($abi in @("arm64-v8a", "armeabi-v7a", "x86_64", "x86")) {
+        $abiDir = Join-Path $jniRoot $abi
+        if (Test-Path $abiDir) {
+            foreach ($so in Get-ChildItem $abiDir -Filter *.so) {
+                $jarArgs += @("-C", $jniRoot, "$abi/$($so.Name)")
+            }
+        }
+    }
+}
 & (Join-Path $jdkBin "jar.exe") @jarArgs
 if ($LASTEXITCODE -ne 0) { throw "jar failed" }
 

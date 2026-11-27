@@ -334,7 +334,6 @@ final class Mp4TelemetryInjector {
             }
             PropertyBoxParserImpl.BOX_MAP_CACHE = mapping;
         }
-        File binary = ensureBinary(context);
         Movie movie = MovieCreator.build(input.getAbsolutePath());
         Track video = null;
         for (Track track : movie.getTracks()) {
@@ -360,38 +359,13 @@ final class Mp4TelemetryInjector {
                 writeAll(new File(dir, String.format(java.util.Locale.US,
                         "frame_%06d.bin", i + 1)), payloads.get(i));
             }
-            ProcessBuilder pb = new ProcessBuilder(binary.getAbsolutePath(),
-                    dir.getAbsolutePath(), "-v", input.getAbsolutePath(),
-                    "-o", output.getAbsolutePath());
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-            byte[] buffer = new byte[4096];
-            while (process.getInputStream().read(buffer) >= 0) { }
-            int code = process.waitFor();
-            if (code != 0) {
-                throw new IOException("gyroflow_proto_inject failed: " + code);
+            if (!GyroflowInjector.inject(dir.getAbsolutePath(),
+                    input.getAbsolutePath(), output.getAbsolutePath())) {
+                throw new IOException("gyroflow_proto_inject failed");
             }
         } finally {
             deleteRecursively(dir);
         }
-    }
-
-    private static File ensureBinary(Context context) throws IOException {
-        File binary = new File(context.getFilesDir(), "gyroflow_proto_inject");
-        if (!binary.exists() || binary.length() != 17907592L) {
-            try (InputStream in = context.getAssets().open("gyroflow_proto_inject");
-                 FileOutputStream out = new FileOutputStream(binary)) {
-                byte[] buffer = new byte[64 * 1024];
-                int n;
-                while ((n = in.read(buffer)) >= 0) {
-                    out.write(buffer, 0, n);
-                }
-            }
-            if (!binary.setExecutable(true)) {
-                throw new IOException("cannot make gyroflow_proto_inject executable");
-            }
-        }
-        return binary;
     }
 
     private static void deleteRecursively(File file) {
