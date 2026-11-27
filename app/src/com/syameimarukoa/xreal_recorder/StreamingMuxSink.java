@@ -15,6 +15,7 @@ final class StreamingMuxSink implements RecordingMuxer {
     private String error = "";
 
     StreamingMuxSink(File output, File hevcSeed, File aacSeed) {
+        android.util.Log.i("XrealRec", "mux output=" + output.getAbsolutePath());
         this.output = output;
         this.hevcSeed = hevcSeed;
         this.aacSeed = aacSeed;
@@ -51,6 +52,7 @@ final class StreamingMuxSink implements RecordingMuxer {
                 fail("openMux failed: " + err);
             } else {
                 handle = GyroflowInjector.lastHandle();
+                android.util.Log.i("XrealRec", "mux handle=" + handle);
                 if (handle == 0) {
                     fail("openMux returned no handle");
                 }
