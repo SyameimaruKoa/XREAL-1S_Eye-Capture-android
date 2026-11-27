@@ -28,4 +28,7 @@ final class GyroflowInjector {
     static native long lastHandle();
 
     static native boolean inject(String telemetryDir, String video, String output);
+
+    /** Convert raw HEVC + ADTS AAC + gyrf frames to an MP4 (no device needed). */
+    static native String muxRaw(String hevc, String aac, String telemetryDir, String output);
 }

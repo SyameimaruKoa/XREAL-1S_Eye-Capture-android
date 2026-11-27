@@ -74,6 +74,35 @@ final class Mp4TelemetryInjector {
         sink.close();
     }
 
+    /** Offline conversion of raw HEVC/AAC/gyrf into an MP4. */
+    static String convertRawToMp4(Context context, File hevc, File aac,
+            int width, int height, float fps, long durationUs, int imuRateHz,
+            String orientation, List<GyroflowProto.ImuSample> samples,
+            long firstImuTimeUs, File output) throws Exception {
+        int frames = (int) Math.max(1L, Math.round(durationUs * fps / 1_000_000.0));
+        long step = Math.max(1L, Math.round(1_000_000.0 / fps));
+        long[] durations = new long[frames];
+        java.util.Arrays.fill(durations, step);
+        List<byte[]> payloads = buildGyrfSamples(width, height, fps, durationUs,
+                imuRateHz, orientation, samples, firstImuTimeUs, 1_000_000L, durations);
+        File dir = new File(context.getCacheDir(), "gyrf_frames");
+        deleteRecursively(dir);
+        if (!dir.mkdirs()) {
+            throw new IOException("cannot create gyrf frame directory");
+        }
+        try {
+            for (int i = 0; i < payloads.size(); i++) {
+                writeAll(new File(dir, String.format(java.util.Locale.US,
+                        "frame_%06d.bin", i + 1)), payloads.get(i));
+            }
+            return GyroflowInjector.muxRaw(hevc.getAbsolutePath(),
+                    aac.getAbsolutePath(), dir.getAbsolutePath(),
+                    output.getAbsolutePath());
+        } finally {
+            deleteRecursively(dir);
+        }
+    }
+
     private static void deleteRecursively(File file) {
         File[] children = file.listFiles();
         if (children != null) {
