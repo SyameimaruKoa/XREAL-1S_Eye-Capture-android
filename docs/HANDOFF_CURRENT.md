@@ -78,10 +78,17 @@
   - **720p30** `VID_20261127_133319.mp4`（30MB / 15秒）: hevc 1280x720 + aac + gyrf、`Detected camera: XREAL 1S` → 完璧
   - **1600p30** `VID_20261127_133452.mp4`（25MB）: hevc 1600x1200 + aac + gyrf、detect OK → 完璧
   - **1600p60** `VID_20261127_133607.mp4`（53MB）: hevc 1600x1200 + aac + gyrf、detect OK → 完璧
-  - **UVC HEVC** `VID_20261127_134140.mp4`（66MB / 17秒）: hevc **1600x1200 / 59.4fps** + aac + gyrf、detect OK → 完璧。UI から「UVCを有効化」で IF10 / EP 0x89 を検出、USB 権限付与後に撮影。
+  - **UVC HEVC** `VID_20261127_134140.mp4`（66MB / 17秒）: 当時は 1600x1200 と記録したが ★誤り。gyrf ヘッダーも 1600x1200 で、実は broadcast start がデフォルト TCP（1600p60）で撮れとった。下記の通り HeadlessReceiver を修正。本物の UVC は `UvcSource` が 2048x1512 を想定。
 - 720p60 は `VIDEO_ROUTES` から削除（commit `539c020`）。UVC 判定 index バグ（`which == 3` 固定）も `VIDEO_ROUTES.length - 1` に修正。UI ダイアログは4選択肢（720p/30 / 1600p/30 / 1600p/60 / UVC HEVC）のみ、720p60 は表示されない。
 - ★**全4画質が現行 v0.1.45 で video + audio + gyrf 完璧**。v2 正式リリースの条件は満たした（720p60 は仕様外として UI から除外）。
 - 実機作業後は `lockctl lock --no-brightness` で画面をロック（`Screen: off / Keyguard: locked` 確認済み）。
+
+## ★★★UVC と音声波形の指摘対応（2026-11-27 13:4x〜13:5x JST）
+- ユーザー指摘「UVCは1600x1200じゃなくね？」「録画中の音声波形表示どこに捨てた？」
+- **UVC の真因**: `HeadlessReceiver` が broadcast start で `EXTRA_VIDEO_ROUTE` を渡しとらんかった。RecordService はデフォルト `ROUTE_TCP_HEVC` を使うため、prefs で UVC を選んでも broadcast 経由では TCP（1600p60/30）で録画されとった。gyrf ヘッダーを直接パースして 1600x1200 なことを確認。修正: prefs の `video_route` を読み intent に渡す（commit `97ac256`）。本物の UVC は 2048x1512。
+- **波形は削除しとらん**: `git log -S phoneWaveform` / `-S screenSaverWaveform` に削除コミットなし。`RecordingPresentation.WaveformView` は phone / 第二画面 / 放置画面の3か所で生きとる。13:48 の実機画面では baseline のみ（緑/黄/赤のバー無し）＝ audioPeak が 0 だった。これは直後の録画が muxer エラーで音声が入らんかったため。
+- **muxer NPE も発見**: 13:47:22 `FragmentedMp4Writer.writeSampleData` で `Track` が null → `finish: videoSamples=0 audioSamples=1 failed=true`。track 追加順が video(id=0)→audio(id=1) になると media3 が video track を解決できん。修正: MediaFormat を保存し、muxer.addTrack を **audio→video の順** に固定（commit `65a5cc7`）。audio が来ん場合は `startVideoOnly()` で video のみ登録。
+- ★CI 完了後、新版 APK で UVC 録画（2048x1512 確認）と波形を実機検証する。
 
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。

@@ -125,11 +125,29 @@ public class MainActivity extends Activity {
     private boolean recoveryShown;
     /** Continue UVC enablement right after the USB permission dialog is accepted. */
     private boolean pendingUvcEnable;
+    /** Resume the recording request once the permission dialog is accepted. */
+    private boolean pendingStartAfterPermission;
+    /** Enable UVC, wait for the reconnect, then start recording automatically. */
+    private boolean pendingStartAfterUvc;
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (!ACTION_USB_PERMISSION.equals(intent.getAction())) {
+            String action = intent.getAction();
+            if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
+                if (pendingStartAfterUvc) {
+                    new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (pendingStartAfterUvc) {
+                                continuePendingStart();
+                            }
+                        }
+                    }, 1500);
+                }
+                return;
+            }
+            if (!ACTION_USB_PERMISSION.equals(action)) {
                 return;
             }
             UsbDevice d = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
@@ -141,8 +159,14 @@ public class MainActivity extends Activity {
                     pendingUvcEnable = false;
                     enableUvc();
                 }
+                if (pendingStartAfterPermission) {
+                    pendingStartAfterPermission = false;
+                    continuePendingStart();
+                }
             } else {
                 pendingUvcEnable = false;
+                pendingStartAfterPermission = false;
+                pendingStartAfterUvc = false;
                 setStatus("USB権限が拒否されました");
             }
         }
@@ -614,6 +638,7 @@ public class MainActivity extends Activity {
         updateConfirmedLiveMode(null);
         if (!receiverRegistered) {
             IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
+            filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
             if (Build.VERSION.SDK_INT >= 33) {
                 registerReceiver(usbReceiver, filter, Context.RECEIVER_EXPORTED);
             } else {
@@ -768,10 +793,42 @@ public class MainActivity extends Activity {
             return;
         }
         if (!usbManager.hasPermission(device)) {
-            setStatus("USB権限を許可してから再試行してください");
+            // findDevice() has already requested permission. Resume automatically
+            // when the dialog is accepted instead of making the user tap again.
+            pendingStartAfterPermission = true;
+            setStatus("USB権限を許可すると録画を開始します");
+            return;
+        }
+        if (selectedVideoRoute == RecordService.ROUTE_UVC_HEVC && !hasUvc(device)) {
+            // The user pressed Record with UVC selected but the interface is not
+            // up yet. Enable it now, wait for the reconnect, then start itself.
+            pendingStartAfterUvc = true;
+            requestUvcEnable();
             return;
         }
         ensureDesiredLiveMode(this::startRecordingInternal);
+    }
+
+    /** Re-run the pending start request once permission / UVC reconnect finished. */
+    private void continuePendingStart() {
+        findDevice();
+        if (device == null || usbManager == null) {
+            setStatus("XREAL 1S が見つかりません");
+            return;
+        }
+        if (!usbManager.hasPermission(device)) {
+            pendingStartAfterPermission = true;
+            return;
+        }
+        if (selectedVideoRoute == RecordService.ROUTE_UVC_HEVC && !hasUvc(device)) {
+            if (!pendingStartAfterUvc) {
+                pendingStartAfterUvc = true;
+                requestUvcEnable();
+            }
+            return;
+        }
+        pendingStartAfterUvc = false;
+        startRecording();
     }
 
     private void startReplayRecording() {
@@ -869,8 +926,21 @@ public class MainActivity extends Activity {
                     @Override
                     public void run() {
                         if (ok) {
-                            setStatus("UVC有効化を要求しました。再接続とUSB権限の確認を待ってください。\n" + message);
+                            setStatus(pendingStartAfterUvc
+                                    ? "UVC有効化を要求しました。再接続後に録画を開始します。\n" + message
+                                    : "UVC有効化を要求しました。再接続とUSB権限の確認を待ってください。\n" + message);
+                            if (pendingStartAfterUvc) {
+                                new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        if (pendingStartAfterUvc) {
+                                            continuePendingStart();
+                                        }
+                                    }
+                                }, 3000);
+                            }
                         } else {
+                            pendingStartAfterUvc = false;
                             setStatus("UVC有効化に失敗: " + message);
                         }
                     }
@@ -963,14 +1033,9 @@ public class MainActivity extends Activity {
                             setStatus("XREAL 1S を接続してください");
                         } else if (!usbManager.hasPermission(device)) {
                             pendingUvcEnable = true;
-                            setStatus("USB権限を許可してください（権限ダイアログを確認）");
+                            setStatus("USB権限を許可するとUVCを有効化します");
                         } else if (!hasUvc(device)) {
-                            new MaterialAlertDialogBuilder(this)
-                                    .setTitle("UVC HEVC の準備")
-                                    .setMessage("UVCを有効化します。本体の再接続後、USB権限の許可を求められます。")
-                                    .setPositiveButton("UVCを有効化", (d, w) -> requestUvcEnable())
-                                    .setNegativeButton("キャンセル", null)
-                                    .show();
+                            requestUvcEnable();
                         } else {
                             setStatus("UVC HEVC の準備完了");
                         }
