@@ -90,6 +90,15 @@
 - **muxer NPE も発見**: 13:47:22 `FragmentedMp4Writer.writeSampleData` で `Track` が null → `finish: videoSamples=0 audioSamples=1 failed=true`。track 追加順が video(id=0)→audio(id=1) になると media3 が video track を解決できん。修正: MediaFormat を保存し、muxer.addTrack を **audio→video の順** に固定（commit `65a5cc7`）。audio が来ん場合は `startVideoOnly()` で video のみ登録。
 - ★CI 完了後、新版 APK で UVC 録画（2048x1512 確認）と波形を実機検証する。
 
+## ★★★録画ボタン1回で開始するよう修正（2026-11-27 13:5x JST）
+- ユーザー正確な説明「録画ボタンを押した時にUSB通信の許可などが出ると、許可をしてもう一度録画開始ボタンを押さないと録画が始まらない」。
+- 修正（commit `1547681`）:
+  - `pendingStartAfterPermission`: USB 権限ダイアログ許可後に `continuePendingStart()` → 自動で録画再開。全画質共通。
+  - `pendingStartAfterUvc`: UVC 選択時に録画開始を押すと `requestUvcEnable()` → HID 有効化 → 再接続（`ACTION_USB_DEVICE_ATTACHED` を filter に追加）→ 1.5秒後に自動で録画開始。有効化コマンド後3秒のチェックも並走させ、ATTACHED が来ん場合もカバー。
+  - `showQualityPicker()` の「UVC HEVC の準備」ダイアログを廃止。UVC 選択時は即 `requestUvcEnable()`。
+- UVC 有効化の再接続で Tailscale table 52 のルートが `via 10.212.0.1 dev wlan0 table 1013` に戻った → `ip route del throw 169.254.2.0/24 table 52` + `ip route add 169.254.2.0/24 dev eth0 table 52` で復旧、`ping 169.254.2.1` 0% loss 確認。
+- ★CI 完了後、実機で「録画開始1回 → USB 権限許可 → 自動開始」と「UVC 選択 → 録画開始1回 → 有効化 → 再接続 → 自動開始（2048x1512）」を検証する。
+
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
 - 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。

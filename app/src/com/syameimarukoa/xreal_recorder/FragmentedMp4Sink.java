@@ -155,8 +155,12 @@ final class FragmentedMp4Sink implements RecordingMuxer {
 
     private void writeNow(int track, Sample s) {
         try {
+            // media3 drops video samples until the first key frame. UVC's first
+            // access unit is not flagged as IDR, which left its pending queue
+            // empty and crashed writeSampleData(). Force the first sample.
+            boolean key = s.keyFrame || (track == videoTrack && videoSampleCount == 0);
             BufferInfo info = new BufferInfo(s.ptsUs, s.data.length,
-                    s.keyFrame ? androidx.media3.common.C.BUFFER_FLAG_KEY_FRAME : 0);
+                    key ? androidx.media3.common.C.BUFFER_FLAG_KEY_FRAME : 0);
             muxer.writeSampleData(track, ByteBuffer.wrap(s.data), info);
             if (track == videoTrack) videoSampleCount++;
             if (track == audioTrack) audioSampleCount++;
