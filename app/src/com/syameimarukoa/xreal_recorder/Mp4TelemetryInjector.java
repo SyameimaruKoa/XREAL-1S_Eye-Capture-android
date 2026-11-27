@@ -327,6 +327,13 @@ final class Mp4TelemetryInjector {
             int width, int height, float fps, long durationUs, int imuRateHz,
             String orientation, List<GyroflowProto.ImuSample> samples,
             long firstImuTimeUs) throws Exception {
+        if (context != null && PropertyBoxParserImpl.BOX_MAP_CACHE == null) {
+            Properties mapping = new Properties();
+            try (InputStream stream = context.getAssets().open("isoparser2-default.properties")) {
+                mapping.load(stream);
+            }
+            PropertyBoxParserImpl.BOX_MAP_CACHE = mapping;
+        }
         File binary = ensureBinary(context);
         Movie movie = MovieCreator.build(input.getAbsolutePath());
         Track video = null;
