@@ -192,6 +192,17 @@
 - `FifoStreamSink.java` と `RecordingOutput.openFragmentedMuxer()` を実装済み。`inject()` の handler_name も `XREAL IMU` に統一。
 - ★ffmpeg CLI の aarch64 cross-compile を実行中（cargo registry の build.rs から `--disable-programs` を外した）。完了後に assets へ配置して CI。
 
+## ★★★最終目標達成（2026-11-28 01:5x JST、Android 11 端末 amazo-kfonwi で検証）
+- 構成: `StreamingMuxSink` が app 固有ストレージ (`Android/data/.../files/Movies`) へ**1回だけ** fMP4 を書き進める。停止時に gyrf を追記するのではなく、`RecordService` の telemetry スレッドが `GlassesImuClient.getSamples()` を3秒ごとに gyrf frame 化して `writeGyrf()` で同じファイルへ書く。よって**落ちた瞬間にも gyrf が入っている**。
+- kill 検証: 録画開始14秒後に `am force-stop` → 4,456,480 bytes の MP4 が残存。pull して確認:
+  - ffprobe: `hevc video` + `aac audio` + `bin_data(gyrf)` の3トラック
+  - `ffmpeg -map 0:v -f null -`: エラー無し（ Annex-B NAL 完全化＋start code 保持で解消）
+  - `ffmpeg -map 0:a -f null -`: エラー無し
+  - `gyro2bb --dump`: `Detected camera: Gyroflow`（gyrf 読み取り成功）
+  - box: `ftyp, moov, moof, mdat`（先頭 moov で破損せず再生可能）
+- minSdk を 30 (Android 11) に下げて同端末で動作確認済み。
+- ★全画質・全条件を満たしたため `OptiPlex-3040-MFF_20261125` を main にマージし v2 を正式 Release する。
+
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
 - 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。
