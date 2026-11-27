@@ -31,18 +31,19 @@ final class RecordingOutput {
     private final boolean pendingMedia;
     private final String filename;
     private final Uri tree;
+    private final File outputFile;
     private RecordingMuxer rawSink;
-    private android.os.ParcelFileDescriptor parcelFd;
     private boolean completed;
 
     private RecordingOutput(Context context, ContentResolver resolver, Uri uri,
-                            boolean pendingMedia, String filename, Uri tree) {
+                            boolean pendingMedia, String filename, Uri tree, File outputFile) {
         this.context = context;
         this.resolver = resolver;
         this.uri = uri;
         this.pendingMedia = pendingMedia;
         this.filename = filename;
         this.tree = tree;
+        this.outputFile = outputFile;
     }
 
     static RecordingOutput create(Context context, Uri tree, long captureTimeMs) throws IOException {
@@ -151,34 +152,22 @@ final class RecordingOutput {
         return new StreamingMuxerSink(muxer);
     }
 
-    /** One continuous write straight to the final SAF uri; no second copy. */
+    /** One continuous write to the app-owned file; MediaScanner publishes it. */
     RecordingMuxer openFragmentedMuxer() throws IOException {
-        File out = new File(context.getCacheDir(), "xreal_recording.mp4");
         File hevcSeed = new File(context.getCacheDir(), "xreal_seed.hevc");
         File aacSeed = new File(context.getCacheDir(), "xreal_seed.aac");
-        for (File f : new File[]{out, hevcSeed, aacSeed}) {
+        for (File f : new File[]{outputFile, hevcSeed, aacSeed}) {
             if (f.exists() && !f.delete()) {
                 throw new IOException("Could not clear " + f.getName());
             }
         }
-        parcelFd = resolver.openFileDescriptor(uri, "w");
-        if (parcelFd == null) {
-            throw new IOException("Could not open recording uri for write");
-        }
-        rawSink = new StreamingMuxSink(out, parcelFd.getFd(), hevcSeed, aacSeed);
+        rawSink = new StreamingMuxSink(outputFile, hevcSeed, aacSeed);
         return rawSink;
     }
 
     synchronized void complete() throws IOException {
         if (completed) {
             return;
-        }
-        if (pendingMedia) {
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Video.Media.IS_PENDING, 0);
-            if (resolver.update(uri, values, null, null) != 1) {
-                throw new IOException("Could not publish the MP4 in shared storage");
-            }
         }
         completed = true;
     }
@@ -279,10 +268,9 @@ final class RecordingOutput {
         try {
             Mp4TelemetryInjector.appendGyrf(sink, width, height, fps,
                     durationUs, imuRateHz, orientation, samples, firstImuTimeUs);
-            if (parcelFd != null) {
-                parcelFd.close();
-                parcelFd = null;
-            }
+            MediaScannerConnection.scanFile(context,
+                    new String[]{outputFile.getAbsolutePath()},
+                    new String[]{"video/mp4"}, null);
             return true;
         } catch (Exception e) {
             sink.discard();

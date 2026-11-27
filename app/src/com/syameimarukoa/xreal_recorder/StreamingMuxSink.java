@@ -4,10 +4,9 @@ import android.media.MediaFormat;
 
 import java.io.File;
 
-/** Writes video/audio directly into the final MP4 via the JNI muxer. */
+/** Writes video/audio straight into the final MP4 via the JNI muxer. */
 final class StreamingMuxSink implements RecordingMuxer {
     private final File output;
-    private final int fd;
     private final File hevcSeed;
     private final File aacSeed;
     private long handle;
@@ -15,9 +14,8 @@ final class StreamingMuxSink implements RecordingMuxer {
     private boolean closed;
     private String error = "";
 
-    StreamingMuxSink(File output, int fd, File hevcSeed, File aacSeed) {
+    StreamingMuxSink(File output, File hevcSeed, File aacSeed) {
         this.output = output;
-        this.fd = fd;
         this.hevcSeed = hevcSeed;
         this.aacSeed = aacSeed;
     }
@@ -47,7 +45,7 @@ final class StreamingMuxSink implements RecordingMuxer {
             return;
         }
         if (handle == 0) {
-            handle = GyroflowInjector.openMuxFd(fd,
+            handle = GyroflowInjector.openMux(output.getAbsolutePath(),
                     hevcSeed.getAbsolutePath(), aacSeed.getAbsolutePath());
             if (handle == 0) {
                 fail("openMux failed");
@@ -95,7 +93,6 @@ final class StreamingMuxSink implements RecordingMuxer {
 
     @Override
     public void finish() {
-        // Trailer is written by closeMux() after gyrf samples are appended.
     }
 
     void close() {
