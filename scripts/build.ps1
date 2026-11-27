@@ -30,7 +30,7 @@ $resZips = @()
 $libPackages = @()
 
 # media3 muxer removed: FFmpeg (libgyroflow_inject.so) writes the container.
-foreach ($name in @('annotation', 'guava', 'isoparser', 'slf4j-api', 'aspectjrt')) {
+foreach ($name in @('annotation', 'guava', 'slf4j-api', 'aspectjrt')) {
     $jar = Join-Path $mediaDir "$name.jar"
     if (Test-Path $jar) { $libJars += $jar }
 }
