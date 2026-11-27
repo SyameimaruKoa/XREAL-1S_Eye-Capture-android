@@ -279,6 +279,10 @@ final class RecordingOutput {
         try {
             Mp4TelemetryInjector.appendGyrf(sink, width, height, fps,
                     durationUs, imuRateHz, orientation, samples, firstImuTimeUs);
+            if (parcelFd != null) {
+                parcelFd.close();
+                parcelFd = null;
+            }
             return true;
         } catch (Exception e) {
             sink.discard();
