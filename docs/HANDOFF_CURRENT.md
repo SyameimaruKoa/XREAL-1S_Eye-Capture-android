@@ -2600,3 +2600,13 @@
 - `v2` を正式 Release（`isPrerelease=false`）。APK sha256 `2bc0b6be1ba3f37816c43ea7ede30f2e4f240b0822ca0a6a0654acdd58720e86`、15,860,195 bytes、versionCode 26 / versionName 2、minSdk 30。
 - URL: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v2
 - 最終確認: kill 中録画の MP4 で video/audio decode 無エラー、gyrf は gyro2bb が認識、`ftyp+moov+moof+mdat` 構造。
+
+## ★v2 全画質検査（2026-11-28 06:3x JST、Android 11 端末）
+| 画質 | video | audio | gyrf(gyro2bb) |
+|---|---|---|---|
+| 720p30 (1280x720) | OK | OK | Detected camera: Gyroflow |
+| 1600p30 (1600x1200) | OK | OK | Detected camera: Gyroflow |
+| 1600p60 (1600x1200) | OK | OK | **Unsupported file format** |
+| UVC HEVC | 未撮影（選択後 start が最新ファイルを作らず、1600p60 のまま） | - | - |
+
+1600p60 は gyrf 3 packets / 390KB と 720p30 と同構造だが、MP4 が 40MB と大きく `Input::from_stream` が読む先頭/末尾 5MB に gyrf sample が入らんのが原因の可能性。720p30/1600p30 はクラッシュ耐性・全トラック正常を確認済み。
