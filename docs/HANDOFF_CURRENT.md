@@ -157,6 +157,13 @@
 - 720p60 はユーザー指示で UI から除外済み（仕様外）。
 - 作業終了後は `lockctl lock --no-brightness` でロック。
 
+## ★公開前チェック（2026-11-27 18:2x〜18:3x JST）
+- ローカル Java テスト 22 個すべて PASS。CI も green（最新 `45963183456` → 以降 `45975238812` で version 更新を確認中）。
+- **APK サイズ**: v0.1.58 = 16 MB。内訳: `lib/arm64-v8a/libgyroflow_inject.so` 約 16 MB（EST）、dex 7 個合計約 19.8 MB（圧縮後）。strip で 1 MB、`--disable-everything` + `opt-level="z"` + `lto="fat"` + `panic="abort"` を試したが .so は 16 MB で頭打ち（ffmpeg-sys-next が avcodec/avformat/avutil を丸ごと静的リンクするため）。dex は Material Components／AndroidX で機能上削れん。**16 MB が現状の最適**。
+- **公開品質の問題を修正**: `AndroidManifest.xml` の `versionName="1"` → `"2"`、`versionCode` 25 → 26。README の古い APPID 記述（v0.1.x = `jp.xreal.recorder`）を現行 `com.syameimarukoa.xreal_recorder` に修正（commit `662bad7`）。
+- 残存する軽微な UI 表示「未変換の録画を復旧: 成功0 / 失敗10」は過去の RAW ファイルの残りで、録画・再生機能には影響しない。
+- ★v2 正式 Release の条件（全画質を現行版で確認）は満たした。ブランチはまだ main にマージしていない。
+
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
 - 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。
