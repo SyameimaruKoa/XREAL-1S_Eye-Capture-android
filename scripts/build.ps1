@@ -110,7 +110,7 @@ $aaptArgs = @(
     "link", "-o", (Join-Path $build "base.apk"),
     "-I", $platform,
     "--manifest", (Join-Path $root "app\AndroidManifest.xml"),
-    "--min-sdk-version", "31", "--target-sdk-version", "35",
+    "--min-sdk-version", "30", "--target-sdk-version", "35",
     "--java", $javaDir, "--auto-add-overlay"
 )
 if ($libPackages.Count -gt 0) {
@@ -139,7 +139,7 @@ if ($LASTEXITCODE -ne 0) { throw "javac failed" }
 $classes = @(Get-ChildItem (Join-Path $build "classes") -Recurse -Filter *.class | ForEach-Object { $_.FullName })
 $dexInputs = @($classes) + $libJars
 $argFile = Join-Path $build "d8-args.txt"
-$argLines = @("--lib", $platform, "--min-api", "31", "--output", (Join-Path $build "dex")) + $dexInputs
+$argLines = @("--lib", $platform, "--min-api", "30", "--output", (Join-Path $build "dex")) + $dexInputs
 [System.IO.File]::WriteAllLines($argFile, $argLines, (New-Object System.Text.UTF8Encoding($false)))
 & (Join-Path $bt "d8.bat") "@$argFile"
 if ($LASTEXITCODE -ne 0) { throw "d8 failed" }
