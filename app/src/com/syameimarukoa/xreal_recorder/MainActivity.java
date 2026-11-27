@@ -106,7 +106,6 @@ public class MainActivity extends Activity {
     private int selectedVideoRoute;
     private static final String[] VIDEO_ROUTES = {
             "720p/30（広い画角）",
-            "720p/60（広い画角・高レート）",
             "1600p/30（高画質）",
             "1600p/60（高レート）",
             "UVC HEVC"
@@ -954,7 +953,7 @@ public class MainActivity extends Activity {
                         setStatus("録画中は画質を変更できません");
                         return;
                     }
-                    if (which == 3) {
+                    if (which == VIDEO_ROUTES.length - 1) {
                         // UVC HEVC route: guide the user to enable UVC and grant USB permission.
                         selectedVideoRoute = RecordService.ROUTE_UVC_HEVC;
                         preferences.edit().putInt("video_route", selectedVideoRoute).apply();
@@ -976,11 +975,11 @@ public class MainActivity extends Activity {
                             setStatus("UVC HEVC の準備完了");
                         }
                     } else {
-                        // TCP routes: 0 = 720p/30, 1 = 720p/60,
-                        // 2 = 1600p/30, 3 = 1600p/60.
+                        // TCP routes: 0 = 720p/30, 1 = 1600p/30, 2 = 1600p/60.
+                        // 720p/60 is intentionally absent: the glasses firmware
+                        // rejects its camera Start and the mode cannot be used.
                         String mode = which == 0 ? "1280 720 30"
-                                : which == 1 ? "1280 720 60"
-                                : which == 2 ? "1600 1200 30" : "1600 1200 60";
+                                : which == 1 ? "1600 1200 30" : "1600 1200 60";
                         selectedVideoRoute = RecordService.ROUTE_TCP_HEVC;
                         preferences.edit().putInt("video_route", selectedVideoRoute).apply();
                         switchLiveMode(mode);
@@ -997,8 +996,6 @@ public class MainActivity extends Activity {
         String label;
         if (selectedVideoRoute == RecordService.ROUTE_UVC_HEVC) {
             label = "画質: UVC HEVC";
-        } else if (confirmedLiveMode != null && confirmedLiveMode.equals("1280 720 60")) {
-            label = "画質: 720p/60";
         } else if (confirmedLiveMode != null && confirmedLiveMode.equals("1600 1200 30")) {
             label = "画質: 1600p/30（高画質）";
         } else if (confirmedLiveMode != null && confirmedLiveMode.equals("1600 1200 60")) {
