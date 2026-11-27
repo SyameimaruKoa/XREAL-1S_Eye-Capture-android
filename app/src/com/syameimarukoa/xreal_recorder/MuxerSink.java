@@ -127,6 +127,10 @@ public final class MuxerSink implements RecordingMuxer {
         }
     }
 
+    @Override
+    public void writeGyrf(byte[] data, long ptsUs) {
+    }
+
     /** Used when the USB microphone fails: keep a video-only MP4. */
     public void startVideoOnly() {
         synchronized (lock) {
