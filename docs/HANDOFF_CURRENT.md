@@ -130,6 +130,14 @@
 - 波形は健在（15:11 の screencap で緑バー確認）。13:48 に出んかったのは muxer 失敗で音声が来んかっただけ。
 - ★残る課題: (1) fMP4 の muxing も ffmpeg に任せる案（Gallery/Photos 互換の moov 構造を維持する必要がある）、(2) バージョンが変わったので全画質の再検証、(3) 画面ロック。
 
+## ★★★v0.1.55 でコンテナ作成を完全に FFmpeg へ（2026-11-27 15:5x JST、実機禁止のため未検証）
+- ユーザー指摘「fMP4 も含めて全て ffmpeg に任せれば APK も軽く安定する」。その通り。
+- 構成変更: 録画中は `RawStreamSink` が生 HEVC (Annex-B + CSD 先頭) と AAC (各フレームに ADTS ヘッダ付与) をキャッシュへ書く。停止時に `GyroflowInjector.muxRaw()`（Rust cdylib の JNI）が HEVC + AAC + gyrf frames を `movflags=frag_keyframe` で fMP4 へ mux。ffmpeg CLI で `ftyp + moov + mdat + moof×N + mdat×N` 構造を確認済み＝Gallery/Photos 互換を維持。
+- **異常終了耐性**: フラグメント単位で書き進むため、途中で落ちてもそこまでの moof が残る（旧 media3 fMP4 と同等以上）。
+- media3 muxer (`media3-muxer/common/container`) と mp4parser (`isoparser`) の AAR・関連 Java（`FragmentedMp4Sink`, `GyroflowTrack`, inject/injectWithoutRemux 等 874 行）を削除。**APK 17 MB → 16 MB**。
+- AAC は MediaCodec 出力を ffmpeg が stream-copy し、再エンコードしない。
+- CI 成功、v0.1.55 公開（sha256 `94492a1f5e3bf9e671358c58e494c6a1a53bad2aa8a34786d14c31a3b9bf7fab`）。**実機禁止中につき未検証**。実機が戻ったら全画質の video/audio/gyrf を再検証する。
+
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
 - 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。
