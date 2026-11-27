@@ -33,6 +33,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -1002,7 +1003,11 @@ public final class RecordService extends Service {
                         sb.append(String.format(Locale.US, "IMU %.1f℃", imuTemp));
                     }
                 }
-                if (recording && imu != null && muxer instanceof StreamingMuxSink) {
+                SessionRegistry.State gyrfState = sessions.current();
+                Session gyrfSession = gyrfState.active && gyrfState.session instanceof Session
+                        ? (Session) gyrfState.session : null;
+                if (recording && imu != null && gyrfSession != null
+                        && gyrfSession.muxer instanceof StreamingMuxSink) {
                     try {
                         List<GyroflowProto.ImuSample> all = imu.getSamples();
                         if (all.size() > gyrfSampleCount) {
@@ -1026,7 +1031,7 @@ public final class RecordService extends Service {
                                     startUs, endUs, shifted, w, h);
                             byte[] header = gyrfFrameNumber == 1
                                     ? GyroflowProto.header(w, h, 60f, 0L, 1000, "xYz") : null;
-                            ((StreamingMuxSink) muxer).writeGyrf(
+                            ((StreamingMuxSink) gyrfSession.muxer).writeGyrf(
                                     GyroflowProto.main(header, frame), (long) startUs);
                             gyrfSampleCount = all.size();
                         }
