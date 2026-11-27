@@ -2610,3 +2610,15 @@
 | UVC HEVC | 未撮影（選択後 start が最新ファイルを作らず、1600p60 のまま） | - | - |
 
 1600p60 は gyrf 3 packets / 390KB と 720p30 と同構造だが、MP4 が 40MB と大きく `Input::from_stream` が読む先頭/末尾 5MB に gyrf sample が入らんのが原因の可能性。720p30/1600p30 はクラッシュ耐性・全トラック正常を確認済み。
+
+## ★v2 全画質検査の最終結果（2026-11-28 06:5x JST）
+| 画質 | video | audio | gyrf |
+|---|---|---|---|
+| 720p30 | OK | OK | Detected camera: Gyroflow |
+| 1600p30 | OK | OK | Detected camera: Gyroflow |
+| 1600p60 | OK | OK | Detected camera: Gyroflow（末尾 gyrf sample 追加で解消、commit `368ded6`）|
+| UVC HEVC | 未検証（再接続・有効化操作が時間内に完了せず） | - | - |
+
+- クラッシュ耐性: 録画中 force-stop 後も 4.4MB MP4 が残り、video/audio decode 無エラー、gyrf 読めることを確認済み。
+- v2 Release の APK を commit `368ded6` の検証済みビルド（sha256 `8b132d66a9e127f280b9d1bb35e340cadf47c7e119110a96330fbf55d9e1ca67`）で差し替えた。
+- UVC のみ未検証だが、v0.1.58 で 2048x1512 + audio + gyrf を確認済み。
