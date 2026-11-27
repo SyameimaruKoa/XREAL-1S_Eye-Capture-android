@@ -4,6 +4,7 @@ import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Environment;
 import android.os.ParcelFileDescriptor;
@@ -47,39 +48,17 @@ final class RecordingOutput {
     }
 
     static RecordingOutput create(Context context, Uri tree, long captureTimeMs) throws IOException {
-        ContentResolver resolver = context.getContentResolver();
-        Uri uri;
-        boolean pending = tree == null;
-        String extension = "mp4";
-        String mimeType = "video/mp4";
-        String filename = nextFilename(resolver, tree, extension, captureTimeMs);
-        if (tree != null) {
-            Uri directory = DocumentsContract.buildDocumentUriUsingTree(tree,
-                    DocumentsContract.getTreeDocumentId(tree));
-            uri = DocumentsContract.createDocument(resolver, directory, mimeType, filename);
-        } else {
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Video.Media.DISPLAY_NAME, filename);
-            values.put(MediaStore.Video.Media.MIME_TYPE, mimeType);
-            // MediaStore.Video only allows DCIM/Movies/Pictures; Documents is
-            // rejected. Keep the MP4 in DCIM for Gallery/Photos.
-            values.put(MediaStore.Video.Media.RELATIVE_PATH,
-                    Environment.DIRECTORY_DCIM + "/100XREAL");
-            values.put(MediaStore.Video.Media.DATE_TAKEN, captureTimeMs);
-            values.put(MediaStore.Video.Media.IS_PENDING, 1);
-            uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
+        File dir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+        if (dir == null) {
+            dir = new File(context.getFilesDir(), "Movies");
         }
-        if (uri == null) {
-            throw new IOException("Could not create MP4 in the selected location");
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new IOException("Could not create output directory");
         }
-        String actualName = filename;
-        try (Cursor cursor = resolver.query(uri, new String[]{OpenableColumns.DISPLAY_NAME},
-                null, null, null)) {
-            if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) {
-                actualName = cursor.getString(0);
-            }
-        }
-        return new RecordingOutput(context, resolver, uri, pending, actualName, tree);
+        String filename = "VID_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+                .format(new Date(captureTimeMs)) + ".mp4";
+        return new RecordingOutput(context, context.getContentResolver(), null,
+                false, filename, tree, new File(dir, filename));
     }
 
     private static String nextFilename(ContentResolver resolver, Uri tree,
