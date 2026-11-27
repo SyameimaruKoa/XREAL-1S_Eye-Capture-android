@@ -78,10 +78,11 @@ final class Mp4TelemetryInjector {
                 writeAll(new File(dir, String.format(java.util.Locale.US,
                         "frame_%06d.bin", i + 1)), payloads.get(i));
             }
-            if (!GyroflowInjector.muxRaw(hevc.getAbsolutePath(),
+            String muxError = GyroflowInjector.muxRaw(hevc.getAbsolutePath(),
                     aac.getAbsolutePath(), dir.getAbsolutePath(),
-                    output.getAbsolutePath())) {
-                throw new IOException("gyroflow_proto_inject muxRaw failed");
+                    output.getAbsolutePath());
+            if (muxError != null) {
+                throw new IOException("gyroflow_proto_inject muxRaw failed: " + muxError);
             }
         } finally {
             deleteRecursively(dir);
