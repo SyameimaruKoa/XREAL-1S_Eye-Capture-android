@@ -32,6 +32,7 @@ final class RecordingOutput {
     private final String filename;
     private final Uri tree;
     private RawStreamSink rawSink;
+    private android.os.ParcelFileDescriptor parcelFd;
     private boolean completed;
 
     private RecordingOutput(Context context, ContentResolver resolver, Uri uri,
@@ -150,47 +151,22 @@ final class RecordingOutput {
         return new StreamingMuxerSink(muxer);
     }
 
-    /** Stream raw HEVC/AAC into a resident ffmpeg CLI writing a fragmented MP4. */
+    /** One continuous write straight to the final SAF uri; no second copy. */
     RecordingMuxer openFragmentedMuxer() throws IOException {
-        File ffmpeg = ensureFfmpeg();
-        File hevcFifo = new File(context.getCacheDir(), "xreal_hevc.fifo");
-        File aacFifo = new File(context.getCacheDir(), "xreal_aac.fifo");
-        File out = new File(context.getCacheDir(), "xreal_stream.mp4");
-        for (File f : new File[]{hevcFifo, aacFifo, out}) {
+        File out = new File(context.getCacheDir(), "xreal_recording.mp4");
+        File hevcSeed = new File(context.getCacheDir(), "xreal_seed.hevc");
+        File aacSeed = new File(context.getCacheDir(), "xreal_seed.aac");
+        for (File f : new File[]{out, hevcSeed, aacSeed}) {
             if (f.exists() && !f.delete()) {
                 throw new IOException("Could not clear " + f.getName());
             }
         }
-        android.system.Os.mkfifo(hevcFifo.getAbsolutePath(), 0600);
-        android.system.Os.mkfifo(aacFifo.getAbsolutePath(), 0600);
-        ProcessBuilder pb = new ProcessBuilder(ffmpeg.getAbsolutePath(),
-                "-hide_banner", "-loglevel", "error",
-                "-f", "hevc", "-r", "30", "-i", hevcFifo.getAbsolutePath(),
-                "-f", "aac", "-i", aacFifo.getAbsolutePath(),
-                "-map", "0:v", "-map", "1:a", "-c", "copy",
-                "-bsf:a", "aac_adtstoasc", "-movflags", "+empty_moov",
-                out.getAbsolutePath());
-        Process ffmpegProcess = pb.start();
-        rawSink = new FifoStreamSink(hevcFifo, aacFifo, out, ffmpegProcess);
-        return rawSink;
-    }
-
-    private File ensureFfmpeg() throws IOException {
-        File binary = new File(context.getFilesDir(), "ffmpeg");
-        if (!binary.exists() || binary.length() != 17796352L) {
-            try (InputStream in = context.getAssets().open("ffmpeg");
-                 FileOutputStream out = new FileOutputStream(binary)) {
-                byte[] buffer = new byte[64 * 1024];
-                int n;
-                while ((n = in.read(buffer)) >= 0) {
-                    out.write(buffer, 0, n);
-                }
-            }
-            if (!binary.setExecutable(true)) {
-                throw new IOException("Could not make ffmpeg executable");
-            }
+        parcelFd = resolver.openFileDescriptor(uri, "w");
+        if (parcelFd == null) {
+            throw new IOException("Could not open recording uri for write");
         }
-        return binary;
+        rawSink = new StreamingMuxSink(out, parcelFd.getFd(), hevcSeed, aacSeed);
+        return rawSink;
     }
 
     synchronized void complete() throws IOException {
@@ -299,30 +275,16 @@ final class RecordingOutput {
         if (tree != null) {
             return false;
         }
-        long stamp = System.currentTimeMillis();
-        File source = new File(context.getCacheDir(), "inject_source_" + stamp + ".mp4");
-        File result = new File(context.getCacheDir(), "inject_result_" + stamp + ".mp4");
         try {
-            if (rawSink == null) {
-                throw new IOException("raw recording stream is missing");
+            if (!(rawSink instanceof StreamingMuxSink)) {
+                throw new IOException("streaming mux sink is missing");
             }
-            // FFmpeg writes the whole fragmented MP4 from raw HEVC/AAC + gyrf,
-            // so media3's muxer (and its extra AAR) is no longer needed.
-            Mp4TelemetryInjector.injectWithFfmpeg(context,
-                    rawSink.hevcFile(), rawSink.aacFile(), result,
-                    width, height, fps, durationUs, imuRateHz, orientation,
-                    samples, firstImuTimeUs);
-            try (FileInputStream injected = new FileInputStream(result);
-                 OutputStream destination = resolver.openOutputStream(uri, "w")) {
-                if (destination == null) {
-                    throw new IOException("Could not rewrite recording MP4");
-                }
-                byte[] buffer = new byte[64 * 1024];
-                int count;
-                while ((count = injected.read(buffer)) >= 0) {
-                    destination.write(buffer, 0, count);
-                }
-            } catch (Exception e) {
+            // Append gyrf to the same MP4 and finish it. One continuous write,
+            // no second file, no second copy to storage.
+            StreamingMuxSink streamSink = (StreamingMuxSink) rawSink;
+            Mp4TelemetryInjector.appendGyrf(streamSink, width, height, fps,
+                    durationUs, imuRateHz, orientation, samples, firstImuTimeUs);
+ catch (Exception e) {
                 // Restore the original from the copy if the rewrite failed midway.
                 // Without this the recording would be left truncated like a
                 // partial fMP4 write.

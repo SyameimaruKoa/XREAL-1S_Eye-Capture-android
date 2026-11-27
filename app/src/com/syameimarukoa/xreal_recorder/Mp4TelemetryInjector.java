@@ -58,33 +58,21 @@ final class Mp4TelemetryInjector {
         }
         return payloads;
     }
-    static void injectWithFfmpeg(Context context, File sourceMp4, File aac, File output,
-            int width, int height, float fps, long durationUs, int imuRateHz,
-            String orientation, List<GyroflowProto.ImuSample> samples,
-            long firstImuTimeUs) throws Exception {
+    /** Append gyrf samples to the MP4 being written, then finish it. */
+    static void appendGyrf(StreamingMuxSink sink, int width, int height, float fps,
+            long durationUs, int imuRateHz, String orientation,
+            List<GyroflowProto.ImuSample> samples, long firstImuTimeUs)
+            throws Exception {
         int frames = (int) Math.max(1L, Math.round(durationUs * fps / 1_000_000.0));
         long step = Math.max(1L, Math.round(1_000_000.0 / fps));
         long[] durations = new long[frames];
         java.util.Arrays.fill(durations, step);
         List<byte[]> payloads = buildGyrfSamples(width, height, fps, durationUs,
                 imuRateHz, orientation, samples, firstImuTimeUs, 1_000_000L, durations);
-        File dir = new File(context.getCacheDir(), "gyrf_frames");
-        deleteRecursively(dir);
-        if (!dir.mkdirs()) {
-            throw new IOException("cannot create gyrf frame directory");
+        for (int i = 0; i < payloads.size(); i++) {
+            sink.writeGyrf(payloads.get(i), i * step);
         }
-        try {
-            for (int i = 0; i < payloads.size(); i++) {
-                writeAll(new File(dir, String.format(java.util.Locale.US,
-                        "frame_%06d.bin", i + 1)), payloads.get(i));
-            }
-            if (!GyroflowInjector.inject(dir.getAbsolutePath(),
-                    hevc.getAbsolutePath(), output.getAbsolutePath())) {
-                throw new IOException("gyroflow_proto_inject inject failed");
-            }
-        } finally {
-            deleteRecursively(dir);
-        }
+        sink.close();
     }
 
     private static void deleteRecursively(File file) {
