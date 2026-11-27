@@ -145,7 +145,15 @@ public final class MuxerSink implements RecordingMuxer {
     }
 
     private void startIfReadyLocked() {
-        if (started || finished || failed || videoTrack < 0 || audioTrack < 0) {
+        if (started || finished || failed || videoTrack < 0) {
+            return;
+        }
+        // Audio can fail to initialize (no microphone, debug replay). Start with
+        // video only rather than leaving every frame pending forever.
+        if (audioTrack < 0) {
+            muxer.start();
+            started = true;
+            flushPendingLocked();
             return;
         }
         try {
@@ -181,6 +189,19 @@ public final class MuxerSink implements RecordingMuxer {
     private void failLocked(Throwable t) {
         failed = true;
         error = t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage());
+    }
+
+    @Override
+    public void discard() {
+        synchronized (lock) {
+            finished = true;
+            try {
+                muxer.release();
+            } catch (Throwable ignored) {
+            }
+            pendingVideo.clear();
+            pendingAudio.clear();
+        }
     }
 
     public void finish() {

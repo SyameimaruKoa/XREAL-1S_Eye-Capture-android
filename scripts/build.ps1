@@ -29,20 +29,8 @@ $libJars = @()
 $resZips = @()
 $libPackages = @()
 
-# media3 muxer dependencies (fetched at build time, not checked in).
-foreach ($name in @('media3-muxer', 'media3-common', 'media3-container')) {
-    $aar = Join-Path $mediaDir "$name.aar"
-    $jar = Join-Path $build "libs\$name.jar"
-    if (-not (Test-Path $aar)) { throw "Missing media3 library: $aar" }
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $zip = [System.IO.Compression.ZipFile]::OpenRead($aar)
-    $entry = $zip.Entries | Where-Object { $_.FullName -eq 'classes.jar' }
-    if ($null -eq $entry) { $zip.Dispose(); throw "No classes.jar in $aar" }
-    [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $jar, $true)
-    $zip.Dispose()
-    $libJars += $jar
-}
-foreach ($name in @('annotation', 'guava')) {
+# media3 muxer removed: FFmpeg (libgyroflow_inject.so) writes the container.
+foreach ($name in @('annotation', 'guava', 'slf4j-api', 'aspectjrt')) {
     $jar = Join-Path $mediaDir "$name.jar"
     if (Test-Path $jar) { $libJars += $jar }
 }
@@ -129,6 +117,8 @@ if ($libPackages.Count -gt 0) {
     $aaptArgs += @("--extra-packages", (($libPackages | Select-Object -Unique) -join ':'))
 }
 foreach ($z in $resZips) { $aaptArgs += @("-R", $z) }
+$assetsDir = Join-Path $root "app\assets"
+if (Test-Path $assetsDir) { $aaptArgs += @("-A", $assetsDir) }
 & (Join-Path $bt "aapt2.exe") $aaptArgs
 if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed" }
 
@@ -158,6 +148,23 @@ if ($LASTEXITCODE -ne 0) { throw "d8 failed" }
 $dexFiles = @(Get-ChildItem (Join-Path $build "dex") -Filter 'classes*.dex' | Sort-Object Name)
 $jarArgs = @("uf", (Join-Path $build "base.apk"))
 foreach ($d in $dexFiles) { $jarArgs += @("-C", (Join-Path $build "dex"), $d.Name) }
+# Native libraries must land in lib/<abi>/ so Android extracts them to an
+# executable app-nativeLibraryDir (filesDir/assets are mounted noexec).
+$jniRoot = Join-Path $root "app\src\main\jniLibs"
+if (Test-Path $jniRoot) {
+    $nativeStage = Join-Path $build "native"
+    foreach ($abi in @("arm64-v8a", "armeabi-v7a", "x86_64", "x86")) {
+        $abiDir = Join-Path $jniRoot $abi
+        if (Test-Path $abiDir) {
+            $stageDir = Join-Path $nativeStage "lib\$abi"
+            New-Item -ItemType Directory -Force $stageDir | Out-Null
+            foreach ($so in Get-ChildItem $abiDir -Filter *.so) {
+                Copy-Item $so.FullName (Join-Path $stageDir $so.Name) -Force
+                $jarArgs += @("-C", $nativeStage, "lib/$abi/$($so.Name)")
+            }
+        }
+    }
+}
 & (Join-Path $jdkBin "jar.exe") @jarArgs
 if ($LASTEXITCODE -ne 0) { throw "jar failed" }
 

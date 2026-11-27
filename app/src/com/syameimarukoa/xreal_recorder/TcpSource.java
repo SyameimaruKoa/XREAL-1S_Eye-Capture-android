@@ -50,6 +50,7 @@ final class TcpSource implements VideoSource {
     private volatile int height = 720;
     private boolean dimensionsReceived;
     private boolean startSent;
+    private Runnable reconnectHook;
     private UvcSource.Listener listener;
     private long candidateFirstNs;
     private long candidateLastNs;
@@ -138,6 +139,11 @@ final class TcpSource implements VideoSource {
         }
     }
 
+    /** Hook invoked after sockets are re-established but before the camera is started. */
+    void setReconnectHook(Runnable hook) {
+        reconnectHook = hook;
+    }
+
     @Override
     public void start(UvcSource.Listener listener) throws Exception {
         this.listener = listener;
@@ -158,6 +164,12 @@ final class TcpSource implements VideoSource {
         videoThread.start();
         startSent = true;
         try {
+            // Apply the recorded live mode before starting the camera. A stale mode
+            // (e.g. after a replug reset to 720p) makes Start return an unexpected
+            // acknowledgement and leaves the recording empty.
+            if (reconnectHook != null) {
+                reconnectHook.run();
+            }
             transact(0x2781, 1);
         } catch (Exception e) {
             fail("TCP camera start failed: " + e.getMessage());
@@ -245,6 +257,9 @@ final class TcpSource implements VideoSource {
                 if (network != null) {
                     video = connect(network, 52995);
                     control = connect(network, 52999);
+                    if (reconnectHook != null) {
+                        reconnectHook.run();
+                    }
                     controlThread = new Thread(new Runnable() {
                         @Override
                         public void run() {
@@ -263,7 +278,7 @@ final class TcpSource implements VideoSource {
                 Log.w(TAG, "reconnect attempt " + attempt + " failed: " + e.getMessage());
             }
             try {
-                Thread.sleep(1000);
+                Thread.sleep(250);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return false;
@@ -280,7 +295,8 @@ final class TcpSource implements VideoSource {
         candidateLastNs = 0;
         arrivalLastNs = 0;
         cameraPtsAnchorNs = 0;
-        lastPtsNs = 0;
+        // Keep lastPtsNs: the post-reconnect first frame continues from it so the
+        // link-down gap is removed from the timeline.
         if (listener != null) {
             listener.onStreamReset();
         }
@@ -402,6 +418,17 @@ final class TcpSource implements VideoSource {
      * the two clocks remain separated, the anchor eventually moves toward the receive clock.
      */
     private long presentationNs(long candidateNs, long arrivalNs) {
+        long pts = computePresentationNs(candidateNs, arrivalNs);
+        if (accessUnits % 300 == 0) {
+            Log.d(TAG, "pts au=" + accessUnits + " ptsMs=" + (pts / 1_000_000L)
+                    + " arrivalMs=" + (arrivalNs / 1_000_000L)
+                    + " anchorMs=" + (cameraPtsAnchorNs / 1_000_000L)
+                    + " reanchors=" + clockReanchors);
+        }
+        return pts;
+    }
+
+    private long computePresentationNs(long candidateNs, long arrivalNs) {
         if (candidateNs <= candidateLastNs) {
             driftGate.reset();
             clockRejected++;
@@ -440,7 +467,10 @@ final class TcpSource implements VideoSource {
     }
 
     private byte[] readExact(InputStream input, int length, boolean requireVideoProgress) throws IOException {
-        return TcpReadProgress.read(input, length, requireVideoProgress ? 30000 : 0,
+        // A replug can leave the TCP socket open with no video data. Detect it in
+        // 5 s instead of 30 s so the audio pause happens sooner and the recorded
+        // file does not gain tens of seconds of extra microphone audio.
+        return TcpReadProgress.read(input, length, requireVideoProgress ? 5000 : 0,
                 () -> running);
     }
 
@@ -460,7 +490,9 @@ final class TcpSource implements VideoSource {
             try {
                 transact(0x2782, 2);
             } catch (Exception e) {
-                fail("TCP camera stop failed: " + e.getMessage());
+                // The camera may already be gone while stopping. A missing stop
+                // acknowledgement is not a recording error; log it and continue.
+                Log.w(TAG, "TCP camera stop acknowledgement failed: " + e);
             }
             startSent = false;
         }

@@ -58,7 +58,7 @@ final class RecordingPresentation extends Presentation {
         // and scale it up instead of shrinking it.
         root.setGravity(sideMode ? Gravity.CENTER : Gravity.RIGHT | Gravity.TOP);
         root.setBackgroundColor(Color.BLACK);
-        int padding = (int) ((sideMode ? 32 : 24)
+        int padding = (int) ((sideMode ? 16 : 24)
                 * getContext().getResources().getDisplayMetrics().density);
         root.setPadding(padding, padding, padding, padding);
 
@@ -66,9 +66,9 @@ final class RecordingPresentation extends Presentation {
         elapsed = label(sideMode ? 100 : 34, Color.WHITE, true);
         audio = label(sideMode ? 56 : 20, Color.LTGRAY, false);
         rate = label(sideMode ? 56 : 20, Color.LTGRAY, false);
-        thermals = label(sideMode ? 48 : 17, Color.rgb(150, 200, 255), false);
+        thermals = label(sideMode ? 32 : 17, Color.rgb(150, 200, 255), false);
         int contentWidth = sideMode ? 1320 : 420;
-        int waveformHeight = sideMode ? 220 : 64;
+        int waveformHeight = sideMode ? 140 : 64;
         root.addView(headline, new LinearLayout.LayoutParams(contentWidth, -2));
         root.addView(elapsed, new LinearLayout.LayoutParams(contentWidth, -2));
         root.addView(rate, new LinearLayout.LayoutParams(contentWidth, -2));
@@ -143,7 +143,8 @@ final class RecordingPresentation extends Presentation {
         } else {
             audio.setText("");
         }
-        thermals.setText(thermalSummary == null ? "" : thermalSummary);
+        String thermalText = thermalSummary == null ? "" : thermalSummary;
+        thermals.setText(sideMode ? thermalText.replace("\n", " / ") : thermalText);
     }
 
     static final class WaveformView extends View {
@@ -183,6 +184,7 @@ final class RecordingPresentation extends Presentation {
                 float amplitude = (float) Math.sqrt(Math.min(32768, peak) / 32768.0)
                         * (center - 3);
                 float x = (i + 0.5f) * getWidth() / peaks.length;
+                paint.setColor(peak < 4096 ? Color.GREEN : peak < 16384 ? Color.YELLOW : Color.RED);
                 canvas.drawLine(x, center - amplitude, x, center + amplitude, paint);
             }
         }

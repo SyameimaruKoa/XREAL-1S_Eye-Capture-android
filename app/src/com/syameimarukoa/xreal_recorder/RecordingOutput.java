@@ -11,24 +11,32 @@ import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 /** Creates a user-visible MP4 without requiring direct filesystem access. */
 final class RecordingOutput {
+    private final Context context;
     private final ContentResolver resolver;
     private final Uri uri;
     private final boolean pendingMedia;
     private final String filename;
     private final Uri tree;
+    private RawStreamSink rawSink;
     private boolean completed;
 
-    private RecordingOutput(ContentResolver resolver, Uri uri, boolean pendingMedia,
-                            String filename, Uri tree) {
+    private RecordingOutput(Context context, ContentResolver resolver, Uri uri,
+                            boolean pendingMedia, String filename, Uri tree) {
+        this.context = context;
         this.resolver = resolver;
         this.uri = uri;
         this.pendingMedia = pendingMedia;
@@ -51,6 +59,8 @@ final class RecordingOutput {
             ContentValues values = new ContentValues();
             values.put(MediaStore.Video.Media.DISPLAY_NAME, filename);
             values.put(MediaStore.Video.Media.MIME_TYPE, mimeType);
+            // MediaStore.Video only allows DCIM/Movies/Pictures; Documents is
+            // rejected. Keep the MP4 in DCIM for Gallery/Photos.
             values.put(MediaStore.Video.Media.RELATIVE_PATH,
                     Environment.DIRECTORY_DCIM + "/100XREAL");
             values.put(MediaStore.Video.Media.DATE_TAKEN, captureTimeMs);
@@ -67,7 +77,7 @@ final class RecordingOutput {
                 actualName = cursor.getString(0);
             }
         }
-        return new RecordingOutput(resolver, uri, pending, actualName, tree);
+        return new RecordingOutput(context, resolver, uri, pending, actualName, tree);
     }
 
     private static String nextFilename(ContentResolver resolver, Uri tree,
@@ -106,7 +116,8 @@ final class RecordingOutput {
             while (cursor.moveToNext()) {
                 String name = cursor.getString(0);
                 if (name != null && (name.equalsIgnoreCase(base + ".mp4")
-                        || name.equalsIgnoreCase(base + ".json"))) {
+                        || name.equalsIgnoreCase(base + ".json")
+                        || name.equalsIgnoreCase(base + ".gcsv"))) {
                     throw new IOException("Recording name already exists: " + base);
                 }
             }
@@ -125,15 +136,32 @@ final class RecordingOutput {
         }
     }
 
-    /** Open a fragmented MP4 sink (mode 3). The sink owns and closes the channel. */
-    FragmentedMp4Sink openFragmentedMuxer() throws IOException {
+    /** Open a single-write fMP4 sink with an embedded Gyroflow metadata track. */
+    StreamingMuxerSink openStreamingMuxer(byte[] csd, int width, int height)
+            throws IOException {
         java.io.OutputStream stream = resolver.openOutputStream(uri, "rw");
         if (stream == null) {
             throw new IOException("Could not open fMP4 in the selected location");
         }
-        java.nio.channels.WritableByteChannel ch =
-                java.nio.channels.Channels.newChannel(stream);
-        return new FragmentedMp4Sink(ch, stream);
+        StreamingGyroflowMuxer muxer =
+                new StreamingGyroflowMuxer(stream, csd, width, height);
+        // start() is deferred until addVideoTrack() supplies the real CSD, so
+        // the hvcC in moov is valid.
+        return new StreamingMuxerSink(muxer);
+    }
+
+    /** Record raw HEVC/AAC; the external ffmpeg tool builds the final MP4. */
+    RecordingMuxer openFragmentedMuxer() throws IOException {
+        File hevc = new File(context.getCacheDir(), "xreal_rec.hevc");
+        File aac = new File(context.getCacheDir(), "xreal_rec.aac");
+        if (hevc.exists() && !hevc.delete()) {
+            throw new IOException("Could not clear raw HEVC temp file");
+        }
+        if (aac.exists() && !aac.delete()) {
+            throw new IOException("Could not clear raw AAC temp file");
+        }
+        rawSink = new RawStreamSink(hevc, aac);
+        return rawSink;
     }
 
     synchronized void complete() throws IOException {
@@ -189,6 +217,107 @@ final class RecordingOutput {
             values.put(MediaStore.MediaColumns.IS_PENDING, 0);
             if (resolver.update(metadataUri, values, null, null) != 1) {
                 throw new IOException("Could not publish recording metadata");
+            }
+        }
+    }
+
+    void writeGyroCsv(String csv) throws IOException {
+        String name = filename.replaceFirst("(?i)\\.(mp4|mkv)$", "") + ".gcsv";
+        Uri gyroUri;
+        if (tree != null) {
+            Uri directory = DocumentsContract.buildDocumentUriUsingTree(tree,
+                    DocumentsContract.getTreeDocumentId(tree));
+            gyroUri = DocumentsContract.createDocument(resolver, directory,
+                    "application/octet-stream", name);
+        } else {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
+            // Same folder as the MP4 so Gyroflow's same-basename sidecar lookup
+            // finds it. MediaStore.Files only allows Download/Documents here.
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH,
+                    Environment.DIRECTORY_DOCUMENTS + "/XREAL/100XREAL");
+            values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+            gyroUri = resolver.insert(MediaStore.Files.getContentUri("external"), values);
+        }
+        if (gyroUri == null) {
+            throw new IOException("Could not create recording gyro CSV");
+        }
+        try (OutputStream stream = resolver.openOutputStream(gyroUri, "w")) {
+            if (stream == null) {
+                throw new IOException("Could not open recording gyro CSV");
+            }
+            stream.write(csv.getBytes(StandardCharsets.UTF_8));
+        }
+        if (tree == null) {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            if (resolver.update(gyroUri, values, null, null) != 1) {
+                throw new IOException("Could not publish recording gyro CSV");
+            }
+        }
+    }
+
+    /**
+     * Embeds Gyroflow telemetry into the recorded MP4. SAF tree outputs are left
+     * untouched and keep the .gcsv sidecar. The MP4 must be staged in the app
+     * cache because mp4parser reads samples lazily while writing the container.
+     */
+    boolean injectTelemetry(int width, int height, float fps, long durationUs,
+                            int imuRateHz, String orientation,
+                            List<GyroflowProto.ImuSample> samples, long firstImuTimeUs)
+            throws Exception {
+        if (tree != null) {
+            return false;
+        }
+        long stamp = System.currentTimeMillis();
+        File source = new File(context.getCacheDir(), "inject_source_" + stamp + ".mp4");
+        File result = new File(context.getCacheDir(), "inject_result_" + stamp + ".mp4");
+        try {
+            if (rawSink == null) {
+                throw new IOException("raw recording stream is missing");
+            }
+            // FFmpeg writes the whole fragmented MP4 from raw HEVC/AAC + gyrf,
+            // so media3's muxer (and its extra AAR) is no longer needed.
+            Mp4TelemetryInjector.injectWithFfmpeg(context,
+                    rawSink.hevcFile(), rawSink.aacFile(), result,
+                    width, height, fps, durationUs, imuRateHz, orientation,
+                    samples, firstImuTimeUs);
+            try (FileInputStream injected = new FileInputStream(result);
+                 OutputStream destination = resolver.openOutputStream(uri, "w")) {
+                if (destination == null) {
+                    throw new IOException("Could not rewrite recording MP4");
+                }
+                byte[] buffer = new byte[64 * 1024];
+                int count;
+                while ((count = injected.read(buffer)) >= 0) {
+                    destination.write(buffer, 0, count);
+                }
+            } catch (Exception e) {
+                // Restore the original from the copy if the rewrite failed midway.
+                // Without this the recording would be left truncated like a
+                // partial fMP4 write.
+                try (FileInputStream backup = new FileInputStream(source);
+                     OutputStream restore = resolver.openOutputStream(uri, "w")) {
+                    if (restore != null) {
+                        byte[] buffer = new byte[64 * 1024];
+                        int count;
+                        while ((count = backup.read(buffer)) >= 0) {
+                            restore.write(buffer, 0, count);
+                        }
+                    }
+                } catch (Exception restoreError) {
+                    e.addSuppressed(restoreError);
+                }
+                throw e;
+            }
+            return true;
+        } finally {
+            if (source.exists() && !source.delete()) {
+                source.deleteOnExit();
+            }
+            if (result.exists() && !result.delete()) {
+                result.deleteOnExit();
             }
         }
     }

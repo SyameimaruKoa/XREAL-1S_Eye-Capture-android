@@ -38,6 +38,7 @@ import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.CompoundButton;
 import android.widget.FrameLayout;
+import android.widget.Toast;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -92,9 +93,8 @@ public class MainActivity extends Activity {
     private MaterialButton saveModeButton;
     private int selectedSaveMode;
     private static final String[] SAVE_MODES = {
-            "MP4 同時変換（標準）",
-            "生保存→停止時にMP4変換（保全）",
-            "fMP4（断片化MP4・保全）",
+            "fMP4（1回書込み・保全）",
+            "生保存→停止時にMP4変換",
             "生データのみ（無変換）"
     };
     private TextView destinationView;
@@ -102,6 +102,7 @@ public class MainActivity extends Activity {
     private volatile String telemetryText = "グラス情報: 取得待ち";
     private Thread telemetryThread;
     private volatile boolean telemetryRunning;
+    private GlassesImuClient telemetryImuClient;
     private int selectedVideoRoute;
     private static final String[] VIDEO_ROUTES = {
             "720p/30（広い画角）",
@@ -124,11 +125,29 @@ public class MainActivity extends Activity {
     private boolean recoveryShown;
     /** Continue UVC enablement right after the USB permission dialog is accepted. */
     private boolean pendingUvcEnable;
+    /** Resume the recording request once the permission dialog is accepted. */
+    private boolean pendingStartAfterPermission;
+    /** Enable UVC, wait for the reconnect, then start recording automatically. */
+    private boolean pendingStartAfterUvc;
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (!ACTION_USB_PERMISSION.equals(intent.getAction())) {
+            String action = intent.getAction();
+            if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
+                if (pendingStartAfterUvc) {
+                    new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (pendingStartAfterUvc) {
+                                continuePendingStart();
+                            }
+                        }
+                    }, 1500);
+                }
+                return;
+            }
+            if (!ACTION_USB_PERMISSION.equals(action)) {
                 return;
             }
             UsbDevice d = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
@@ -140,8 +159,14 @@ public class MainActivity extends Activity {
                     pendingUvcEnable = false;
                     enableUvc();
                 }
+                if (pendingStartAfterPermission) {
+                    pendingStartAfterPermission = false;
+                    continuePendingStart();
+                }
             } else {
                 pendingUvcEnable = false;
+                pendingStartAfterPermission = false;
+                pendingStartAfterUvc = false;
                 setStatus("USB権限が拒否されました");
             }
         }
@@ -165,6 +190,9 @@ public class MainActivity extends Activity {
                     break;
                 case "stop":
                     stopRecording();
+                    break;
+                case "replay":
+                    startReplayRecording();
                     break;
                 case "permission":
                     findDevice();
@@ -418,7 +446,7 @@ public class MainActivity extends Activity {
         keepScreenCheck = checkBox("録画中はスマホを点灯", preferences.getBoolean("keep_screen", true),
                 (button, checked) -> preferences.edit().putBoolean("keep_screen", checked).apply());
         addRow(settingsCard, keepScreenCheck, 0);
-        diagnosticsCheck = checkBox("診断用 HEVC・WAV を別保存",
+        diagnosticsCheck = checkBox("診断用 HEVC・WAV・ジャイロを別保存",
                 preferences.getBoolean("diagnostics", false),
                 (button, checked) -> preferences.edit().putBoolean("diagnostics", checked).apply());
         addRow(settingsCard, diagnosticsCheck, dp(4));
@@ -447,8 +475,8 @@ public class MainActivity extends Activity {
 
         int savedMode = preferences.getInt(RecordService.PREF_SAVE_MODE, RecordService.SAVE_MODE_FMP4);
         selectedSaveMode = savedMode == RecordService.SAVE_MODE_RAW ? 1
-                : savedMode == RecordService.SAVE_MODE_RAW_ONLY ? 3
-                : savedMode == 2 ? 2 : 0;
+                : savedMode == RecordService.SAVE_MODE_RAW_ONLY ? 2
+                : 0;
         saveModeButton = button("保存モード: " + SAVE_MODES[selectedSaveMode], false, view -> {
             if (RecordService.isRecordingOrStarting()) {
                 setStatus("録画中は保存モードを変更できません");
@@ -459,8 +487,8 @@ public class MainActivity extends Activity {
                     .setSingleChoiceItems(SAVE_MODES, selectedSaveMode, (choice, index) -> {
                         selectedSaveMode = index;
                         int modeConst = index == 1 ? RecordService.SAVE_MODE_RAW
-                                : index == 3 ? RecordService.SAVE_MODE_RAW_ONLY
-                                : index == 2 ? 2 : RecordService.SAVE_MODE_MP4;
+                                : index == 2 ? RecordService.SAVE_MODE_RAW_ONLY
+                                : RecordService.SAVE_MODE_FMP4;
                         preferences.edit().putInt(RecordService.PREF_SAVE_MODE, modeConst).commit();
                         saveModeButton.setText("保存モード: " + SAVE_MODES[index]);
                         choice.dismiss();
@@ -610,8 +638,9 @@ public class MainActivity extends Activity {
         updateConfirmedLiveMode(null);
         if (!receiverRegistered) {
             IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
+            filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
             if (Build.VERSION.SDK_INT >= 33) {
-                registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+                registerReceiver(usbReceiver, filter, Context.RECEIVER_EXPORTED);
             } else {
                 registerReceiver(usbReceiver, filter);
             }
@@ -629,9 +658,29 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    @Deprecated
+    public void onBackPressed() {
+        // Closing the activity while the recorded file is still being finalized
+        // can leave the MP4 truncated. Keep the app in the foreground and warn.
+        if (RecordService.isStopping()) {
+            Toast.makeText(this, "保存処理中です。完了までアプリを閉じないでください", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (RecordService.isRecordingOrStarting()) {
+            Toast.makeText(this, "録画中です。先に録画を停止してください", Toast.LENGTH_LONG).show();
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    @Override
     protected void onStop() {
         super.onStop();
         telemetryRunning = false;
+        if (telemetryImuClient != null) {
+            telemetryImuClient.stop();
+            telemetryImuClient = null;
+        }
         updateConfirmedLiveMode(null);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setScreenSaverVisible(false);
@@ -744,10 +793,59 @@ public class MainActivity extends Activity {
             return;
         }
         if (!usbManager.hasPermission(device)) {
-            setStatus("USB権限を許可してから再試行してください");
+            // findDevice() has already requested permission. Resume automatically
+            // when the dialog is accepted instead of making the user tap again.
+            pendingStartAfterPermission = true;
+            setStatus("USB権限を許可すると録画を開始します");
+            return;
+        }
+        if (selectedVideoRoute == RecordService.ROUTE_UVC_HEVC && !hasUvc(device)) {
+            // The user pressed Record with UVC selected but the interface is not
+            // up yet. Enable it now, wait for the reconnect, then start itself.
+            pendingStartAfterUvc = true;
+            requestUvcEnable();
             return;
         }
         ensureDesiredLiveMode(this::startRecordingInternal);
+    }
+
+    /** Re-run the pending start request once permission / UVC reconnect finished. */
+    private void continuePendingStart() {
+        findDevice();
+        if (device == null || usbManager == null) {
+            setStatus("XREAL 1S が見つかりません");
+            return;
+        }
+        if (!usbManager.hasPermission(device)) {
+            pendingStartAfterPermission = true;
+            return;
+        }
+        if (selectedVideoRoute == RecordService.ROUTE_UVC_HEVC && !hasUvc(device)) {
+            if (!pendingStartAfterUvc) {
+                pendingStartAfterUvc = true;
+                requestUvcEnable();
+            }
+            return;
+        }
+        pendingStartAfterUvc = false;
+        startRecording();
+    }
+
+    private void startReplayRecording() {
+        if (RecordService.isRecordingOrStarting()) {
+            setStatus("すでに録画中です");
+            return;
+        }
+        Intent intent = new Intent(this, RecordService.class)
+                .setAction(RecordService.ACTION_START)
+                .putExtra(RecordService.EXTRA_VIDEO_ROUTE, RecordService.ROUTE_REPLAY)
+                .putExtra(RecordService.EXTRA_OUTPUT_TREE, outputTree)
+                .putExtra(RecordService.EXTRA_OUTPUT_LABEL, outputLabel)
+                .putExtra(RecordService.EXTRA_DIAGNOSTICS, diagnosticsCheck.isChecked())
+                .putExtra(RecordService.EXTRA_SAVE_MODE, RecordService.SAVE_MODE_FMP4);
+        RecordService.setStartPending(true);
+        startForegroundService(intent);
+        setStatus("リプレイ録画を開始しています...");
     }
 
     private void startRecordingInternal() {
@@ -765,8 +863,8 @@ public class MainActivity extends Activity {
                 .putExtra(RecordService.EXTRA_VIDEO_ROUTE, route)
                 .putExtra(RecordService.EXTRA_SAVE_MODE,
                         selectedSaveMode == 1 ? RecordService.SAVE_MODE_RAW
-                        : selectedSaveMode == 3 ? RecordService.SAVE_MODE_RAW_ONLY
-                        : selectedSaveMode == 2 ? 2 : RecordService.SAVE_MODE_MP4);
+                        : selectedSaveMode == 2 ? RecordService.SAVE_MODE_RAW_ONLY
+                        : RecordService.SAVE_MODE_FMP4);
         preferences.edit().putInt("video_route", route).apply();
         RecordService.setStartPending(true);
         try {
@@ -828,8 +926,21 @@ public class MainActivity extends Activity {
                     @Override
                     public void run() {
                         if (ok) {
-                            setStatus("UVC有効化を要求しました。再接続とUSB権限の確認を待ってください。\n" + message);
+                            setStatus(pendingStartAfterUvc
+                                    ? "UVC有効化を要求しました。再接続後に録画を開始します。\n" + message
+                                    : "UVC有効化を要求しました。再接続とUSB権限の確認を待ってください。\n" + message);
+                            if (pendingStartAfterUvc) {
+                                new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        if (pendingStartAfterUvc) {
+                                            continuePendingStart();
+                                        }
+                                    }
+                                }, 3000);
+                            }
                         } else {
+                            pendingStartAfterUvc = false;
                             setStatus("UVC有効化に失敗: " + message);
                         }
                     }
@@ -912,7 +1023,7 @@ public class MainActivity extends Activity {
                         setStatus("録画中は画質を変更できません");
                         return;
                     }
-                    if (which == 3) {
+                    if (which == VIDEO_ROUTES.length - 1) {
                         // UVC HEVC route: guide the user to enable UVC and grant USB permission.
                         selectedVideoRoute = RecordService.ROUTE_UVC_HEVC;
                         preferences.edit().putInt("video_route", selectedVideoRoute).apply();
@@ -922,19 +1033,16 @@ public class MainActivity extends Activity {
                             setStatus("XREAL 1S を接続してください");
                         } else if (!usbManager.hasPermission(device)) {
                             pendingUvcEnable = true;
-                            setStatus("USB権限を許可してください（権限ダイアログを確認）");
+                            setStatus("USB権限を許可するとUVCを有効化します");
                         } else if (!hasUvc(device)) {
-                            new MaterialAlertDialogBuilder(this)
-                                    .setTitle("UVC HEVC の準備")
-                                    .setMessage("UVCを有効化します。本体の再接続後、USB権限の許可を求められます。")
-                                    .setPositiveButton("UVCを有効化", (d, w) -> requestUvcEnable())
-                                    .setNegativeButton("キャンセル", null)
-                                    .show();
+                            requestUvcEnable();
                         } else {
                             setStatus("UVC HEVC の準備完了");
                         }
                     } else {
-                        // TCP route: 0 = 720p/30, 1 = 1600p/30, 2 = 1600p/60
+                        // TCP routes: 0 = 720p/30, 1 = 1600p/30, 2 = 1600p/60.
+                        // 720p/60 is intentionally absent: the glasses firmware
+                        // rejects its camera Start and the mode cannot be used.
                         String mode = which == 0 ? "1280 720 30"
                                 : which == 1 ? "1600 1200 30" : "1600 1200 60";
                         selectedVideoRoute = RecordService.ROUTE_TCP_HEVC;
@@ -953,8 +1061,6 @@ public class MainActivity extends Activity {
         String label;
         if (selectedVideoRoute == RecordService.ROUTE_UVC_HEVC) {
             label = "画質: UVC HEVC";
-        } else if (confirmedLiveMode != null && confirmedLiveMode.equals("1280 720 60")) {
-            label = "画質: 720p/60";
         } else if (confirmedLiveMode != null && confirmedLiveMode.equals("1600 1200 30")) {
             label = "画質: 1600p/30（高画質）";
         } else if (confirmedLiveMode != null && confirmedLiveMode.equals("1600 1200 60")) {
@@ -1289,9 +1395,32 @@ public class MainActivity extends Activity {
         throw last;
     }
 
+    private boolean isRecordServiceRunning() {
+        android.app.ActivityManager manager =
+                (android.app.ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        if (manager == null) {
+            return false;
+        }
+        for (android.app.ActivityManager.RunningServiceInfo info
+                : manager.getRunningServices(Integer.MAX_VALUE)) {
+            if (RecordService.class.getName().equals(info.service.getClassName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean wasRecording;
+
     private void pollStatus() {
+        if (wasRecording && !RecordService.isRecordingOrStarting()) {
+            // Recording just finished: clear the "stopping" text left by stopRecording().
+            statusView.setText("待機中");
+            lastStatus = "";
+        }
+        wasRecording = RecordService.isRecordingOrStarting();
         String s = RecordService.getStatus();
-        boolean recording = RecordService.isRecording();
+        boolean recording = RecordService.isRecording() || isRecordServiceRunning();
         boolean recordingBusy = RecordService.isRecordingOrStarting();
         boolean stopping = RecordService.isStopping();
         boolean videoStalled = RecordService.isVideoStalled();
@@ -1402,6 +1531,7 @@ public class MainActivity extends Activity {
         }
         telemetryRunning = true;
         telemetryThread = new Thread(() -> {
+            telemetryImuClient = GlassesImuClient.start(MainActivity.this, false);
             while (telemetryRunning) {
                 StringBuilder sb = new StringBuilder();
                 try {
@@ -1424,6 +1554,14 @@ public class MainActivity extends Activity {
                     }
                 } catch (Exception e) {
                     sb.append("グラス情報: 取得できません (").append(e.getMessage()).append(")");
+                }
+                GlassesImuClient imu = telemetryImuClient;
+                if (imu != null) {
+                    Float imuTemp = imu.getTemperatureC();
+                    if (imuTemp != null) {
+                        if (sb.length() > 0) sb.append(" / ");
+                        sb.append(String.format(Locale.US, "IMU温度 %.1f℃", imuTemp));
+                    }
                 }
                 String phoneTemp = readPhoneBatteryTemperature();
                 if (phoneTemp != null) {

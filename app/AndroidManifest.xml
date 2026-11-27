@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.syameimarukoa.xreal_recorder"
-    android:versionCode="25"
-    android:versionName="1">
+    android:versionCode="26"
+    android:versionName="2">
 
     <uses-feature android:name="android.hardware.usb.host" android:required="true" />
 
@@ -37,5 +37,13 @@
             android:name=".RecordService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|microphone" />
+
+        <receiver
+            android:name=".HeadlessReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="jp.xreal.recorder.DEV_CMD" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

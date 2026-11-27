@@ -1,0 +1,586 @@
+package com.syameimarukoa.xreal_recorder;
+
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.LinkAddress;
+import android.net.LinkProperties;
+import android.net.Network;
+import android.os.SystemClock;
+import android.util.Log;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.Arrays;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.TimeUnit;
+
+/** Receives the previously observed XREAL Eye HEVC stream over USB Ethernet. */
+final class TcpSource implements VideoSource {
+    private static final String TAG = "XrealTcp";
+    private static final String HOST = "169.254.2.1";
+    private static final int MAX_MESSAGE = 8 * 1024 * 1024;
+    private static final int FRAME_HEADER = 97;
+    /** Smallest allowed step so that a stale timestamp cannot repeat a presentation time. */
+    private static final long MIN_PTS_STEP_NS = 1_000_000L;
+    private final Context context;
+    private final ArrayBlockingQueue<Reply> replies = new ArrayBlockingQueue<>(8);
+    private Socket video;
+    private Socket control;
+    private Thread videoThread;
+    private Thread controlThread;
+    private volatile boolean running;
+    private volatile boolean failed;
+    private volatile boolean stalled;
+    private volatile int reconnectCount;
+    private volatile String error = "";
+    private volatile int accessUnits;
+    private volatile int width = 1280;
+    private volatile int height = 720;
+    private boolean dimensionsReceived;
+    private boolean startSent;
+    private Runnable reconnectHook;
+    private UvcSource.Listener listener;
+    private long candidateFirstNs;
+    private long candidateLastNs;
+    private long arrivalFirstNs;
+    private long arrivalLastNs;
+    private long candidateNonIncreasing;
+    private long candidateMaxArrivalDeviationNs;
+    private long candidateMinStepNs = Long.MAX_VALUE;
+    private long candidateMaxStepNs;
+    private long arrivalMinStepNs = Long.MAX_VALUE;
+    private long arrivalMaxStepNs;
+    private long arrivalShortSteps;
+    private long arrivalLongSteps;
+    private long shortAfterLong;
+    private long previousArrivalStepNs;
+    private long cameraPtsAnchorNs;
+    private long lastPtsNs;
+    private int skipReanchorFrames;
+    private long clockReanchors;
+    private long clockRejected;
+    private long clockForcedSteps;
+    private long clockEstimatedDuplicates;
+    private final TcpTimestampRecovery timestampRecovery = new TcpTimestampRecovery();
+    private final TcpDriftGate driftGate = new TcpDriftGate();
+
+    private static final class Reply {
+        final int command;
+        final byte[] payload;
+        Reply(int command, byte[] payload) {
+            this.command = command;
+            this.payload = payload;
+        }
+    }
+
+    TcpSource(Context context) {
+        this.context = context;
+    }
+
+    @Override
+    public void open() throws Exception {
+        ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (manager == null) {
+            throw new IOException("Network manager unavailable");
+        }
+        Network network = null;
+        for (Network candidate : manager.getAllNetworks()) {
+            LinkProperties properties = manager.getLinkProperties(candidate);
+            if (properties == null) {
+                continue;
+            }
+            for (LinkAddress address : properties.getLinkAddresses()) {
+                InetAddress ip = address.getAddress();
+                if (ip instanceof Inet4Address && ip.getHostAddress().startsWith("169.254.2.")) {
+                    network = candidate;
+                    break;
+                }
+            }
+            if (network != null) {
+                break;
+            }
+        }
+        if (network == null) {
+            throw new IOException("XREAL USB Ethernet is not available");
+        }
+        try {
+            video = connect(network, 52995);
+            control = connect(network, 52999);
+        } catch (Exception e) {
+            closeSockets();
+            throw e;
+        }
+    }
+
+    private Socket connect(Network network, int port) throws IOException {
+        Socket socket = new Socket();
+        try {
+            network.bindSocket(socket);
+            // Larger receive buffer smooths bursty arrivals from the glasses
+            // over USB Ethernet at 60 fps (halved >25 ms PTS gaps in trials).
+            socket.setReceiveBufferSize(2 * 1024 * 1024);
+            socket.connect(new InetSocketAddress(HOST, port), 5000);
+            socket.setSoTimeout(1000);
+            return socket;
+        } catch (IOException e) {
+            try { socket.close(); } catch (IOException ignored) { }
+            throw new IOException("XREALに接続できません。接続状態とVPNのローカルネットワーク設定を確認してください", e);
+        }
+    }
+
+    /** Hook invoked after sockets are re-established but before the camera is started. */
+    void setReconnectHook(Runnable hook) {
+        reconnectHook = hook;
+    }
+
+    @Override
+    public void start(UvcSource.Listener listener) throws Exception {
+        this.listener = listener;
+        running = true;
+        controlThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                readControl();
+            }
+        }, "xreal-tcp-control");
+        videoThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                readVideo();
+            }
+        }, "xreal-tcp-video");
+        controlThread.start();
+        videoThread.start();
+        startSent = true;
+        try {
+            // Apply the recorded live mode before starting the camera. A stale mode
+            // (e.g. after a replug reset to 720p) makes Start return an unexpected
+            // acknowledgement and leaves the recording empty.
+            if (reconnectHook != null) {
+                reconnectHook.run();
+            }
+            transact(0x2781, 1);
+        } catch (Exception e) {
+            fail("TCP camera start failed: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    private void readControl() {
+        try {
+            InputStream input = control.getInputStream();
+            while (running) {
+                byte[] header = readExact(input, 6, false);
+                int command = ((header[0] & 0xff) << 8) | (header[1] & 0xff);
+                int length = readLength(header);
+                byte[] payload = readExact(input, length, false);
+                if (command == 0x2781 || command == 0x2782) {
+                    if (!replies.offer(new Reply(command, payload))) {
+                        throw new IOException("TCP control response queue full");
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // A dropped control socket is expected during a USB disconnect.
+            // Never fail here: the video thread owns reconnection and will
+            // re-open this socket. If reconnection ultimately fails, the video
+            // thread calls fail() with the real cause.
+            Log.w(TAG, "control read ended: " + e.getMessage());
+        }
+    }
+
+    private void transact(int command, int sequence) throws Exception {
+        byte[] packet = new byte[]{(byte) (command >> 8), (byte) command, 0, 0, 0, 6,
+                (byte) 0x80, 0, (byte) (sequence >> 8), (byte) sequence, 0x1a, 0};
+        OutputStream out = control.getOutputStream();
+        out.write(packet);
+        out.flush();
+        long deadline = SystemClock.elapsedRealtime() + 10000;
+        while (true) {
+            long remaining = deadline - SystemClock.elapsedRealtime();
+            if (remaining <= 0) {
+                throw new IOException("TCP control acknowledgement timed out");
+            }
+            Reply reply = replies.poll(remaining, TimeUnit.MILLISECONDS);
+            if (reply == null) {
+                throw new IOException("TCP control acknowledgement timed out");
+            }
+            byte[] expected = new byte[]{0, 0, (byte) (sequence >> 8), (byte) sequence, 0x22, 0};
+            if (reply.command == command && Arrays.equals(reply.payload, expected)) {
+                return;
+            }
+            throw new IOException("Unexpected TCP camera acknowledgement");
+        }
+    }
+
+    /** Re-establish the USB link after a disconnect; returns false if it cannot. */
+    private boolean reconnect() {
+        closeSockets();
+        startSent = false;
+        long deadline = SystemClock.elapsedRealtime() + 60000;
+        int attempt = 0;
+        while (running && SystemClock.elapsedRealtime() < deadline) {
+            attempt++;
+            try {
+                ConnectivityManager manager = (ConnectivityManager)
+                        context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                Network network = null;
+                if (manager != null) {
+                    for (Network candidate : manager.getAllNetworks()) {
+                        LinkProperties props = manager.getLinkProperties(candidate);
+                        if (props == null) {
+                            continue;
+                        }
+                        for (LinkAddress addr : props.getLinkAddresses()) {
+                            if (addr.getAddress() instanceof Inet4Address
+                                    && "169.254.2.10".equals(addr.getAddress().getHostAddress())) {
+                                network = candidate;
+                                break;
+                            }
+                        }
+                        if (network != null) {
+                            break;
+                        }
+                    }
+                }
+                if (network != null) {
+                    video = connect(network, 52995);
+                    control = connect(network, 52999);
+                    if (reconnectHook != null) {
+                        reconnectHook.run();
+                    }
+                    controlThread = new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            readControl();
+                        }
+                    }, "xreal-tcp-control-" + (reconnectCount + 1));
+                    controlThread.start();
+                    transact(0x2781, 1);
+                    startSent = true;
+                    reconnectCount++;
+                    Log.i(TAG, "reconnected after disconnect (attempt=" + attempt
+                            + ", total=" + reconnectCount + ")");
+                    return true;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "reconnect attempt " + attempt + " failed: " + e.getMessage());
+            }
+            try {
+                Thread.sleep(250);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /** Restart the presentation-time anchors after a link reset. */
+    private void resetTimingAnchors() {
+        accessUnits = 0;
+        candidateFirstNs = 0;
+        arrivalFirstNs = 0;
+        candidateLastNs = 0;
+        arrivalLastNs = 0;
+        cameraPtsAnchorNs = 0;
+        // Keep lastPtsNs: the post-reconnect first frame continues from it so the
+        // link-down gap is removed from the timeline.
+        if (listener != null) {
+            listener.onStreamReset();
+        }
+    }
+
+    private void readVideo() {
+        boolean csdSent = false;
+        while (running) {
+          try {
+            InputStream input = video.getInputStream();
+            while (running) {
+                byte[] header = readExact(input, 6, true);
+                int command = ((header[0] & 0xff) << 8) | (header[1] & 0xff);
+                byte[] body = readExact(input, readLength(header), true);
+                if (command != 0x2785) {
+                    throw new IOException("Unexpected TCP video message: " + command);
+                }
+                if (body.length < FRAME_HEADER + 5 || body[FRAME_HEADER] != 0
+                        || body[FRAME_HEADER + 1] != 0 || body[FRAME_HEADER + 2] != 0
+                        || body[FRAME_HEADER + 3] != 1) {
+                    throw new IOException("Invalid TCP HEVC frame header");
+                }
+                ByteBuffer metadata = ByteBuffer.wrap(body).order(ByteOrder.LITTLE_ENDIAN);
+                int frameWidth = metadata.getInt(12);
+                int frameHeight = metadata.getInt(16);
+                if (!dimensionsReceived && ((frameWidth == 1280 && frameHeight == 720)
+                        || (frameWidth == 1600 && frameHeight == 1200))) {
+                    width = frameWidth;
+                    height = frameHeight;
+                    dimensionsReceived = true;
+                } else if (!dimensionsReceived || frameWidth != width || frameHeight != height) {
+                    throw new IOException("Unexpected TCP video dimensions: "
+                            + frameWidth + "x" + frameHeight);
+                }
+                byte[] au = Arrays.copyOfRange(body, FRAME_HEADER, body.length);
+                int nalType = (au[4] >> 1) & 0x3f;
+                if (nalType == 32) {
+                    byte[] csd = UvcSource.extractCsd(au);
+                    if (!csdSent && csd != null) {
+                        listener.onCsd(csd);
+                        csdSent = true;
+                    }
+                    continue;
+                }
+                if (nalType >= 32) {
+                    throw new IOException("Unexpected TCP HEVC NAL type: " + nalType);
+                }
+                if (!csdSent) {
+                    Log.w(TAG, "Skipping video until HEVC configuration arrives");
+                    continue;
+                }
+                long arrivalNs = SystemClock.elapsedRealtimeNanos();
+                long candidateNs = metadata.getLong(24);
+                long ptsNs;
+                if (accessUnits == 0) {
+                    candidateFirstNs = candidateNs;
+                    arrivalFirstNs = arrivalNs;
+                    // Continue from the last presentation time after a reconnect so the
+                    // link-down gap is removed from the timeline. No duplicate frames are
+                    // written: only frames that actually arrived are enqueued.
+                    if (lastPtsNs > 0) {
+                        Log.i(TAG, "restart pts from last=" + (lastPtsNs / 1_000_000L)
+                                + "ms arrival=" + (arrivalNs / 1_000_000L) + "ms");
+                        ptsNs = monotonic(lastPtsNs);
+                        cameraPtsAnchorNs = ptsNs;
+                        lastPtsNs = ptsNs;
+                        // The camera clock jumped during the link-down gap; the anchor
+                        // no longer matches arrival time. Lock it permanently so the
+                        // drift gate cannot jump the PTS back to real time.
+                        skipReanchorFrames = Integer.MAX_VALUE;
+                    } else {
+                        cameraPtsAnchorNs = arrivalNs;
+                        ptsNs = arrivalNs;
+                        lastPtsNs = ptsNs;
+                    }
+                } else {
+                    long candidateStep = candidateNs - candidateLastNs;
+                    long arrivalStep = arrivalNs - arrivalLastNs;
+                    candidateMinStepNs = Math.min(candidateMinStepNs, candidateStep);
+                    candidateMaxStepNs = Math.max(candidateMaxStepNs, candidateStep);
+                    arrivalMinStepNs = Math.min(arrivalMinStepNs, arrivalStep);
+                    arrivalMaxStepNs = Math.max(arrivalMaxStepNs, arrivalStep);
+                    if (arrivalStep < 20_000_000L) {
+                        arrivalShortSteps++;
+                        if (previousArrivalStepNs > 45_000_000L) {
+                            shortAfterLong++;
+                        }
+                    }
+                    if (arrivalStep > 45_000_000L) {
+                        arrivalLongSteps++;
+                    }
+                    previousArrivalStepNs = arrivalStep;
+                    if (candidateNs <= candidateLastNs) {
+                        candidateNonIncreasing++;
+                    }
+                    long deviation = Math.abs((arrivalNs - arrivalFirstNs)
+                            - (candidateNs - candidateFirstNs));
+                    candidateMaxArrivalDeviationNs = Math.max(candidateMaxArrivalDeviationNs, deviation);
+                    ptsNs = presentationNs(candidateNs, arrivalNs);
+                }
+                candidateLastNs = candidateNs;
+                arrivalLastNs = arrivalNs;
+                listener.onAccessUnit(au, ptsNs);
+                accessUnits++;
+            }
+          } catch (Exception e) {
+            if (!running) {
+                break;
+            }
+            Log.w(TAG, "video read failed, attempting reconnect: " + e.getMessage());
+            stalled = true;
+            if (listener != null) {
+                listener.onStreamStalled(e.getMessage());
+            }
+            if (!reconnect()) {
+                fail("TCP video read failed: " + e.getMessage());
+                break;
+            }
+            resetTimingAnchors();
+            csdSent = false;
+            stalled = false;
+            if (listener != null) {
+                listener.onStreamResumed();
+            }
+          }
+        }
+    }
+
+    /**
+     * Converts the camera timestamp at frame header offset 24 into a presentation time on the
+     * same clock as the audio track. The camera clock is used for frame timing and anchored to
+     * the first frame's receive time. A repeated timestamp can be estimated from recent cadence;
+     * this is an estimate, not a recovered sensor timestamp. If
+     * the two clocks remain separated, the anchor eventually moves toward the receive clock.
+     */
+    private long presentationNs(long candidateNs, long arrivalNs) {
+        long pts = computePresentationNs(candidateNs, arrivalNs);
+        if (accessUnits % 300 == 0) {
+            Log.d(TAG, "pts au=" + accessUnits + " ptsMs=" + (pts / 1_000_000L)
+                    + " arrivalMs=" + (arrivalNs / 1_000_000L)
+                    + " anchorMs=" + (cameraPtsAnchorNs / 1_000_000L)
+                    + " reanchors=" + clockReanchors);
+        }
+        return pts;
+    }
+
+    private long computePresentationNs(long candidateNs, long arrivalNs) {
+        if (candidateNs <= candidateLastNs) {
+            driftGate.reset();
+            clockRejected++;
+            if (candidateNs == candidateLastNs && timestampRecovery.canEstimate()) {
+                clockEstimatedDuplicates++;
+                return monotonic(timestampRecovery.estimateDuplicate(lastPtsNs));
+            }
+            return monotonic(arrivalNs);
+        }
+        timestampRecovery.observeStep(candidateNs - candidateLastNs);
+        long drift = cameraPtsAnchorNs + (candidateNs - candidateFirstNs) - arrivalNs;
+        if (skipReanchorFrames > 0) {
+            skipReanchorFrames--;
+        } else if (driftGate.shouldReanchor(drift, arrivalNs)) {
+            cameraPtsAnchorNs -= drift;
+            clockReanchors++;
+        }
+        return monotonic(cameraPtsAnchorNs + (candidateNs - candidateFirstNs));
+    }
+
+    private long monotonic(long ptsNs) {
+        long result = ptsNs;
+        if (result <= lastPtsNs) {
+            result = lastPtsNs + MIN_PTS_STEP_NS;
+            clockForcedSteps++;
+        }
+        lastPtsNs = result;
+        return result;
+    }
+
+    private int readLength(byte[] header) throws IOException {
+        long length = ((long) (header[2] & 0xff) << 24) | ((long) (header[3] & 0xff) << 16)
+                | ((long) (header[4] & 0xff) << 8) | (header[5] & 0xff);
+        if (length < 0 || length > MAX_MESSAGE) {
+            throw new IOException("TCP message length out of range: " + length);
+        }
+        return (int) length;
+    }
+
+    private byte[] readExact(InputStream input, int length, boolean requireVideoProgress) throws IOException {
+        // A replug can leave the TCP socket open with no video data. Detect it in
+        // 5 s instead of 30 s so the audio pause happens sooner and the recorded
+        // file does not gain tens of seconds of extra microphone audio.
+        return TcpReadProgress.read(input, length, requireVideoProgress ? 5000 : 0,
+                () -> running);
+    }
+
+    private void fail(String message) {
+        if (!failed) {
+            failed = true;
+            error = message;
+            if (listener != null) {
+                listener.onError(message);
+            }
+        }
+    }
+
+    @Override
+    public void stop() {
+        if (startSent && control != null && !control.isClosed() && running) {
+            try {
+                transact(0x2782, 2);
+            } catch (Exception e) {
+                fail("TCP camera stop failed: " + e.getMessage());
+            }
+            startSent = false;
+        }
+        running = false;
+        closeSockets();
+        join(videoThread);
+        join(controlThread);
+        if (accessUnits > 1) {
+            Log.i(TAG, "camera clock frames=" + accessUnits
+                    + " candidateSpanNs=" + (candidateLastNs - candidateFirstNs)
+                    + " arrivalSpanNs=" + (arrivalLastNs - arrivalFirstNs)
+                    + " nonIncreasing=" + candidateNonIncreasing
+                    + " maxArrivalDeviationNs=" + candidateMaxArrivalDeviationNs
+                    + " candidateStepRangeNs=" + candidateMinStepNs + ":" + candidateMaxStepNs
+                    + " arrivalStepRangeNs=" + arrivalMinStepNs + ":" + arrivalMaxStepNs
+                    + " arrivalUnder20ms=" + arrivalShortSteps
+                    + " arrivalOver45ms=" + arrivalLongSteps
+                    + " shortAfterLong=" + shortAfterLong
+                    + " clockReanchors=" + clockReanchors
+                    + " clockRejected=" + clockRejected
+                    + " clockEstimatedDuplicates=" + clockEstimatedDuplicates
+                    + " clockForcedSteps=" + clockForcedSteps);
+        }
+    }
+
+    private void closeSockets() {
+        try { if (video != null) video.close(); } catch (IOException ignored) { }
+        try { if (control != null) control.close(); } catch (IOException ignored) { }
+    }
+
+    void appendTimingMetadata(JSONObject info) throws JSONException {
+        if (accessUnits < 2) {
+            return;
+        }
+        JSONObject timing = new JSONObject();
+        timing.put("frame_count", accessUnits);
+        timing.put("camera_timestamp_candidate_span_ns", candidateLastNs - candidateFirstNs);
+        timing.put("camera_timestamp_candidate_step_min_ns", candidateMinStepNs);
+        timing.put("camera_timestamp_candidate_step_max_ns", candidateMaxStepNs);
+        timing.put("camera_timestamp_candidate_non_increasing", candidateNonIncreasing);
+        timing.put("arrival_span_ns", arrivalLastNs - arrivalFirstNs);
+        timing.put("arrival_step_min_ns", arrivalMinStepNs);
+        timing.put("arrival_step_max_ns", arrivalMaxStepNs);
+        timing.put("max_candidate_arrival_deviation_ns", candidateMaxArrivalDeviationNs);
+        timing.put("presentation_clock_reanchors", clockReanchors);
+        timing.put("presentation_clock_rejected", clockRejected);
+        timing.put("presentation_clock_estimated_duplicates", clockEstimatedDuplicates);
+        timing.put("presentation_clock_forced_steps", clockForcedSteps);
+        info.put("tcp_timing_diagnostics", timing);
+    }
+
+    private void join(Thread thread) {
+        if (thread == null || thread == Thread.currentThread()) {
+            return;
+        }
+        try {
+            thread.join(2000);
+            if (thread.isAlive()) {
+                fail("TCP receiver did not stop within 2 seconds");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            fail("Interrupted while stopping TCP receiver");
+        }
+    }
+
+    @Override public boolean isFailed() { return failed; }
+    @Override public boolean isStalled() { return stalled; }
+    int getReconnectCount() { return reconnectCount; }
+    @Override public String getError() { return error; }
+    @Override public int getAccessUnits() { return accessUnits; }
+    @Override public int getWidth() { return width; }
+    @Override public int getHeight() { return height; }
+    @Override public int getFrameRate() { return 30; }
+}
