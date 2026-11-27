@@ -72,6 +72,17 @@
 - ★これで **720p60 を除く全画質（720p30 / 1600p30 / 1600p60）が最新版で video+audio+gyrf 完璧** と確認できた。720p60 はユーザーが「意図的に撮れないことは分かってるので無視」と指示。
 - 実機作業後は `lockctl lock --no-brightness` で画面をロック（`Screen: off / Keyguard: locked` を確認済み）。
 
+## ★★★v0.1.45 で全画質を撮り直して再検証完了（2026-11-27 13:3x〜13:4x JST）
+- ユーザー指示「バージョン変えたんだから全画質検証し直してよ」「UVCを忘れないでね」「720p60は確実に使えないんだからUIで平然と使えるように書かないで」。
+- v0.1.45（sha256 `3cd820955699dfbb32adcc4920e08a2e21887e4cf7d6ae1cfec529ea0fae4372`）を clean install して実機で全4画質を撮り直し、ffprobe + gyro2bb で確認:
+  - **720p30** `VID_20261127_133319.mp4`（30MB / 15秒）: hevc 1280x720 + aac + gyrf、`Detected camera: XREAL 1S` → 完璧
+  - **1600p30** `VID_20261127_133452.mp4`（25MB）: hevc 1600x1200 + aac + gyrf、detect OK → 完璧
+  - **1600p60** `VID_20261127_133607.mp4`（53MB）: hevc 1600x1200 + aac + gyrf、detect OK → 完璧
+  - **UVC HEVC** `VID_20261127_134140.mp4`（66MB / 17秒）: hevc **1600x1200 / 59.4fps** + aac + gyrf、detect OK → 完璧。UI から「UVCを有効化」で IF10 / EP 0x89 を検出、USB 権限付与後に撮影。
+- 720p60 は `VIDEO_ROUTES` から削除（commit `539c020`）。UVC 判定 index バグ（`which == 3` 固定）も `VIDEO_ROUTES.length - 1` に修正。UI ダイアログは4選択肢（720p/30 / 1600p/30 / 1600p/60 / UVC HEVC）のみ、720p60 は表示されない。
+- ★**全4画質が現行 v0.1.45 で video + audio + gyrf 完璧**。v2 正式リリースの条件は満たした（720p60 は仕様外として UI から除外）。
+- 実機作業後は `lockctl lock --no-brightness` で画面をロック（`Screen: off / Keyguard: locked` 確認済み）。
+
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
 - 50180 を socat 中継（端末:15051→グラス:50180、adb forward tcp:15052）で PC の Java から直接叩き、`GlassesLivePlan` でグラスの pilot メモリを読む → **`read=1280 720 60`**（モード値は既に 720p60）。スクリプト実行も `exec` 応答は空だが `after=1280 720 60` を維持。
