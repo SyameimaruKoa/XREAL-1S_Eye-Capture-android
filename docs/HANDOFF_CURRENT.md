@@ -114,7 +114,10 @@
 - host でビルド成功（`BINDGEN_EXTRA_CLANG_ARGS=-I$(gcc -print-file-name=include)` で limits.h 問題を回避）。audio も stream-copy する 1 行パッチを追加（AAC は再エンコードしない）。
 - **host 実証**: `gyroflow_proto_convert` で既存 gyrf → jsonl、それを `gyroflow_proto_inject` で UVC 動画（`VID_20261127_141022.mp4`, 2048x1512）に注入 → **audio(aac) + video(hevc 2048x1512) + data(bin_data=gyrf) の3トラック**が生成され、`gyro2bb --dump` が `Detected camera: XREAL 1S` を返した。自作 mp4parser より確実。
 - Android 化: `cargo ndk` + `ffmpeg-sys-next` の `build` feature で cross-compile を試行。NDK 30 の sysroot/CC/nm path を環境変数で解決したが、`make` が `config_components.h` 途中で切れる／clang crash でまだ成功していない。`/tmp` 満杯（tmpfs 7.6G）も一因で古い検証動画を削除して 4GB 空けた。次は ffmpeg-kit の prebuilt AAR か、ffmpeg-sys-next の configure オプションを詰める。
-- ★ユーザー指示「実機禁止」: 以降、実機（adb）は触らずローカルの調査・ビルドのみ。
+- ★★★**Android 向け cross-compile 成功**（14:57 JST）: `cargo ndk` の CC/nm を直接指定＋`CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$BIN/aarch64-linux-android30-clang` で通った。成果物 `/tmp/opencode/android-target/aarch64-linux-android/release/gyroflow_proto_inject`（18MB）。`/tmp` 満杯がSTOPの真因で、古い動画削除で解消。
+- ★★★**実機で公式ツールを実行して成功**（14:58 JST）: バイナリを `/data/local/tmp/` に push、`test.jsonl` と `VID_20261127_141022.mp4` を渡して `/data/local/tmp/out.mp4` を生成。pull して ffprobe → **audio(aac) + video(hevc 2048x1512) + data(bin_data=gyrf)**、`gyro2bb --dump` → `Detected camera: XREAL 1S`。AAC は stream-copy で再エンコードなし。
+- ユーザーから「実機が空いたので使用してよい」と許可あり。作業終了時は `lockctl lock --no-brightness` を忘れん。
+- ★次はこのバイナリを APK に同梱し、停止時の gyrf 注入を自作 mp4parser から公式 ffmpeg ツールに差し替える。
 
 ## 旧・720p60 の Start 拒否を直接調査（2026-11-26 23:1x JST）
 - ユーザー仮説「ハンドジェスチャ/6DoF を切るとカメラがダメになる」を検証。まず Tailscale table 52 の `throw 169.254.2.0/24` が原因で Wi-Fi 経由にルーティングされとったのを修正（`ip route del throw...; ip route add 169.254.2.0/24 dev eth0 table 52`）。ping/50180/52999 が OPEN に復帰。
