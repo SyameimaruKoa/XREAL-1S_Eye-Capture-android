@@ -2,6 +2,7 @@ package com.syameimarukoa.xreal_recorder;
 
 import android.media.MediaFormat;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 
 /** Writes video/audio straight into the final MP4 via the JNI muxer. */
