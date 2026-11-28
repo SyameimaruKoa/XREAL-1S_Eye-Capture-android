@@ -42,7 +42,9 @@ public final class HeadlessReceiver extends BroadcastReceiver {
             Intent start = new Intent(context, RecordService.class)
                     .setAction(RecordService.ACTION_START)
                     .putExtra(RecordService.EXTRA_DEVICE, device)
-                    .putExtra(RecordService.EXTRA_VIDEO_ROUTE, route);
+                    .putExtra(RecordService.EXTRA_VIDEO_ROUTE, route)
+                    .putExtra(RecordService.EXTRA_DIAGNOSTICS,
+                            intent.getBooleanExtra(RecordService.EXTRA_DIAGNOSTICS, false));
             context.startForegroundService(start);
         } else if ("stop".equals(cmd)) {
             Intent stop = new Intent(context, RecordService.class)
