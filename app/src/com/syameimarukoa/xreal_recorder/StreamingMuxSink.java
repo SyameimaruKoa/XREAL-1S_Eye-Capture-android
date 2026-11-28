@@ -90,6 +90,12 @@ final class StreamingMuxSink implements RecordingMuxer {
         }
         String err = GyroflowInjector.writeVideo(handle, data, ptsUs, keyFrame);
         if (err != null) {
+            StringBuilder head = new StringBuilder();
+            for (int i = 0; i < Math.min(32, data.length); i++) {
+                head.append(String.format("%02x", data[i] & 0xff));
+            }
+            android.util.Log.e("XrealRec", "writeVideo reject len=" + data.length
+                    + " key=" + keyFrame + " pts=" + ptsUs + " head=" + head);
             fail(err);
         }
     }
