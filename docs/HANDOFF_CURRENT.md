@@ -2629,3 +2629,10 @@
 - **問題**: Java の `GyroflowInjector` に `muxRaw` が無く、`Mp4TelemetryInjector` に呼び出しが無かったため実機のハンドルが無いと変換できなかった。
 - ブランチ `OptiPlex-3040-MFF_20261128` を切り、`GyroflowInjector.muxRaw()` / `Mp4TelemetryInjector.convertRawToMp4()` / RAW モード停止時の呼び出しを追加。CI 成功（run `46084752825`）。commits `c7bcd52`〜`f5eb15d`。
 - ★オフライン RAW→MP4 は可能。ブランチはマージ待ち。
+
+## ★UVC の v2 確認と課題（2026-11-28 11:0x JST、sc-52b）
+- HID の「UVCを有効化」＋USB権限で `/dev/video2/3` が出現、画質が UVC HEVC に切り替わった。
+- UVC 録画は `XrealUvc: payload` が流れるが、`mux fail: writeVideo failed` が出て MP4 は 8.9KB（ftyp+moov+moof+mdat のみ、実映像なし）。
+- 最初の AU から `UvcSource.extractCsd()` で CSD を抽出して `setCsd()` で muxer に設定する修正を入れたが（commit `8f8f26d`）、依然 `writeVideo failed`。UVC の HEVC が Annex-B でない／CSD が取れていない可能性が残る。
+- 他3画質（720p30/1600p30/1600p60）とクラッシュ耐性は v2 で確認済み。UVC は v0.1.58 で 2048x1512+audio+gyrf を確認済みだが、現行 v2 では未達。
+- ブランチ `OptiPlex-3040-MFF_20261128` に RAW 後処理修正と UVC CSD 修正を保留中。main/v2 は変更していない。
