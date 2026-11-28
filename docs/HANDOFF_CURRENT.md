@@ -2644,3 +2644,10 @@
 - 再検証時には **グラスが物理切断**されとった: `IsDeviceConnected: false`、`uvc_bulk` なし、ping 100% loss、eth0 なし。→ オープン遅延修正の効果は未検証。
 - **ブロック**: UVC の完全検証にはグラスの再接続が必要。わっちの側からは復旧できん。
 - main / v2 は変更せず。ブランチ `OptiPlex-3040-MFF_20261128` に RAW 後処理＋UVC 修正を保留中。
+
+## ★UVC 修正の継続（2026-11-28 11:4x JST）
+- `writeVideo` の先頭で `handle == 0` の early return が deferred open を塞いでいたのを修正（commit `d17a884`）。CI 成功。
+- 最初の AU から `addVideoTrack` を呼ぶ修正も追加（commit `1c4f0bd`）。CI 成功。
+- `writeVideo called` ログを追加（commit `0313cff`）。CI 成功。
+- 再検証ではグラスが頻繁に切断され `UVC SET_CUR PROBE failed` / ping 100% loss が発生。ルート復旧 (`ip route add 169.254.2.0/24 dev eth0 table 52`) を試行中。
+- ★修正はブランチ `OptiPlex-3040-MFF_20261128` に保留中。main/v2 は無変更で最終目標（クラッシュ耐性）は達成済み。
