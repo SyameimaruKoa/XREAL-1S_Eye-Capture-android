@@ -134,6 +134,11 @@ public final class UvcSource implements VideoSource {
                     + " compressionQuality=" + (negotiated.getShort(12) & 0xffff)
                     + " maxFrameBytes=" + (negotiated.getInt(18) & 0xffffffffL)
                     + " maxPayloadBytes=" + (negotiated.getInt(22) & 0xffffffffL));
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < n; i++) {
+                hex.append(String.format("%02x", current[i] & 0xff));
+            }
+            Log.i(TAG, "UVC GET_CUR hex=" + hex);
             int copy = Math.min(n, probe.length);
             System.arraycopy(current, 0, probe, 0, copy);
         }
