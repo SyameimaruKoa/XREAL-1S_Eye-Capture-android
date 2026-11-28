@@ -719,12 +719,18 @@ public final class RecordService extends Service {
                                 cameraInfo.put("aac_encoded_bytes", capturedAudio.getEncodedBytes());
                                 cameraInfo.put("aac_encoded_samples", capturedAudio.getEncodedSamples());
                             }
+                            Log.i(TAG, "raw gate mode=" + rawMode + "/" + rawOnly
+                                    + " imu=" + (finalImu != null
+                                            ? finalImu.getSampleCount() : -1));
                             if (rawMode && !rawOnly && finalImu != null
                                     && finalImu.getSampleCount() > 0) {
                                 SessionRegistry.State rawState = sessions.current();
                                 Session rawSession = rawState.active
                                         && rawState.session instanceof Session
                                         ? (Session) rawState.session : null;
+                                Log.i(TAG, "raw branch active=" + rawState.active
+                                        + " session=" + (rawSession != null) + " hevc="
+                                        + (rawSession != null && rawSession.hevcFile != null));
                                 if (rawSession != null && rawSession.hevcFile != null) {
                                     try {
                                         List<GyroflowProto.ImuSample> imuSamples =
