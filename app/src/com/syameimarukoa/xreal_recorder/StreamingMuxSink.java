@@ -128,9 +128,16 @@ final class StreamingMuxSink implements RecordingMuxer {
         }
         if (gyrfHeader != null && !gyrfHeaderWritten) {
             android.util.Log.i("XrealRec", "gyrf header injected");
+            int insert = 0;
+            if (data.length > 1 && (data[0] & 0xff) == 0x0a) {
+                insert = 2 + (data[1] & 0xff);
+            }
+            if (insert + 1 < data.length && (data[insert] & 0xff) == 0x10) {
+                insert += 2;
+            }
             ByteArrayOutputStream merged = new ByteArrayOutputStream(
                     data.length + gyrfHeader.length + 8);
-            merged.write(data, 0, data.length);
+            merged.write(data, 0, insert);
             merged.write(0x1a);
             int len = gyrfHeader.length;
             while (len >= 0x80) {
@@ -139,6 +146,7 @@ final class StreamingMuxSink implements RecordingMuxer {
             }
             merged.write(len);
             merged.write(gyrfHeader, 0, gyrfHeader.length);
+            merged.write(data, insert, data.length - insert);
             data = merged.toByteArray();
             gyrfHeaderWritten = true;
         }
