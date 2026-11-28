@@ -43,7 +43,7 @@ final class StreamingMuxSink implements RecordingMuxer {
 
     @Override
     public void writeVideo(byte[] data, long ptsUs, boolean keyFrame) {
-        if (failed || handle == 0) {
+        if (failed) {
             return;
         }
         if (handle == 0) {
