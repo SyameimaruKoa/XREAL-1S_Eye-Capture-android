@@ -2658,3 +2658,12 @@
 - ルート自体は `169.254.2.1 dev eth0 table 52` で正しい。`ip route del` は `No such process`、`ip route add` は `File exists` で既存。
 - UVC の修正（CSD 遅延オープン・initial AU からの addVideoTrack・early return 修正）はブランチ `OptiPlex-3040-MFF_20261128` に保留中、CI は全て成功。実機検証ができていないため **main/v2.1 にはマージしていない**。
 - ★グラスを再接続してもらうまで待つ。わっちの側からは復旧不可。
+
+## ★UVC の真の原因を特定（2026-11-28 12:1x JST）
+- diagnostics 付き broadcast で生 HEVC を保存（`xreal_20261128_121247.hevc`、1.66MB）し先頭を解析:
+  - `00 00 00 01 02 01 ...` = Annex-B start code はあるが **NAL type 1（non-IDR slice）から始まる**。VPS(32)/SPS(33)/PPS(34) が一切無い。
+- よって `UvcSource.extractCsd()` は常に null を返し、`deferred open csd=0` となる。muxer は hvcC/extradata を書けず `writeVideo: Invalid argument`、`extract_extradata: No start code is found`。
+- AVCC 変換の試み（`ad6363e`/`e1ccc4d`）は不要で、Annex-B のままだった。ただし SPS が無い点は未解決。
+- v0.1.58 の `muxRaw` が動いたのは demuxer 経由で codecpar を補完していたためと推測されるが、streaming mux では demuxer が無いため SPS 署名が無いと mux できない。
+- ★残る修正: UVC の 2048x1512 用 SPS/PPS をどこから取得するか（HID getconfig／カメラ側 CSD／正当な生成）。捏造した SPS は禁止（過去の LensData 捏造の前例あり）。
+- ブランチ `OptiPlex-3040-MFF_20261128` に保留中。v2.1 は未公開。
