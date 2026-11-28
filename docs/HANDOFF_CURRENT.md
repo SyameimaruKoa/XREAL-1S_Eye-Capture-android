@@ -2673,3 +2673,13 @@
 - sysfs (`/sys/bus/usb/devices/1-1:1.{9,10}/descriptors`) は空、`dumpsys usb` には interface class/subclass/protocol と endpoint のみで codec-specific descriptor は出ていない。
 - Android の UsbDevice API は raw descriptor を読めんため、`GET_CUR` の hex dump を追加（commit `d601dfe`）して解析しようとしたが、グラスが頻繁に再接続し UVC が無効化 (`UVC bulk IN interface not found`、`/dev/video2/3` 消失) され取得できなかった。
 - ★UVC の SPS/PPS 取得先は依然未解決。v2.1 は未公開、main/v2 は無変更。
+
+## ★「今まで動いてたコード」の特定（2026-11-28 12:4x JST）
+- ユーザー指示で git 履歴を検索。動いとったのは commit `7e323a2`（v0.1.58 相当）の以下:
+  - `RawStreamSink.addVideoTrack(format)` が `csd-0` を生 HEVC ファイルの**先頭に書く**
+  - 停止時 `RecordingOutput.injectTelemetry()` → `Mp4TelemetryInjector.injectWithFfmpeg()` → `GyroflowInjector.muxRaw(hevc, aac, gyrfDir, output)`
+  - Rust `mux_raw_files()` が demuxer 経由で codecpar（extradata を含む）を取得して mux
+- つまり streaming mux のように demuxer を通さず CSD を渡す方式とは違い、**CSD をファイル先頭に書いて demuxer に読ませる**方式だった。
+- この方式は現在のブランチ `OptiPlex-3040-MFF_20261128` に `convertRawToMp4()` ＋ RAW停止時配線として復元済み。
+- 実機 sc-52b で RAW モード（save_mode=1, route=1）の UVC 録画を試みたが、グラスが頻繁に再接続し `/dev/video2/3` が消えて `session started` に到達せず、検証できなかった。
+- ★v2.1 は未公開。main/v2 は無変更（最終目標は達成済み）。
