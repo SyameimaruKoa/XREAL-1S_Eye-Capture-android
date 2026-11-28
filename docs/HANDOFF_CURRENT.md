@@ -2764,3 +2764,10 @@
   - 通常MP4（RAW 後処理）: 720p30 / 1600p30 / 1600p60 / UVC HEVC の4画質すべてで hevc+aac+bin_data と gyro2bb `XREAL 1S` を確認。
   - fMP4: 720p30 / 1600p30 / UVC HEVC で 3 トラック生成と decode を確認。1600p60 のみアプリが勝手に落ちて未検証（アプリ側の不具合）。
 - ★v2.1 は公開済み。上記 fMP4 修正と OOM 修正は作業ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
+
+## ★1600p60/fMP4 クラッシュの究明（2026-11-28 18:2x〜18:4x JST）
+- 18:26 と 18:31 に 1600p60 / fMP4 で再現してクラッシュ。tombstone で `xreal-audio` スレッドの `Java_com_syameimarukoa_xreal_1recorder_GyroflowInjector_writeAudio+140` から `realloc` を呼び、Scudo が `CHECK failed @ list.h:215 (Prev->Next)` で SIGABRT。ヒープ破損（二重 free / use-after-free）。
+- この so は 14:12 に NDK 再ビルドしたもの（16,056,760 bytes）。v2 の so は 17,796,352 bytes（commit `8b27f43`）で大きく異なる。再ビルド時に ffmpeg の configure/bindgen 条件が変わったことが疑わしい。
+- v2 の so を作業ブランチに戻して CI 成功（commit `cb9b5a5`）。ただしグラス再起動で USB 権限が消え、1600p60 の再検証に到達できなかった。
+- 端末が何度も offline / 再起動し、USB 権限ダイアログの OK 位置（798,2140）を外して付与に失敗した経緯あり。
+- ★v2.1 は公開済み。so 差し替えと調査は作業ブランチに保留中。
