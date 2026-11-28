@@ -2716,3 +2716,137 @@
   - gyro2bb: `Detected camera: XREAL 1S`、CSV 10,319 行（IMU サンプル入り）
 - 他3画質（720p30 / 1600p30 / 1600p60）とクラッシュ耐性は v2 で検証済み。今回の変更は RAW 後処理経路と `mux_raw_files()` のみで fMP4 経路（StreamingMux）は無変更。
 - ★v2.1 を正式公開する。
+
+## ★v2.1 後の全画質テストで OOM を発見・修正（2026-11-28 14:4x〜）
+- ユーザー指示で broadcast ではなく UI ボタン操作による検証に切り替えた。
+- 720p30 / RAW モードで 84 秒録画したところ HEVC が 197MB になり、CSD 挿入処理の `readAllBytes()` が `OutOfMemoryError`（268MB 確保要求 / growth limit 256MB）で RAW 変換が失敗。
+- 修正（commit `3b19c4e`）: HEVC は先頭 4MB だけ読んで CSD を抽出し、残りは `FileInputStream` → `FileOutputStream` のストリームコピーで `_csd.hevc` を作成。メモリ使用を 4MB 以下に抑制。
+- CI 成功。実機で UI 操作の-matrix テストを実施中。
+- 途中結果: 720p30 / 通常MP4（RAW後処理）は 53,190,453 bytes / 26.9s / hevc+aac+bin_data / decode 0 / `Detected camera: XREAL 1S` / IMU 26,901 行で OK。
+- UI テストの障害: Google のセキュリティ通知ダイアログ、USB 権限ダイアログ、画面自動ロック、`live_mode_uncertain=true` による開始ボタン無効化。テストスクリプト側で対処済み。
+- ★main/v2.1 は公開済みのまま。この OOM 修正は作業ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
+
+## ★全画質マトリクス UI 検証の途中結果（2026-11-28 16:3x〜16:4x JST）
+- ユーザー指示で broadcast を廃し、adb の画面タップで 1 操作ずつ UI を操作して検証中。
+- **UVC HEVC / fMP4 は失敗**: `deferred open csd=0` → `mux fail: writeVideo: Invalid argument`。UVC の streaming mux は v2 から未修正（RAW 後処理のみ v2.1 で修正済み）。
+- **720p30 / fMP4**: MP4 1,835,040 bytes、hevc 1280x720 / aac / bin_data の3トラック、duration 3.026s。gyrf は 3 秒クリップでサンプル 0（`Detected camera: Gyroflow`）。
+- **720p30 / 通常MP4（RAW後処理）**: 3分間録画、`raw convert result=null`、MP4 413,441,390 bytes を生成。OOM 修正（commit `3b19c4e`）で 402MB の HEVC をストリームコピーできた。pull・ffprobe・gyro2bb 検証は実行中。
+- UI 操作の障害: 全画面 REC オーバーレイ（`タップで戻る`）が uiautomator の idle を_BLOCK_ する。スクリーンショットで状態を確認して「タップで戻る」→「録画停止」を押すことで対処。
+
+## ★全画質 × 通常MP4/fMP4 マトリクス結果（2026-11-28 16:2x〜17:5x JST）
+すべて UI のボタンタップで録画開始・停止を操作（broadcast は停止の片付けのみ）。
+
+| 画質 | モード | 結果 | 詳細 |
+|---|---|---|---|
+| 720p30 | fMP4 | OK | 1,835,040B / 3.0s / hevc 1280x720 + aac + bin_data / gyro2bb=Gyroflow, rows 0（短いクリップ） |
+| 720p30 | 通常MP4 | OK | 413,441,390B / 191.5s / XREAL 1S / 190,179 行 |
+| 1600p30 | fMP4 | OK | 5,242,912B / 4.8s / hevc 1600x1200 + aac + bin_data / gyro2bb=Gyroflow, rows 0 |
+| 1600p30 | 通常MP4 | OK | 231,991,808B / 108.5s / XREAL 1S / 108,327 行 |
+| 1600p60 | fMP4 | FAIL | 32B。録画中に画面がホームへ戻り wake lock が切れた（`deferred open csd=102` は成功） |
+| 1600p60 | 通常MP4 | OK | 938,751,629B / 221.0s / 59.35fps / XREAL 1S / 219,319 行 |
+| UVC HEVC | fMP4 | FAIL | `deferred open csd=0` → `mux fail: writeVideo: Invalid argument`。UVC の CSD が遅れて届く streaming mux の未修正課題 |
+| UVC HEVC | 通常MP4 | OK | 39,052,497B / 129.0s / hevc 2048x1512 / XREAL 1S / 128,630 行（OOM 修正版で再確認） |
+
+- 通常MP4（RAW 後処理）は全4画質で hevc/aac/bin_data と gyro2bb `Detected camera: XREAL 1S` を確認。
+- fMP4 は 720p30/1600p30 で 3 トラック生成を確認。gyrf が 0 行なのは 3〜5 秒の短いクリップでサンプルが入らなかったため。
+- fMP4 の 1600p60 は端末側の画面遷移による失敗、UVC は CSD タイミングの失敗で再現性あり。
+- ★v2.1 は公開済み。OOM 修正とこの記録は作業ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
+
+## ★fMP4 の UVC 修正と最終マトリクス（2026-11-28 18:0x〜18:2x JST）
+- UVC fMP4 の真因: CSD が無いのに `csdSent=true` にして空の `csd-0` を渡し、さらに 3 番目の AU に VPS/SPS/PPS と IDR が同居したまま extradata と二重で渡されて `writeVideo: Invalid argument` になっていた。
+- 修正（commit `065d4de`, `395a878`, `e536d35`, `b1441c4`）:
+  - CSD が無い AU では `csdSent` を立てず `addVideoTrack` を呼ばない。
+  - `StreamingMuxSink` は CSD 到着まで最初の AU を保持し、CSD 取得後に extradata と AU を書く。
+  - AU から VPS/SPS/PPS（type 32/33/34）を除去してから `writeVideo` に渡す。
+- 実機 UVC HEVC / fMP4 で `deferred open csd=101` の後 `mux fail` が消え、MP4 786,464 bytes を生成。ffprobe: hevc 2048x1512 / aac / bin_data、duration 3.35s。ffmpeg decode exit 0。gyro2bb `Detected camera: Gyroflow`（短いクリップでサンプル 0）。
+- 1600p60 / fMP4 は `deferred open csd=102` まで成功したが、端末が勝手にアプリをバックグラウンドへ落としてゲーム画面が前面に出たため、停止操作に到達できず 32 bytes のまま。ユーザー確認により操作はされていない。アプリが勝手に落ちる側の不具合として扱う。
+- 最終マトリクス:
+  - 通常MP4（RAW 後処理）: 720p30 / 1600p30 / 1600p60 / UVC HEVC の4画質すべてで hevc+aac+bin_data と gyro2bb `XREAL 1S` を確認。
+  - fMP4: 720p30 / 1600p30 / UVC HEVC で 3 トラック生成と decode を確認。1600p60 のみアプリが勝手に落ちて未検証（アプリ側の不具合）。
+- ★v2.1 は公開済み。上記 fMP4 修正と OOM 修正は作業ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
+
+## ★1600p60/fMP4 クラッシュの究明（2026-11-28 18:2x〜18:4x JST）
+- 18:26 と 18:31 に 1600p60 / fMP4 で再現してクラッシュ。tombstone で `xreal-audio` スレッドの `Java_com_syameimarukoa_xreal_1recorder_GyroflowInjector_writeAudio+140` から `realloc` を呼び、Scudo が `CHECK failed @ list.h:215 (Prev->Next)` で SIGABRT。ヒープ破損（二重 free / use-after-free）。
+- この so は 14:12 に NDK 再ビルドしたもの（16,056,760 bytes）。v2 の so は 17,796,352 bytes（commit `8b27f43`）で大きく異なる。再ビルド時に ffmpeg の configure/bindgen 条件が変わったことが疑わしい。
+- v2 の so を作業ブランチに戻して CI 成功（commit `cb9b5a5`）。ただしグラス再起動で USB 権限が消え、1600p60 の再検証に到達できなかった。
+- 端末が何度も offline / 再起動し、USB 権限ダイアログの OK 位置（798,2140）を外して付与に失敗した経緯あり。
+- ★v2.1 は公開済み。so 差し替えと調査は作業ブランチに保留中。
+
+## ★端末 sc-52b が移動中で通信不安定（2026-11-28 18:4x〜18:5x JST）
+- 18:43 頃から sc-52b（100.121.62.116）への通信が不安定。18:53 時点で last seen 13分、ping 不通、adb connect タイムアウト。ユーザー確認により端末は切断しておらず、移動中の通信状態の悪化が原因。
+- 直前の screencap でバッテリー 76%、グラス温度 56℃。端末側の異常ではない。
+- CI run `46132317596` は成功。再ビルド so（bindgen にだけ versioned target を渡し、ffmpeg configure は unversioned に復元）を commit `9c36969` で保留中。
+- 1600p60 / fMP4 の Scudo クラッシュは v2 so で再現しなかったが、USB 権限喪失と端末 offline で最終確認に到達できていない。
+
+## ★Scudo クラッシュの切り分け結果（2026-11-28 19:4x〜20:0x JST）
+- SSH トンネル（`ssh -L 15555:127.0.0.1:5555 s21u`）経由の adb で安定通信。USB 権限は UI の OK（uiautomator 座標 (798,2065)）で再付与。
+- 再ビルド so（ffmpeg-next 9.1.0 / sys 9.1.1、16,056,760 bytes）で 1600p60 / fMP4 の Scudo クラッシュが再現（19:46）。
+- **v2 の so（17,796,352 bytes、commit `05e3d2c` で作業ブランチに戻済み）では 19:53 の 1600p60 / fMP4 で Scudo クラッシュが出なかった**。ただし TCP セッションが 2 秒間隔で再接続を繰り返し、MP4 は生成されなかった。
+- v2 so には `aac_adtstoasc` 修正が無いため、UVC の通常MP4（RAW 後処理）は壊れる。両立には v2 構成（ffmpeg-next 9.0 系）での再ビルドが必要。
+- `cargo update -p ffmpeg-next --precise 9.0.0` は成功した（Cargo.lock は 9.0.0）が、ffmpeg-sys-next は 9.1.1 のままで make が失敗。ffmpeg-sys-next 9.0.0 は registry に無い。
+- 14:10 構成（hook で TARGET versioned）で ffmpeg 静的ライブラリを再ビルドし、20:01 の so を回復済み。
+- ★v2.1 は公開済み。1600p60/fMP4 の Scudo は v2.1 にも潜在する。作業ブランチは v2 so を保留中で、UVC 通常MP4 の再確認は未完了。
+
+## ★ffmpeg 9.0 系 so に両立修正を反映（2026-11-28 20:1x〜20:2x JST）
+- `cargo update -p ffmpeg-sys-next --precise 9.0.0` が成功（bindgen も 0.73.2 → 0.72.1）。
+- sys 9.0.0 の build.rs は llvm-nm の解決にバグ（CC パスに `..` を join）があり、一時的に `parent()` を使うよう修正。bindgen 用に TARGET を versioned にする hook も継続。
+- 3分09秒で ffmpeg を再ビルドし、**ffmpeg-next 9.0.0 + aac_adtstoasc/stage/non-fragmented 修正入りの so（15,847,408 bytes、sha `f3c9f1a6...`）を生成**。
+- 作業ブランチにコミット（commit `a513176`）、CI run `46139699944` 成功。
+- これで Scudo 回避（9.0 系）と UVC RAW の bsf（自前修正）の両立を狙う。実機検証は実行中。
+
+## ★Scudo クラッシュの真因と修正（2026-11-28 21:3x JST）
+- 真因: 映像スレッド（`xreal-video-wri`）と音声スレッド（`xreal-audio`）が `StreamingMuxSink` 経由で FFmpeg の `AVFormatContext` を同時操作。FFmpeg はスレッドセーフでなく、`realloc` がヒープを破損して Scudo が SIGABRT。ffmpeg 9.1/9.0 の差ではない。
+- 修正（commit `39ae103`）: `StreamingMuxSink` の `addVideoTrack` / `addAudioTrack` / `writeVideo` / `writeAudio` / `writeGyrf` / `finish` に `synchronized` を付与し、ネイティブ muxer 呼び出しを直列化。
+- sc-52b / 1600p60 / fMP4 で 21:39 に 15 秒録画。**Scudo クラッシュが消え**、MP4 29,622,304 bytes を生成。tombstone も新規なし。
+- ffprobe / ffmpeg decode / gyro2bb の検証は pull 待ち。
+- ★v2.1 公開版にもこの競合が潜在する。修正は作業ブランチに保留中。
+
+## ★Scudo 修正の検証完了と gyrf header の残課題（2026-11-28 21:3x〜22:0x JST）
+- commit `39ae103`（StreamingMuxSink の全 muxer 呼び出しを synchronized 化）で 1600p60 / fMP4 の Scudo が消えた。sc-52b で 96.5 秒・411MB の MP4 を生成し、ffprobe で hevc 1600x1200 + aac + bin_data を確認、ffmpeg decode exit 0。
+- fMP4 の gyro2bb は `Detected camera: Gyroflow` でサンプル 0。gyrf パケットは 34 個あるが先頭に header（protobuf field 3）が無い。
+- `StreamingMuxSink.setGyrfHeader()` を配線（commit `50b7f33` / `a6268f7`）したが、pull した gyrf の先頭には field 3 が無く未解決。RecordService の gyrfFrameNumber==1 分岐と setGyrfHeader の両方が効いていない模様。
+- 通常MP4（RAW 後処理）では gyro2bb `XREAL 1S` が出ており、こちらは問題なし。
+- ★v2.1 公開版には Scudo 競合が潜在する。synchronized 修正は作業ブランチに保留中。
+
+## ★fMP4 の gyrf ヘッダー欠落の原因と修正（2026-11-28 22:1x〜22:2x JST）
+- ログで判明: `setGyrfHeader len=100` は呼ばれるが、最初の gyrf（header 入り）が `handle=0` で mux 未 open のため破棄され、2 回目以降に header を付けていた。さらに field 3 を field 4 の後ろに追加しており、gyro2bb が読めなかった。
+- 修正（commit `dc3fd84`）: protobuf の field 1/2 の後・field 4 の前に field 3（header）を挿入する。
+- CI 成功、実機 1600p60 / fMP4 で録画・停止。pull と gyro2bb 検証は実行中。
+
+## ★全画質 × fMP4 / 標準MP4 の最終取りまとめ（2026-11-28 22:4x JST）
+- 標準MP4（RAW 後処理、commit `3b19c4e` の OOM 修正版）で全4画質を実機検証済み:
+  - 720p30: 413,441,390B / 191.5s / XREAL 1S / 190,179 行
+  - 1600p30: 231,991,808B / 108.5s / XREAL 1S / 108,327 行
+  - 1600p60: 938,751,629B / 221.0s / XREAL 1S / 219,319 行
+  - UVC HEVC: 39,052,497B / 129.0s / XREAL 1S / 128,630 行
+- fMP4 は全4画質で hevc/aac/bin_data の3トラック生成と decode を確認:
+  - 720p30 / 1600p30: v2 構成で確認
+  - 1600p60: Scudo 修正（commit `39ae103`）後に 411MB / 96.5s / 3トラック / decode exit 0
+  - UVC HEVC: CSD 待ち＋パラメータセット除去（commit `e536d35`）で `writeVideo: Invalid argument` 解消、786KB / 3トラック
+- 現行 APK（commit `dc3fd84`）で 1600p60 / fMP4 を再検証: gyrf 先頭に header（field 3, XREAL 1S）が入ったことを確認。ただし MP4 が 2.3GB に達し、gyro2bb の `Input::from_stream` が head/tail 15MB だけを読むため "Unsupported file format" となる（既知の大容量 fMP4 の制約）。
+- 現行 APK で全8通りを短時間で回す試みは、停止ボタンが全画面 REC オーバーレイに切り替わり押せんかったため完遂できなかった。標準MP4 の各画質は直前の APK で検証済みで、現行差分は gyrf header 挿入のみ。
+- ★v2.1 は公開済み。修正群は作業ブランチに保留中。
+
+## ★全画質 × fMP4 / 標準MP4 完遂（2026-11-28 23:2x JST、現行 APK `dc3fd84`）
+### 標準MP4（RAW 後処理）— 現行 APK で全4画質 OK
+- 1600p60: 1,224,822,131B / 288.0s / hevc 1600x1200 + aac + bin_data / `Detected camera: XREAL 1S` / 284,380 行
+- 1600p30: 3,680,759B / 2.9s / 3トラック / XREAL 1S / 2,891 行
+- 720p30: 3,991,198B / 2.9s / hevc 1280x720 + aac + bin_data / XREAL 1S / 2,869 行
+- UVC HEVC: 1,082,592B / 3.3s / hevc 2048x1512 + aac + bin_data / XREAL 1S / 3,253 行
+
+### fMP4 — 全4画質で hevc/aac/bin_data + decode exit 0
+- UVC HEVC: 現行 APK で 1,072,111B / 3.3s / 3トラック / decode 0
+- 1600p60: Scudo 修正後に 411MB / 96.5s / 3トラック / decode 0 / gyrf 先頭に header(field 3, XREAL 1S) を確認
+- 720p30 / 1600p30: 直前 APK で 3トラック・decode 0 を確認（現行差分は gyrf header 挿入のみ）
+
+### 対応済みの課題
+- Scudo（映像/音声の muxer 同時アクセス）→ `synchronized` 化（commit `39ae103`）
+- UVC の `writeVideo: Invalid argument` → CSD 待ち＋パラメータセット除去（commit `e536d35`）
+- RAW 変換の OOM → 先頭 4MB 読み出し＋ストリームコピー（commit `3b19c4e`）
+- fMP4 の gyrf header 欠落 → field 3 を field 4 の前に挿入（commit `dc3fd84`）
+- 大容量 MP4 の gyro2bb detect → ヘッダ/フッタ読み出しを 1GB 超で 40MB に拡張（host ツール /tmp/telemetry-parser の `src/lib.rs` と `src/util.rs`）
+
+### 既知の制約
+- fMP4 は mp4parse が fragmented MP4 の trun から sample を読めず、gyro2bb は `Detected camera: Gyroflow` でサンプル 0 になる。標準MP4 では XREAL 1S で全サンプル読める。v2 から続く制約。
+- 現行 APK で fMP4 の 720p30/1600p30 を短時間で再撮する試みは、画質ボタン操作がスクロール位置で外れて未達。直前 APK の検証結果で代替。
+- ★v2.1 は公開済み。全修正は作業ブランチ `OptiPlex-3040-MFF_20261128` に保留中。

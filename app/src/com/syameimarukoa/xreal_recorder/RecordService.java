@@ -404,14 +404,15 @@ public final class RecordService extends Service {
                     }
                     Session session = (Session) state.session;
                     if (!session.csdSent[0]) {
+                        byte[] auCsd = UvcSource.extractCsd(annexB);
+                        if (auCsd == null) {
+                            return; // wait until the stream carries VPS/SPS/PPS
+                        }
                         session.csdSent[0] = true;
                         MediaFormat fmt = MediaFormat.createVideoFormat(
                                 MediaFormat.MIMETYPE_VIDEO_HEVC,
                                 finalVideo.getWidth(), finalVideo.getHeight());
-                        byte[] auCsd = UvcSource.extractCsd(annexB);
-                        if (auCsd != null) {
-                            fmt.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(auCsd));
-                        }
+                        fmt.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(auCsd));
                         fmt.setInteger(MediaFormat.KEY_FRAME_RATE,
                                 finalVideo.getFrameRate());
                         if (session.muxer != null) {
@@ -540,16 +541,31 @@ public final class RecordService extends Service {
         }
     }
 
-    private static byte[] readAllBytes(File file) throws IOException {
+    private static byte[] readHead(File file, int limit) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buf = new byte[16384];
         try (FileInputStream in = new FileInputStream(file)) {
+            int total = 0;
+            while (total < limit) {
+                int n = in.read(buf, 0, Math.min(buf.length, limit - total));
+                if (n <= 0) {
+                    break;
+                }
+                out.write(buf, 0, n);
+                total += n;
+            }
+        }
+        return out.toByteArray();
+    }
+
+    private static void copyFile(File src, FileOutputStream out) throws IOException {
+        byte[] buf = new byte[65536];
+        try (FileInputStream in = new FileInputStream(src)) {
             int n;
             while ((n = in.read(buf)) > 0) {
                 out.write(buf, 0, n);
             }
         }
-        return out.toByteArray();
     }
 
     private void finishSession(Object retired) {
@@ -636,11 +652,15 @@ public final class RecordService extends Service {
                 Log.w(TAG, "streamed gcsv unavailable", e);
             }
         }
-        if (muxer instanceof StreamingMuxerSink) {
+        if (muxer instanceof StreamingMuxerSink || muxer instanceof StreamingMuxSink) {
             byte[] header = GyroflowProto.header(videoSource.getWidth(),
                     videoSource.getHeight(), 60f, 0L, 1000, "xYz");
-            ((StreamingMuxerSink) muxer).setHeader(header);
-            imu.addSink(((StreamingMuxerSink) muxer).imuSink());
+            if (muxer instanceof StreamingMuxSink) {
+                ((StreamingMuxSink) muxer).setGyrfHeader(header);
+            } else {
+                ((StreamingMuxerSink) muxer).setHeader(header);
+                imu.addSink(((StreamingMuxerSink) muxer).imuSink());
+            }
         }
         final String finalMp4Name = mp4Name;
         final JSONObject cameraInfo = new JSONObject();
@@ -754,8 +774,8 @@ public final class RecordService extends Service {
                                                 : (spanNs > 0 ? spanNs / 1000L : 0L);
                                         File out = new File(dir, finalMp4Name);
                                         File hevcInput = hevcRaw;
-                                        byte[] rawBytes = readAllBytes(hevcRaw);
-                                        byte[] csdBytes = UvcSource.extractCsd(rawBytes);
+                                        byte[] head = readHead(hevcRaw, 4 * 1024 * 1024);
+                                        byte[] csdBytes = UvcSource.extractCsd(head);
                                         if (csdBytes != null) {
                                             File prefixed = new File(dir,
                                                     "xreal_" + ts + "_csd.hevc");
@@ -763,7 +783,7 @@ public final class RecordService extends Service {
                                                     new FileOutputStream(prefixed);
                                             try {
                                                 fo.write(csdBytes);
-                                                fo.write(rawBytes);
+                                                copyFile(hevcRaw, fo);
                                             } finally {
                                                 fo.close();
                                             }

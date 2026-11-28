@@ -2,6 +2,7 @@ package com.syameimarukoa.xreal_recorder;
 
 import android.media.MediaFormat;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 
 /** Writes video/audio straight into the final MP4 via the JNI muxer. */
@@ -14,6 +15,11 @@ final class StreamingMuxSink implements RecordingMuxer {
     private int pendingWidth;
     private int pendingHeight;
     private byte[] pendingCsd;
+    private byte[] gyrfHeader;
+    private boolean gyrfHeaderWritten;
+    private byte[] pendingFrame;
+    private long pendingFramePts;
+    private boolean pendingFrameKey;
     private String error = "";
 
     StreamingMuxSink(File output) {
@@ -25,8 +31,13 @@ final class StreamingMuxSink implements RecordingMuxer {
         return output;
     }
 
+    void setGyrfHeader(byte[] header) {
+        this.gyrfHeader = header;
+        android.util.Log.i("XrealRec", "gyrf header set len=" + header.length);
+    }
+
     @Override
-    public void addVideoTrack(MediaFormat format) {
+    synchronized public void addVideoTrack(MediaFormat format) {
         byte[] csd = new byte[0];
         java.nio.ByteBuffer buf = format.getByteBuffer("csd-0");
         if (buf != null) {
@@ -39,11 +50,11 @@ final class StreamingMuxSink implements RecordingMuxer {
     }
 
     @Override
-    public void addAudioTrack(MediaFormat format) {
+    synchronized public void addAudioTrack(MediaFormat format) {
     }
 
     @Override
-    public void writeVideo(byte[] data, long ptsUs, boolean keyFrame) {
+    synchronized public void writeVideo(byte[] data, long ptsUs, boolean keyFrame) {
         if (!videoLogged) {
             android.util.Log.i("XrealRec", "writeVideo called handle=" + handle);
             videoLogged = true;
@@ -57,8 +68,15 @@ final class StreamingMuxSink implements RecordingMuxer {
             if (extracted != null) {
                 csd = extracted;
             }
-            android.util.Log.i("XrealRec", "deferred open csd="
-                    + (csd == null ? -1 : csd.length));
+            if (csd == null || csd.length == 0) {
+                // The UVC stream may not carry VPS/SPS/PPS yet. Hold the first
+                // access unit until a later one supplies the parameter sets.
+                pendingFrame = data;
+                pendingFramePts = ptsUs;
+                pendingFrameKey = keyFrame;
+                return;
+            }
+            android.util.Log.i("XrealRec", "deferred open csd=" + csd.length);
             String err = GyroflowInjector.openMuxError(output.getAbsolutePath(),
                     pendingWidth, pendingHeight, csd);
             if (err != null) {
@@ -70,15 +88,29 @@ final class StreamingMuxSink implements RecordingMuxer {
                 fail("openMux returned no handle");
                 return;
             }
+            if (pendingFrame != null) {
+                byte[] held = pendingFrame;
+                long heldPts = pendingFramePts;
+                boolean heldKey = pendingFrameKey;
+                pendingFrame = null;
+                writeVideo(held, heldPts, heldKey);
+            }
         }
-        String err = GyroflowInjector.writeVideo(handle, data, ptsUs, keyFrame);
+        byte[] payload = UvcSource.stripParameterSets(data);
+        String err = GyroflowInjector.writeVideo(handle, payload, ptsUs, keyFrame);
         if (err != null) {
+            StringBuilder head = new StringBuilder();
+            for (int i = 0; i < Math.min(32, data.length); i++) {
+                head.append(String.format("%02x", data[i] & 0xff));
+            }
+            android.util.Log.e("XrealRec", "writeVideo reject len=" + data.length
+                    + " key=" + keyFrame + " pts=" + ptsUs + " head=" + head);
             fail(err);
         }
     }
 
     @Override
-    public void writeAudio(byte[] data, long ptsUs) {
+    synchronized public void writeAudio(byte[] data, long ptsUs) {
         if (failed || handle == 0) {
             return;
         }
@@ -88,9 +120,35 @@ final class StreamingMuxSink implements RecordingMuxer {
     }
 
     @Override
-    public void writeGyrf(byte[] data, long ptsUs) {
+    synchronized public void writeGyrf(byte[] data, long ptsUs) {
         if (failed || handle == 0) {
+            android.util.Log.w("XrealRec", "gyrf dropped failed=" + failed
+                    + " handle=" + handle + " hdr=" + (gyrfHeader != null));
             return;
+        }
+        if (gyrfHeader != null && !gyrfHeaderWritten) {
+            android.util.Log.i("XrealRec", "gyrf header injected");
+            int insert = 0;
+            if (data.length > 1 && (data[0] & 0xff) == 0x0a) {
+                insert = 2 + (data[1] & 0xff);
+            }
+            if (insert + 1 < data.length && (data[insert] & 0xff) == 0x10) {
+                insert += 2;
+            }
+            ByteArrayOutputStream merged = new ByteArrayOutputStream(
+                    data.length + gyrfHeader.length + 8);
+            merged.write(data, 0, insert);
+            merged.write(0x1a);
+            int len = gyrfHeader.length;
+            while (len >= 0x80) {
+                merged.write((len & 0x7f) | 0x80);
+                len >>>= 7;
+            }
+            merged.write(len);
+            merged.write(gyrfHeader, 0, gyrfHeader.length);
+            merged.write(data, insert, data.length - insert);
+            data = merged.toByteArray();
+            gyrfHeaderWritten = true;
         }
         if (!GyroflowInjector.writeGyrf(handle, data, ptsUs)) {
             fail("writeGyrf failed");
@@ -102,7 +160,7 @@ final class StreamingMuxSink implements RecordingMuxer {
     }
 
     @Override
-    public void finish() {
+    synchronized public void finish() {
     }
 
     void close() {
