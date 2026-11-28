@@ -2636,3 +2636,11 @@
 - 最初の AU から `UvcSource.extractCsd()` で CSD を抽出して `setCsd()` で muxer に設定する修正を入れたが（commit `8f8f26d`）、依然 `writeVideo failed`。UVC の HEVC が Annex-B でない／CSD が取れていない可能性が残る。
 - 他3画質（720p30/1600p30/1600p60）とクラッシュ耐性は v2 で確認済み。UVC は v0.1.58 で 2048x1512+audio+gyrf を確認済みだが、現行 v2 では未達。
 - ブランチ `OptiPlex-3040-MFF_20261128` に RAW 後処理修正と UVC CSD 修正を保留中。main/v2 は変更していない。
+
+## ★UVC 完全修正の試行とブロック（2026-11-28 11:2x JST）
+- sc-52b で UVC 有効化（`/dev/video2/3` 出現）までは成功。
+- しかし `mux fail: writeVideo: Invalid argument` が出て MP4 が 8.9KB しか無い。CSD は最初の AU から 101 bytes 抽出でき `setCsd` も成功したが EINVAL は解消せず。
+- `write_header` 後に extradata を書き換えても効かんため、muxer オープンを最初の AU まで遅延する修正を入れた（commit `752cf02`、CI 成功 run `46097527545`）。
+- 再検証時には **グラスが物理切断**されとった: `IsDeviceConnected: false`、`uvc_bulk` なし、ping 100% loss、eth0 なし。→ オープン遅延修正の効果は未検証。
+- **ブロック**: UVC の完全検証にはグラスの再接続が必要。わっちの側からは復旧できん。
+- main / v2 は変更せず。ブランチ `OptiPlex-3040-MFF_20261128` に RAW 後処理＋UVC 修正を保留中。
