@@ -538,6 +538,18 @@ public final class RecordService extends Service {
         }
     }
 
+    private static byte[] readAllBytes(File file) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[16384];
+        try (FileInputStream in = new FileInputStream(file)) {
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+            }
+        }
+        return out.toByteArray();
+    }
+
     private void finishSession(Object retired) {
         if (!(retired instanceof Session)) {
             return;
@@ -739,8 +751,24 @@ public final class RecordService extends Service {
                                                 ? (long) imuSpanUs
                                                 : (spanNs > 0 ? spanNs / 1000L : 0L);
                                         File out = new File(dir, finalMp4Name);
+                                        File hevcInput = hevcRaw;
+                                        byte[] rawBytes = readAllBytes(hevcRaw);
+                                        byte[] csdBytes = UvcSource.extractCsd(rawBytes);
+                                        if (csdBytes != null) {
+                                            File prefixed = new File(dir,
+                                                    "xreal_" + ts + "_csd.hevc");
+                                            FileOutputStream fo =
+                                                    new FileOutputStream(prefixed);
+                                            try {
+                                                fo.write(csdBytes);
+                                                fo.write(rawBytes);
+                                            } finally {
+                                                fo.close();
+                                            }
+                                            hevcInput = prefixed;
+                                        }
                                         String err = Mp4TelemetryInjector.convertRawToMp4(
-                                                RecordService.this, hevcRaw, aacRaw,
+                                                RecordService.this, hevcInput, aacRaw,
                                                 videoSource.getWidth(),
                                                 videoSource.getHeight(),
                                                 videoSource.getFrameRate(),
