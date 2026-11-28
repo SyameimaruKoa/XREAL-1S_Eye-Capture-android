@@ -625,11 +625,10 @@ public final class RecordService extends Service {
             gyroFile = new File(dir, "xreal_" + ts + ".gcsv");
         }
         long captureTimeMs = System.currentTimeMillis();
-        RecordingOutput output = null;
+        RecordingOutput output = RecordingOutput.create(this, outputTree, captureTimeMs);
         RecordingMuxer muxer = null;
         String mp4Name;
         if (!rawMode) {
-            output = RecordingOutput.create(this, outputTree, captureTimeMs);
             mp4Name = output.getFilename();
             // Raw HEVC/AAC are staged; FFmpeg writes the final fragmented MP4
             // with gyrf at stop time. media3's muxer is no longer needed.
@@ -798,6 +797,9 @@ public final class RecordService extends Service {
                                                 finalImu.getFirstTimestampNs() / 1000L,
                                                 out);
                                         Log.i(TAG, "raw convert result=" + err);
+                                        if (err == null && finalOutput != null) {
+                                            finalOutput.complete();
+                                        }
                                     } catch (Throwable t) {
                                         Log.e(TAG, "raw conversion failed", t);
                                     }

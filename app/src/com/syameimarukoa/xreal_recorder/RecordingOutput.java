@@ -55,10 +55,27 @@ final class RecordingOutput {
         if (!dir.exists() && !dir.mkdirs()) {
             throw new IOException("Could not create output directory");
         }
-        String filename = "VID_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
-                .format(new Date(captureTimeMs)) + ".mp4";
-        return new RecordingOutput(context, context.getContentResolver(), null,
-                false, filename, tree, new File(dir, filename));
+        String filename = nextFilename(context.getContentResolver(), tree, "mp4", captureTimeMs);
+        ContentResolver resolver = context.getContentResolver();
+        Uri uri;
+        if (tree != null) {
+            Uri parent = DocumentsContract.buildDocumentUriUsingTree(tree,
+                    DocumentsContract.getTreeDocumentId(tree));
+            uri = DocumentsContract.createDocument(resolver, parent, "video/mp4", filename);
+        } else {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH,
+                    Environment.DIRECTORY_DCIM + "/100XREAL");
+            values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+            uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
+        }
+        if (uri == null) {
+            throw new IOException("Could not create a recording in the selected location");
+        }
+        return new RecordingOutput(context, resolver, uri, tree == null,
+                filename, tree, new File(dir, filename));
     }
 
     private static String nextFilename(ContentResolver resolver, Uri tree,
@@ -145,6 +162,29 @@ final class RecordingOutput {
             return;
         }
         completed = true;
+        if (uri == null || !outputFile.exists()) {
+            return;
+        }
+        // The recording was written to the app-owned file for crash safety.
+        // Publish it to the user-visible location only once it is complete.
+        try (InputStream in = new FileInputStream(outputFile);
+             OutputStream out = resolver.openOutputStream(uri, "w")) {
+            if (out == null) {
+                throw new IOException("Could not open the recording for publishing");
+            }
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+            }
+        }
+        if (pendingMedia) {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            if (resolver.update(uri, values, null, null) != 1) {
+                throw new IOException("Could not publish the recording");
+            }
+        }
     }
 
     Uri getUri() {
