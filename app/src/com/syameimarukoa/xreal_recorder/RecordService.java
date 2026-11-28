@@ -401,6 +401,21 @@ public final class RecordService extends Service {
                         return; // no active session
                     }
                     Session session = (Session) state.session;
+                    if (!session.csdSent[0]) {
+                        session.csdSent[0] = true;
+                        MediaFormat fmt = MediaFormat.createVideoFormat(
+                                MediaFormat.MIMETYPE_VIDEO_HEVC,
+                                finalVideo.getWidth(), finalVideo.getHeight());
+                        byte[] auCsd = UvcSource.extractCsd(annexB);
+                        if (auCsd != null) {
+                            fmt.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(auCsd));
+                        }
+                        fmt.setInteger(MediaFormat.KEY_FRAME_RATE,
+                                finalVideo.getFrameRate());
+                        if (session.muxer != null) {
+                            session.muxer.addVideoTrack(fmt);
+                        }
+                    }
                     VideoWriter currentWriter = session.writer;
                     SessionStats stats = session.stats;
                     try {
