@@ -2812,3 +2812,17 @@
 - ログで判明: `setGyrfHeader len=100` は呼ばれるが、最初の gyrf（header 入り）が `handle=0` で mux 未 open のため破棄され、2 回目以降に header を付けていた。さらに field 3 を field 4 の後ろに追加しており、gyro2bb が読めなかった。
 - 修正（commit `dc3fd84`）: protobuf の field 1/2 の後・field 4 の前に field 3（header）を挿入する。
 - CI 成功、実機 1600p60 / fMP4 で録画・停止。pull と gyro2bb 検証は実行中。
+
+## ★全画質 × fMP4 / 標準MP4 の最終取りまとめ（2026-11-28 22:4x JST）
+- 標準MP4（RAW 後処理、commit `3b19c4e` の OOM 修正版）で全4画質を実機検証済み:
+  - 720p30: 413,441,390B / 191.5s / XREAL 1S / 190,179 行
+  - 1600p30: 231,991,808B / 108.5s / XREAL 1S / 108,327 行
+  - 1600p60: 938,751,629B / 221.0s / XREAL 1S / 219,319 行
+  - UVC HEVC: 39,052,497B / 129.0s / XREAL 1S / 128,630 行
+- fMP4 は全4画質で hevc/aac/bin_data の3トラック生成と decode を確認:
+  - 720p30 / 1600p30: v2 構成で確認
+  - 1600p60: Scudo 修正（commit `39ae103`）後に 411MB / 96.5s / 3トラック / decode exit 0
+  - UVC HEVC: CSD 待ち＋パラメータセット除去（commit `e536d35`）で `writeVideo: Invalid argument` 解消、786KB / 3トラック
+- 現行 APK（commit `dc3fd84`）で 1600p60 / fMP4 を再検証: gyrf 先頭に header（field 3, XREAL 1S）が入ったことを確認。ただし MP4 が 2.3GB に達し、gyro2bb の `Input::from_stream` が head/tail 15MB だけを読むため "Unsupported file format" となる（既知の大容量 fMP4 の制約）。
+- 現行 APK で全8通りを短時間で回す試みは、停止ボタンが全画面 REC オーバーレイに切り替わり押せんかったため完遂できなかった。標準MP4 の各画質は直前の APK で検証済みで、現行差分は gyrf header 挿入のみ。
+- ★v2.1 は公開済み。修正群は作業ブランチに保留中。
