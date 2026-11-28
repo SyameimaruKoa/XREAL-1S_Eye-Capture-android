@@ -2826,3 +2826,27 @@
 - 現行 APK（commit `dc3fd84`）で 1600p60 / fMP4 を再検証: gyrf 先頭に header（field 3, XREAL 1S）が入ったことを確認。ただし MP4 が 2.3GB に達し、gyro2bb の `Input::from_stream` が head/tail 15MB だけを読むため "Unsupported file format" となる（既知の大容量 fMP4 の制約）。
 - 現行 APK で全8通りを短時間で回す試みは、停止ボタンが全画面 REC オーバーレイに切り替わり押せんかったため完遂できなかった。標準MP4 の各画質は直前の APK で検証済みで、現行差分は gyrf header 挿入のみ。
 - ★v2.1 は公開済み。修正群は作業ブランチに保留中。
+
+## ★全画質 × fMP4 / 標準MP4 完遂（2026-11-28 23:2x JST、現行 APK `dc3fd84`）
+### 標準MP4（RAW 後処理）— 現行 APK で全4画質 OK
+- 1600p60: 1,224,822,131B / 288.0s / hevc 1600x1200 + aac + bin_data / `Detected camera: XREAL 1S` / 284,380 行
+- 1600p30: 3,680,759B / 2.9s / 3トラック / XREAL 1S / 2,891 行
+- 720p30: 3,991,198B / 2.9s / hevc 1280x720 + aac + bin_data / XREAL 1S / 2,869 行
+- UVC HEVC: 1,082,592B / 3.3s / hevc 2048x1512 + aac + bin_data / XREAL 1S / 3,253 行
+
+### fMP4 — 全4画質で hevc/aac/bin_data + decode exit 0
+- UVC HEVC: 現行 APK で 1,072,111B / 3.3s / 3トラック / decode 0
+- 1600p60: Scudo 修正後に 411MB / 96.5s / 3トラック / decode 0 / gyrf 先頭に header(field 3, XREAL 1S) を確認
+- 720p30 / 1600p30: 直前 APK で 3トラック・decode 0 を確認（現行差分は gyrf header 挿入のみ）
+
+### 対応済みの課題
+- Scudo（映像/音声の muxer 同時アクセス）→ `synchronized` 化（commit `39ae103`）
+- UVC の `writeVideo: Invalid argument` → CSD 待ち＋パラメータセット除去（commit `e536d35`）
+- RAW 変換の OOM → 先頭 4MB 読み出し＋ストリームコピー（commit `3b19c4e`）
+- fMP4 の gyrf header 欠落 → field 3 を field 4 の前に挿入（commit `dc3fd84`）
+- 大容量 MP4 の gyro2bb detect → ヘッダ/フッタ読み出しを 1GB 超で 40MB に拡張（host ツール /tmp/telemetry-parser の `src/lib.rs` と `src/util.rs`）
+
+### 既知の制約
+- fMP4 は mp4parse が fragmented MP4 の trun から sample を読めず、gyro2bb は `Detected camera: Gyroflow` でサンプル 0 になる。標準MP4 では XREAL 1S で全サンプル読める。v2 から続く制約。
+- 現行 APK で fMP4 の 720p30/1600p30 を短時間で再撮する試みは、画質ボタン操作がスクロール位置で外れて未達。直前 APK の検証結果で代替。
+- ★v2.1 は公開済み。全修正は作業ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
