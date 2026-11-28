@@ -2716,3 +2716,12 @@
   - gyro2bb: `Detected camera: XREAL 1S`、CSV 10,319 行（IMU サンプル入り）
 - 他3画質（720p30 / 1600p30 / 1600p60）とクラッシュ耐性は v2 で検証済み。今回の変更は RAW 後処理経路と `mux_raw_files()` のみで fMP4 経路（StreamingMux）は無変更。
 - ★v2.1 を正式公開する。
+
+## ★v2.1 後の全画質テストで OOM を発見・修正（2026-11-28 14:4x〜）
+- ユーザー指示で broadcast ではなく UI ボタン操作による検証に切り替えた。
+- 720p30 / RAW モードで 84 秒録画したところ HEVC が 197MB になり、CSD 挿入処理の `readAllBytes()` が `OutOfMemoryError`（268MB 確保要求 / growth limit 256MB）で RAW 変換が失敗。
+- 修正（commit `3b19c4e`）: HEVC は先頭 4MB だけ読んで CSD を抽出し、残りは `FileInputStream` → `FileOutputStream` のストリームコピーで `_csd.hevc` を作成。メモリ使用を 4MB 以下に抑制。
+- CI 成功。実機で UI 操作の-matrix テストを実施中。
+- 途中結果: 720p30 / 通常MP4（RAW後処理）は 53,190,453 bytes / 26.9s / hevc+aac+bin_data / decode 0 / `Detected camera: XREAL 1S` / IMU 26,901 行で OK。
+- UI テストの障害: Google のセキュリティ通知ダイアログ、USB 権限ダイアログ、画面自動ロック、`live_mode_uncertain=true` による開始ボタン無効化。テストスクリプト側で対処済み。
+- ★main/v2.1 は公開済みのまま。この OOM 修正は作業ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
