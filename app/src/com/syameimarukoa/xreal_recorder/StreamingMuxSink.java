@@ -10,6 +10,7 @@ final class StreamingMuxSink implements RecordingMuxer {
     private long handle;
     private boolean failed;
     private boolean closed;
+    private boolean csdApplied;
     private String error = "";
 
     StreamingMuxSink(File output) {
@@ -52,6 +53,12 @@ final class StreamingMuxSink implements RecordingMuxer {
     public void writeVideo(byte[] data, long ptsUs, boolean keyFrame) {
         if (failed || handle == 0) {
             return;
+        }
+        if (!csdApplied) {
+            byte[] csd = UvcSource.extractCsd(data);
+            if (csd != null && GyroflowInjector.setCsd(handle, csd)) {
+                csdApplied = true;
+            }
         }
         if (!GyroflowInjector.writeVideo(handle, data, ptsUs, keyFrame)) {
             fail("writeVideo failed");

@@ -13,6 +13,8 @@ final class GyroflowInjector {
     /** Open on a duplicated fd of the final SAF uri; one continuous write. */
     static native long openMuxFd(int fd, String hevc, String aac);
 
+    static native boolean setCsd(long handle, byte[] csd);
+
     static native boolean writeVideo(long handle, byte[] data, long ptsUs, boolean keyFrame);
 
     static native boolean writeAudio(long handle, byte[] data, long ptsUs);
