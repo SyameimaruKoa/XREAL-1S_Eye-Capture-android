@@ -2667,3 +2667,9 @@
 - v0.1.58 の `muxRaw` が動いたのは demuxer 経由で codecpar を補完していたためと推測されるが、streaming mux では demuxer が無いため SPS 署名が無いと mux できない。
 - ★残る修正: UVC の 2048x1512 用 SPS/PPS をどこから取得するか（HID getconfig／カメラ側 CSD／正当な生成）。捏造した SPS は禁止（過去の LensData 捏造の前例あり）。
 - ブランチ `OptiPlex-3040-MFF_20261128` に保留中。v2.1 は未公開。
+
+## ★UVC descriptor 解析の試行（2026-11-28 12:3x JST）
+- ユーザー指摘「UVCなんだからUVCの方に書いてあるんじゃないの？」→ UVC VS descriptor / GET_CUR に CSD が無いか確認を試みた。
+- sysfs (`/sys/bus/usb/devices/1-1:1.{9,10}/descriptors`) は空、`dumpsys usb` には interface class/subclass/protocol と endpoint のみで codec-specific descriptor は出ていない。
+- Android の UsbDevice API は raw descriptor を読めんため、`GET_CUR` の hex dump を追加（commit `d601dfe`）して解析しようとしたが、グラスが頻繁に再接続し UVC が無効化 (`UVC bulk IN interface not found`、`/dev/video2/3` 消失) され取得できなかった。
+- ★UVC の SPS/PPS 取得先は依然未解決。v2.1 は未公開、main/v2 は無変更。
