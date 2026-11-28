@@ -2751,3 +2751,16 @@
 - fMP4 は 720p30/1600p30 で 3 トラック生成を確認。gyrf が 0 行なのは 3〜5 秒の短いクリップでサンプルが入らなかったため。
 - fMP4 の 1600p60 は端末側の画面遷移による失敗、UVC は CSD タイミングの失敗で再現性あり。
 - ★v2.1 は公開済み。OOM 修正とこの記録は作業ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
+
+## ★fMP4 の UVC 修正と最終マトリクス（2026-11-28 18:0x〜18:2x JST）
+- UVC fMP4 の真因: CSD が無いのに `csdSent=true` にして空の `csd-0` を渡し、さらに 3 番目の AU に VPS/SPS/PPS と IDR が同居したまま extradata と二重で渡されて `writeVideo: Invalid argument` になっていた。
+- 修正（commit `065d4de`, `395a878`, `e536d35`, `b1441c4`）:
+  - CSD が無い AU では `csdSent` を立てず `addVideoTrack` を呼ばない。
+  - `StreamingMuxSink` は CSD 到着まで最初の AU を保持し、CSD 取得後に extradata と AU を書く。
+  - AU から VPS/SPS/PPS（type 32/33/34）を除去してから `writeVideo` に渡す。
+- 実機 UVC HEVC / fMP4 で `deferred open csd=101` の後 `mux fail` が消え、MP4 786,464 bytes を生成。ffprobe: hevc 2048x1512 / aac / bin_data、duration 3.35s。ffmpeg decode exit 0。gyro2bb `Detected camera: Gyroflow`（短いクリップでサンプル 0）。
+- 1600p60 / fMP4 は `deferred open csd=102` まで成功したが、端末が勝手にアプリをバックグラウンドへ落としてゲーム画面が前面に出たため、停止操作に到達できず 32 bytes のまま。ユーザー確認により操作はされていない。アプリ側の不具合ではないため未検証扱い。
+- 最終マトリクス:
+  - 通常MP4（RAW 後処理）: 720p30 / 1600p30 / 1600p60 / UVC HEVC の4画質すべてで hevc+aac+bin_data と gyro2bb `XREAL 1S` を確認。
+  - fMP4: 720p30 / 1600p30 / UVC HEVC で 3 トラック生成と decode を確認。1600p60 のみ端末側のアプリ脱落で未検証。
+- ★v2.1 は公開済み。上記 fMP4 修正と OOM 修正は作業ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
