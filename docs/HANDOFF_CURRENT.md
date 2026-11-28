@@ -2771,3 +2771,9 @@
 - v2 の so を作業ブランチに戻して CI 成功（commit `cb9b5a5`）。ただしグラス再起動で USB 権限が消え、1600p60 の再検証に到達できなかった。
 - 端末が何度も offline / 再起動し、USB 権限ダイアログの OK 位置（798,2140）を外して付与に失敗した経緯あり。
 - ★v2.1 は公開済み。so 差し替えと調査は作業ブランチに保留中。
+
+## ★端末 sc-52b が長時間 offline（2026-11-28 18:4x〜18:5x JST）
+- 18:43 頃から sc-52b（100.121.62.116）が offline。18:53 時点で last seen 13分、ping 不通、adb connect タイムアウト。
+- 直前の screencap でバッテリー 76%、グラス温度 56℃。高温シャットダウンまたは再起動ループの可能性。
+- CI run `46132317596` は成功。再ビルド so（bindgen にだけ versioned target を渡し、ffmpeg configure は unversioned に復元）を commit `9c36969` で保留中。
+- 1600p60 / fMP4 の Scudo クラッシュは v2 so で再現しなかったが、USB 権限喪失と端末 offline で最終確認に到達できていない。
