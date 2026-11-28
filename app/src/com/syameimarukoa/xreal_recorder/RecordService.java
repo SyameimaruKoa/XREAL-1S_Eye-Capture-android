@@ -719,11 +719,38 @@ public final class RecordService extends Service {
                                 cameraInfo.put("aac_encoded_bytes", capturedAudio.getEncodedBytes());
                                 cameraInfo.put("aac_encoded_samples", capturedAudio.getEncodedSamples());
                             }
-                            Log.i(TAG, "inject gate output=" + (finalOutput != null)
-                                    + " imu=" + (finalImu != null)
-                                    + " samples=" + (finalImu != null
-                                            ? finalImu.getSampleCount() : -1)
-                                    + " raw=" + rawMode + "/" + rawOnly);
+                            if (rawMode && !rawOnly && finalImu != null
+                                    && finalImu.getSampleCount() > 0) {
+                                SessionRegistry.State rawState = sessions.current();
+                                Session rawSession = rawState.active
+                                        && rawState.session instanceof Session
+                                        ? (Session) rawState.session : null;
+                                if (rawSession != null && rawSession.hevcFile != null) {
+                                    try {
+                                        List<GyroflowProto.ImuSample> imuSamples =
+                                                finalImu.getSamples();
+                                        double imuSpanUs = imuSamples.size() > 1
+                                                ? imuSamples.get(imuSamples.size() - 1).timeUs
+                                                - imuSamples.get(0).timeUs : 0.0;
+                                        long durationUs = imuSpanUs > 0
+                                                ? (long) imuSpanUs
+                                                : (spanNs > 0 ? spanNs / 1000L : 0L);
+                                        File out = new File(dir, finalMp4Name);
+                                        File aacRaw = new File(dir, "xreal_" + ts + ".aac");
+                                        String err = Mp4TelemetryInjector.convertRawToMp4(
+                                                RecordService.this, rawSession.hevcFile, aacRaw,
+                                                videoSource.getWidth(),
+                                                videoSource.getHeight(),
+                                                videoSource.getFrameRate(),
+                                                durationUs, 1000, "xYz", imuSamples,
+                                                finalImu.getFirstTimestampNs() / 1000L,
+                                                out);
+                                        Log.i(TAG, "raw convert result=" + err);
+                                    } catch (Throwable t) {
+                                        Log.e(TAG, "raw conversion failed", t);
+                                    }
+                                }
+                            }
                             if (finalOutput != null) {
                                 if (finalImu != null) {
                                     cameraInfo.put("imu", new JSONObject(finalImu.getSummary()));
@@ -775,41 +802,6 @@ public final class RecordService extends Service {
                                                     + " samples=" + imuSamples.size());
                                         } catch (Throwable t) {
                                             Log.e(TAG, "telemetry injection failed", t);
-                                        }
-                                    } else if (rawMode && !rawOnly) {
-                                        SessionRegistry.State rawState = sessions.current();
-                                        Session rawSession = rawState.active
-                                                && rawState.session instanceof Session
-                                                ? (Session) rawState.session : null;
-                                        android.util.Log.i(TAG, "raw branch state active="
-                                                + rawState.active + " session="
-                                                + (rawSession != null) + " hevc="
-                                                + (rawSession != null && rawSession.hevcFile != null));
-                                        if (rawSession != null && rawSession.hevcFile != null) {
-                                            try {
-                                                List<GyroflowProto.ImuSample> imuSamples =
-                                                        finalImu.getSamples();
-                                                double imuSpanUs = imuSamples.size() > 1
-                                                        ? imuSamples.get(imuSamples.size() - 1).timeUs
-                                                        - imuSamples.get(0).timeUs : 0.0;
-                                                long durationUs = imuSpanUs > 0
-                                                        ? (long) imuSpanUs
-                                                        : (spanNs > 0 ? spanNs / 1000L : 0L);
-                                                File out = new File(dir, finalMp4Name);
-                                                File aacRaw = new File(dir,
-                                                        "xreal_" + ts + ".aac");
-                                                String err = Mp4TelemetryInjector.convertRawToMp4(
-                                                        RecordService.this, rawSession.hevcFile, aacRaw,
-                                                        videoSource.getWidth(),
-                                                        videoSource.getHeight(),
-                                                        videoSource.getFrameRate(),
-                                                        durationUs, 1000, "xYz", imuSamples,
-                                                        finalImu.getFirstTimestampNs() / 1000L,
-                                                        out);
-                                                Log.i(TAG, "raw convert result=" + err);
-                                            } catch (Throwable t) {
-                                                Log.e(TAG, "raw conversion failed", t);
-                                            }
                                         }
                                     }
                                     // Always write the gcsv sidecar. For fMP4 this is
