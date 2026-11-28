@@ -88,7 +88,8 @@ final class StreamingMuxSink implements RecordingMuxer {
                 writeVideo(held, heldPts, heldKey);
             }
         }
-        String err = GyroflowInjector.writeVideo(handle, data, ptsUs, keyFrame);
+        byte[] payload = UvcSource.stripParameterSets(data);
+        String err = GyroflowInjector.writeVideo(handle, payload, ptsUs, keyFrame);
         if (err != null) {
             StringBuilder head = new StringBuilder();
             for (int i = 0; i < Math.min(32, data.length); i++) {

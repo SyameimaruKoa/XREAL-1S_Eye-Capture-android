@@ -439,6 +439,24 @@ public final class UvcSource implements VideoSource {
         return s.toString();
     }
 
+    static byte[] stripParameterSets(byte[] au) {
+        List<Nal> nals = splitNals(au);
+        if (nals.isEmpty()) {
+            return au;
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream(au.length);
+        boolean removed = false;
+        for (Nal nal : nals) {
+            if (nal.type == 32 || nal.type == 33 || nal.type == 34) {
+                removed = true;
+                continue;
+            }
+            out.write(new byte[]{0, 0, 0, 1});
+            out.write(au, nal.start, nal.end - nal.start);
+        }
+        return removed ? out.toByteArray() : au;
+    }
+
     static byte[] extractCsd(byte[] au) {
         List<Nal> nals = splitNals(au);
         byte[] vps = null;
