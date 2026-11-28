@@ -724,14 +724,11 @@ public final class RecordService extends Service {
                                             ? finalImu.getSampleCount() : -1));
                             if (rawMode && !rawOnly && finalImu != null
                                     && finalImu.getSampleCount() > 0) {
-                                SessionRegistry.State rawState = sessions.current();
-                                Session rawSession = rawState.active
-                                        && rawState.session instanceof Session
-                                        ? (Session) rawState.session : null;
-                                Log.i(TAG, "raw branch active=" + rawState.active
-                                        + " session=" + (rawSession != null) + " hevc="
-                                        + (rawSession != null && rawSession.hevcFile != null));
-                                if (rawSession != null && rawSession.hevcFile != null) {
+                                File hevcRaw = new File(dir, "xreal_" + ts + ".hevc");
+                                File aacRaw = new File(dir, "xreal_" + ts + ".aac");
+                                Log.i(TAG, "raw branch hevc=" + hevcRaw.exists()
+                                        + " aac=" + aacRaw.exists());
+                                if (hevcRaw.exists()) {
                                     try {
                                         List<GyroflowProto.ImuSample> imuSamples =
                                                 finalImu.getSamples();
@@ -742,9 +739,8 @@ public final class RecordService extends Service {
                                                 ? (long) imuSpanUs
                                                 : (spanNs > 0 ? spanNs / 1000L : 0L);
                                         File out = new File(dir, finalMp4Name);
-                                        File aacRaw = new File(dir, "xreal_" + ts + ".aac");
                                         String err = Mp4TelemetryInjector.convertRawToMp4(
-                                                RecordService.this, rawSession.hevcFile, aacRaw,
+                                                RecordService.this, hevcRaw, aacRaw,
                                                 videoSource.getWidth(),
                                                 videoSource.getHeight(),
                                                 videoSource.getFrameRate(),
