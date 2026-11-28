@@ -2696,3 +2696,12 @@
 - つまり「不安定」の正体はわっちのロック操作だった。作業中はロックしなければ UVC は安定する（13:02 に `準備完了: UVC IF10` を確認）。
 - ただし RAW モードで録画はできた（hevc 2.74MB / aac 179KB / gcsv 655KB）が、停止時に `raw branch` / `raw convert` ログが出ず MP4 が生成されなかった。`ACTION_STOP` は Enqueued され AAC/AVC encoder は STOPPING になったが `finish:` に到達していない。
 - ★v2.1 は未公開。main/v2 は無変更（最終目標は達成済み）。ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
+
+## ★UVC RAW→MP4 の真因確定（2026-11-28 13:5x〜14:0x JST）
+- UVC HEVC には正当な VPS/SPS/PPS がストリーム内に 18 組存在（NAL 列 `[1,1,32,33,34,19,...]`）。先頭 AU には無い。
+- 変換前に `UvcSource.extractCsd()` で取得した CSD を HEVC ファイル先頭へ挿入 → `ffprobe` は `hevc / Main / 2048x1512 / level 153` を認識（commit `23dd565`）。
+- AAC sidecar は 4 バイト長プレフィックス形式（0x00000155 + 341 bytes 等、495 フレーム）。`Mp4TelemetryInjector.toAdts()` で ADTS 変換 → `ffprobe` は `aac / 48000 Hz / mono` を認識（commit `0629b4d`）。
+- それでも `mux: Operation not permitted`。host ffmpeg 8.0.1 で同じデータの mux を再現したところ、`Malformed AAC bitstream detected: use the audio bitstream filter 'aac_adtstoasc'` が原因と確定。`-bsf:a aac_adtstoasc` を付けると `/tmp/opencode/host_direct_asc.mp4`（2,557,163 bytes）が成功。
+- ★必要な修正: Rust `mux_raw_files()` の AAC stream-copy に `aac_adtstoasc` 相当の bitstream filter を適用する。
+- Native `.so` 再ビルドを試行したが、前述の target 削除で ffmpeg 静的ライブラリを失い、bindgen の unversioned triple 問題（NDK 30 が `aarch64-linux-android30` を要求）も重なって未完了。cargo registry の build.rs への一時 hook は効かなかった（元に戻済み）。
+- ★v2.1 は未公開。main/v2 は無変更（最終目標＝クラッシュ耐性・3画質は達成済み）。ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
