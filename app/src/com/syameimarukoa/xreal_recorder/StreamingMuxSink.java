@@ -14,6 +14,9 @@ final class StreamingMuxSink implements RecordingMuxer {
     private int pendingWidth;
     private int pendingHeight;
     private byte[] pendingCsd;
+    private byte[] pendingFrame;
+    private long pendingFramePts;
+    private boolean pendingFrameKey;
     private String error = "";
 
     StreamingMuxSink(File output) {
@@ -57,8 +60,15 @@ final class StreamingMuxSink implements RecordingMuxer {
             if (extracted != null) {
                 csd = extracted;
             }
-            android.util.Log.i("XrealRec", "deferred open csd="
-                    + (csd == null ? -1 : csd.length));
+            if (csd == null || csd.length == 0) {
+                // The UVC stream may not carry VPS/SPS/PPS yet. Hold the first
+                // access unit until a later one supplies the parameter sets.
+                pendingFrame = data;
+                pendingFramePts = ptsUs;
+                pendingFrameKey = keyFrame;
+                return;
+            }
+            android.util.Log.i("XrealRec", "deferred open csd=" + csd.length);
             String err = GyroflowInjector.openMuxError(output.getAbsolutePath(),
                     pendingWidth, pendingHeight, csd);
             if (err != null) {
@@ -69,6 +79,13 @@ final class StreamingMuxSink implements RecordingMuxer {
             if (handle == 0) {
                 fail("openMux returned no handle");
                 return;
+            }
+            if (pendingFrame != null) {
+                byte[] held = pendingFrame;
+                long heldPts = pendingFramePts;
+                boolean heldKey = pendingFrameKey;
+                pendingFrame = null;
+                writeVideo(held, heldPts, heldKey);
             }
         }
         String err = GyroflowInjector.writeVideo(handle, data, ptsUs, keyFrame);
