@@ -2651,3 +2651,10 @@
 - `writeVideo called` ログを追加（commit `0313cff`）。CI 成功。
 - 再検証ではグラスが頻繁に切断され `UVC SET_CUR PROBE failed` / ping 100% loss が発生。ルート復旧 (`ip route add 169.254.2.0/24 dev eth0 table 52`) を試行中。
 - ★修正はブランチ `OptiPlex-3040-MFF_20261128` に保留中。main/v2 は無変更で最終目標（クラッシュ耐性）は達成済み。
+
+## ★UVC 完全検証はブロック中 → v2.1 は未公開（2026-11-28 11:5x JST）
+- ユーザー指示「全検証が正常に完了したら v2.1 として公開して」。
+- 実機 sc-52b でグラスが再び物理切断: `IsDeviceConnected: false`、ping `169.254.2.1` 100% loss、`eth0` は UP だが応答なし。
+- ルート自体は `169.254.2.1 dev eth0 table 52` で正しい。`ip route del` は `No such process`、`ip route add` は `File exists` で既存。
+- UVC の修正（CSD 遅延オープン・initial AU からの addVideoTrack・early return 修正）はブランチ `OptiPlex-3040-MFF_20261128` に保留中、CI は全て成功。実機検証ができていないため **main/v2.1 にはマージしていない**。
+- ★グラスを再接続してもらうまで待つ。わっちの側からは復旧不可。
