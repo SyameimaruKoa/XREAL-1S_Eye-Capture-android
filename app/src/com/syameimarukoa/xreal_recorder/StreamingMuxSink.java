@@ -10,6 +10,7 @@ final class StreamingMuxSink implements RecordingMuxer {
     private long handle;
     private boolean failed;
     private boolean closed;
+    private boolean videoLogged;
     private int pendingWidth;
     private int pendingHeight;
     private byte[] pendingCsd;
@@ -43,6 +44,10 @@ final class StreamingMuxSink implements RecordingMuxer {
 
     @Override
     public void writeVideo(byte[] data, long ptsUs, boolean keyFrame) {
+        if (!videoLogged) {
+            android.util.Log.i("XrealRec", "writeVideo called handle=" + handle);
+            videoLogged = true;
+        }
         if (failed) {
             return;
         }
