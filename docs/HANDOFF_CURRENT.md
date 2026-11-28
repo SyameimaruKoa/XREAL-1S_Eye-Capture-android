@@ -2850,3 +2850,10 @@
 - fMP4 は mp4parse が fragmented MP4 の trun から sample を読めず、gyro2bb は `Detected camera: Gyroflow` でサンプル 0 になる。標準MP4 では XREAL 1S で全サンプル読める。v2 から続く制約。
 - 現行 APK で fMP4 の 720p30/1600p30 を短時間で再撮する試みは、画質ボタン操作がスクロール位置で外れて未達。直前 APK の検証結果で代替。
 - ★v2.1 は公開済み。全修正は作業ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
+
+## ★v2.2 正式公開（2026-11-28 23:3x JST）
+- 作業ブランチ `OptiPlex-3040-MFF_20261128`（commit `dd5167c`）を main にマージ（merge commit `1e09ebd`）。
+- CI run `46155191205` 成功（headSha `1e09ebd`）。
+- tag `v2.2` を作成し、Release を公開: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v2.2
+- 公開 APK `xreal-recorder.apk` の sha256: `e4bc310d2d937d5cf74c477762ddef77cc2b4587a3550902f2e746ab552ed925`。ビルド成果物と Release アセットの sha256 が一致することを確認済み。
+- 収録修正: Scudo（muxer 同時アクセス）同期化、UVC fMP4 の CSD 待ち＋パラメータセット除去、RAW 変換の OOM、fMP4 gyrf header 挿入。
