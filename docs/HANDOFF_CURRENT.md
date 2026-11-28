@@ -2725,3 +2725,10 @@
 - 途中結果: 720p30 / 通常MP4（RAW後処理）は 53,190,453 bytes / 26.9s / hevc+aac+bin_data / decode 0 / `Detected camera: XREAL 1S` / IMU 26,901 行で OK。
 - UI テストの障害: Google のセキュリティ通知ダイアログ、USB 権限ダイアログ、画面自動ロック、`live_mode_uncertain=true` による開始ボタン無効化。テストスクリプト側で対処済み。
 - ★main/v2.1 は公開済みのまま。この OOM 修正は作業ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
+
+## ★全画質マトリクス UI 検証の途中結果（2026-11-28 16:3x〜16:4x JST）
+- ユーザー指示で broadcast を廃し、adb の画面タップで 1 操作ずつ UI を操作して検証中。
+- **UVC HEVC / fMP4 は失敗**: `deferred open csd=0` → `mux fail: writeVideo: Invalid argument`。UVC の streaming mux は v2 から未修正（RAW 後処理のみ v2.1 で修正済み）。
+- **720p30 / fMP4**: MP4 1,835,040 bytes、hevc 1280x720 / aac / bin_data の3トラック、duration 3.026s。gyrf は 3 秒クリップでサンプル 0（`Detected camera: Gyroflow`）。
+- **720p30 / 通常MP4（RAW後処理）**: 3分間録画、`raw convert result=null`、MP4 413,441,390 bytes を生成。OOM 修正（commit `3b19c4e`）で 402MB の HEVC をストリームコピーできた。pull・ffprobe・gyro2bb 検証は実行中。
+- UI 操作の障害: 全画面 REC オーバーレイ（`タップで戻る`）が uiautomator の idle を_BLOCK_ する。スクリーンショットで状態を確認して「タップで戻る」→「録画停止」を押すことで対処。
