@@ -60,8 +60,9 @@ final class StreamingMuxSink implements RecordingMuxer {
                 csdApplied = true;
             }
         }
-        if (!GyroflowInjector.writeVideo(handle, data, ptsUs, keyFrame)) {
-            fail("writeVideo failed");
+        String err = GyroflowInjector.writeVideo(handle, data, ptsUs, keyFrame);
+        if (err != null) {
+            fail(err);
         }
     }
 

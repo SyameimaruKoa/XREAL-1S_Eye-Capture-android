@@ -15,7 +15,7 @@ final class GyroflowInjector {
 
     static native boolean setCsd(long handle, byte[] csd);
 
-    static native boolean writeVideo(long handle, byte[] data, long ptsUs, boolean keyFrame);
+    static native String writeVideo(long handle, byte[] data, long ptsUs, boolean keyFrame);
 
     static native boolean writeAudio(long handle, byte[] data, long ptsUs);
 
