@@ -10,7 +10,9 @@ final class StreamingMuxSink implements RecordingMuxer {
     private long handle;
     private boolean failed;
     private boolean closed;
-    private boolean csdApplied;
+    private int pendingWidth;
+    private int pendingHeight;
+    private byte[] pendingCsd;
     private String error = "";
 
     StreamingMuxSink(File output) {
@@ -30,19 +32,9 @@ final class StreamingMuxSink implements RecordingMuxer {
             csd = new byte[buf.remaining()];
             buf.duplicate().get(csd);
         }
-        int width = format.getInteger(MediaFormat.KEY_WIDTH);
-        int height = format.getInteger(MediaFormat.KEY_HEIGHT);
-        String err = GyroflowInjector.openMuxError(
-                output.getAbsolutePath(), width, height, csd);
-        if (err != null) {
-            fail("openMux failed: " + err);
-        } else {
-            handle = GyroflowInjector.lastHandle();
-            android.util.Log.i("XrealRec", "mux handle=" + handle);
-            if (handle == 0) {
-                fail("openMux returned no handle");
-            }
-        }
+        pendingWidth = format.getInteger(MediaFormat.KEY_WIDTH);
+        pendingHeight = format.getInteger(MediaFormat.KEY_HEIGHT);
+        pendingCsd = csd;
     }
 
     @Override
@@ -54,13 +46,24 @@ final class StreamingMuxSink implements RecordingMuxer {
         if (failed || handle == 0) {
             return;
         }
-        if (!csdApplied) {
-            byte[] csd = UvcSource.extractCsd(data);
-            boolean ok = csd != null && GyroflowInjector.setCsd(handle, csd);
-            android.util.Log.i("XrealRec", "uvc csd len="
-                    + (csd == null ? -1 : csd.length) + " set=" + ok);
-            if (ok) {
-                csdApplied = true;
+        if (handle == 0) {
+            byte[] csd = pendingCsd;
+            byte[] extracted = UvcSource.extractCsd(data);
+            if (extracted != null) {
+                csd = extracted;
+            }
+            android.util.Log.i("XrealRec", "deferred open csd="
+                    + (csd == null ? -1 : csd.length));
+            String err = GyroflowInjector.openMuxError(output.getAbsolutePath(),
+                    pendingWidth, pendingHeight, csd);
+            if (err != null) {
+                fail("openMux failed: " + err);
+                return;
+            }
+            handle = GyroflowInjector.lastHandle();
+            if (handle == 0) {
+                fail("openMux returned no handle");
+                return;
             }
         }
         String err = GyroflowInjector.writeVideo(handle, data, ptsUs, keyFrame);
