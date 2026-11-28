@@ -56,7 +56,10 @@ final class StreamingMuxSink implements RecordingMuxer {
         }
         if (!csdApplied) {
             byte[] csd = UvcSource.extractCsd(data);
-            if (csd != null && GyroflowInjector.setCsd(handle, csd)) {
+            boolean ok = csd != null && GyroflowInjector.setCsd(handle, csd);
+            android.util.Log.i("XrealRec", "uvc csd len="
+                    + (csd == null ? -1 : csd.length) + " set=" + ok);
+            if (ok) {
                 csdApplied = true;
             }
         }
