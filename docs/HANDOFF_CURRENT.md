@@ -2705,3 +2705,14 @@
 - ★必要な修正: Rust `mux_raw_files()` の AAC stream-copy に `aac_adtstoasc` 相当の bitstream filter を適用する。
 - Native `.so` 再ビルドを試行したが、前述の target 削除で ffmpeg 静的ライブラリを失い、bindgen の unversioned triple 問題（NDK 30 が `aarch64-linux-android30` を要求）も重なって未完了。cargo registry の build.rs への一時 hook は効かなかった（元に戻済み）。
 - ★v2.1 は未公開。main/v2 は無変更（最終目標＝クラッシュ耐性・3画質は達成済み）。ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
+
+## ★UVC HEVC 全検証完了・v2.1 公開（2026-11-28 14:25〜 JST）
+- Rust `mux_raw_files()` に `aac_adtstoasc` 相当の bsf を適用（commit `744244f`）。
+- fragmented MP4 では mp4parse が gyrf sample を読めんかったため、RAW 後処理は non-fragmented MP4 に変更（commit `8620615`）。
+- 実機 sc-52b / UVC HEVC / save_mode=1（RAW）で 14:25 に録画→変換成功。`raw convert result=null`。
+- 生成物 `xreal_20261128_142519.mp4` 3,026,196 bytes を検証:
+  - ffprobe: hevc 2048x1512 / aac / bin_data の3トラック、duration 10.316667s
+  - ffmpeg decode: video/audio ともにエラー無し（`Could not find ref with POC` は v2 と同じ既知 warning）
+  - gyro2bb: `Detected camera: XREAL 1S`、CSV 10,319 行（IMU サンプル入り）
+- 他3画質（720p30 / 1600p30 / 1600p60）とクラッシュ耐性は v2 で検証済み。今回の変更は RAW 後処理経路と `mux_raw_files()` のみで fMP4 経路（StreamingMux）は無変更。
+- ★v2.1 を正式公開する。
