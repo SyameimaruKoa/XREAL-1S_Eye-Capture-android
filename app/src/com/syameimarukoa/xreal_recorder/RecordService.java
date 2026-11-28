@@ -620,8 +620,9 @@ public final class RecordService extends Service {
         if (rawMode) {
             adtsFile = new File(dir, "xreal_" + ts + audioExt);
         }
-        if (gyroUri == null) {
+        if (gyroUri == null || rawOnly) {
             // Crash-safe backup only; the embedded MP4 track remains canonical.
+            // RAW_ONLY also keeps the gyro sidecar next to the HEVC/AAC dumps.
             gyroFile = new File(dir, "xreal_" + ts + ".gcsv");
         }
         long captureTimeMs = System.currentTimeMillis();
