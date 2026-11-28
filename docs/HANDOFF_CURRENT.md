@@ -2857,3 +2857,9 @@
 - tag `v2.2` を作成し、Release を公開: https://github.com/SyameimaruKoa/XREAL-1S_Eye-Capture-android/releases/tag/v2.2
 - 公開 APK `xreal-recorder.apk` の sha256: `e4bc310d2d937d5cf74c477762ddef77cc2b4587a3550902f2e746ab552ed925`。ビルド成果物と Release アセットの sha256 が一致することを確認済み。
 - 収録修正: Scudo（muxer 同時アクセス）同期化、UVC fMP4 の CSD 待ち＋パラメータセット除去、RAW 変換の OOM、fMP4 gyrf header 挿入。
+
+## ★fMP4 の gyrf を gyro2bb で読めるようにする修正を提出（2026-11-29 0時過ぎ）
+- 残課題だった「fMP4 は gyro2bb がサンプル 0 になる」を修正。`mp4parse` が fragmented MP4 の moof/traf/tfhd/tfdt/trun を露出しないため、`telemetry-parser/src/util.rs` に自前の fragmented sample リーダーを追加。stbl が空（Some(空)）の場合も fallback に入るよう `.filter(|s| !s.is_empty())` を適用。
+- `src/lib.rs` の detect 用ヘッダ/フッタ読み出しを 1GB 超で 40MB に拡張（大容量 MP4 の detect 対応）。
+- 検証: 修正版 gyro2bb で UVC fMP4（1,072,111B / 3.3s）が `Detected camera: XREAL 1S` かつ 3,105 行の IMU CSV を生成。2.3GB の fMP4 でも XREAL 1S を検出（検証用ファイルは容量確保のため削除済み）。
+- パッチを `docs/patches/telemetry-parser-fragmented-gyrf.patch` として repo に追加し、v2.2 Release にアセットとして添付する。
