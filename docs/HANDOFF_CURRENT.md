@@ -2869,3 +2869,21 @@
 - `std::io::BufWriter` による逐次書き出しと `writeln!` に変更。ヘッダも同じ writer に書き、最後に `flush()`。
 - 検証: 235MB の fragmented MP4（fmp4_uvc の moof/mdat を 220 回繰り返したもの）で `Detected camera: XREAL 1S`、CSV 682,662 行 / 86MB、panic なし。
 - パッチを `docs/patches/telemetry-parser-fragmented-gyrf.patch` に統合し、v2.2 Release アセットを差し替える。
+
+## ★全画質 × 標準/fMP4 の完全検証と v2.3 公開（2026-11-29 00:2x〜00:3x JST）
+現行 APK（v2.2 ビルド、sha `e4bc310d...`）＋修正版 gyro2bb で 8 通りすべてを確認。
+
+| 画質 | モード | ファイル | ffprobe | decode | gyro2bb |
+|---|---|---|---|---|---|
+| 720p30 | 標準MP4 | 3.9MB / 2.9s | hevc 1280x720 + aac + bin_data | OK | XREAL 1S / 2,869 行 |
+| 720p30 | fMP4 | 6.0MB / 2.7s | hevc 1280x720 + aac + bin_data | OK | XREAL 1S / 2,780 行 |
+| 1600p30 | 標準MP4 | 3.7MB / 2.9s | 3トラック | OK | XREAL 1S / 2,891 行 |
+| 1600p30 | fMP4 | 6.0MB / 2.9s | 3トラック | OK | XREAL 1S / 2,939 行 |
+| 1600p60 | 標準MP4 | 1.2GB / 288.0s | 3トラック | OK | XREAL 1S / 284,380 行 |
+| 1600p60 | fMP4 | 7.0MB / 2.5s | 3トラック | OK | XREAL 1S / 2,526 行 |
+| UVC HEVC | 標準MP4 | 1.1MB / 3.3s | hevc 2048x1512 + aac + bin_data | OK | XREAL 1S / 3,253 行 |
+| UVC HEVC | fMP4 | 1.1MB / 3.3s | 3トラック | OK | XREAL 1S / 3,105 行 |
+
+- 大容量 fMP4（235MB / moof 220 反復）でも XREAL 1S / 682,662 行、CSV 86MB、panic なし。
+- すべてのケースで hevc / aac / bin_data の 3 トラックと、gyro2bb の `Detected camera: XREAL 1S` を確認。よって v2.3 として公開する。
+- APK のバイナリは v2.2 と同一（修正は gyro2bb 側パッチとして同梱）。
