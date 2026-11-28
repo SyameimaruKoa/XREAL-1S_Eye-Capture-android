@@ -719,6 +719,11 @@ public final class RecordService extends Service {
                                 cameraInfo.put("aac_encoded_bytes", capturedAudio.getEncodedBytes());
                                 cameraInfo.put("aac_encoded_samples", capturedAudio.getEncodedSamples());
                             }
+                            Log.i(TAG, "inject gate output=" + (finalOutput != null)
+                                    + " imu=" + (finalImu != null)
+                                    + " samples=" + (finalImu != null
+                                            ? finalImu.getSampleCount() : -1)
+                                    + " raw=" + rawMode + "/" + rawOnly);
                             if (finalOutput != null) {
                                 if (finalImu != null) {
                                     cameraInfo.put("imu", new JSONObject(finalImu.getSummary()));
