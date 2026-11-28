@@ -2777,3 +2777,12 @@
 - 直前の screencap でバッテリー 76%、グラス温度 56℃。端末側の異常ではない。
 - CI run `46132317596` は成功。再ビルド so（bindgen にだけ versioned target を渡し、ffmpeg configure は unversioned に復元）を commit `9c36969` で保留中。
 - 1600p60 / fMP4 の Scudo クラッシュは v2 so で再現しなかったが、USB 権限喪失と端末 offline で最終確認に到達できていない。
+
+## ★Scudo クラッシュの切り分け結果（2026-11-28 19:4x〜20:0x JST）
+- SSH トンネル（`ssh -L 15555:127.0.0.1:5555 s21u`）経由の adb で安定通信。USB 権限は UI の OK（uiautomator 座標 (798,2065)）で再付与。
+- 再ビルド so（ffmpeg-next 9.1.0 / sys 9.1.1、16,056,760 bytes）で 1600p60 / fMP4 の Scudo クラッシュが再現（19:46）。
+- **v2 の so（17,796,352 bytes、commit `05e3d2c` で作業ブランチに戻済み）では 19:53 の 1600p60 / fMP4 で Scudo クラッシュが出なかった**。ただし TCP セッションが 2 秒間隔で再接続を繰り返し、MP4 は生成されなかった。
+- v2 so には `aac_adtstoasc` 修正が無いため、UVC の通常MP4（RAW 後処理）は壊れる。両立には v2 構成（ffmpeg-next 9.0 系）での再ビルドが必要。
+- `cargo update -p ffmpeg-next --precise 9.0.0` は成功した（Cargo.lock は 9.0.0）が、ffmpeg-sys-next は 9.1.1 のままで make が失敗。ffmpeg-sys-next 9.0.0 は registry に無い。
+- 14:10 構成（hook で TARGET versioned）で ffmpeg 静的ライブラリを再ビルドし、20:01 の so を回復済み。
+- ★v2.1 は公開済み。1600p60/fMP4 の Scudo は v2.1 にも潜在する。作業ブランチは v2 so を保留中で、UVC 通常MP4 の再確認は未完了。
