@@ -451,8 +451,12 @@ public final class UvcSource implements VideoSource {
                 removed = true;
                 continue;
             }
-            out.write(new byte[]{0, 0, 0, 1});
-            out.write(copy(au, nal.start, nal.end));
+            try {
+                out.write(new byte[]{0, 0, 0, 1});
+                out.write(copy(au, nal.start, nal.end));
+            } catch (java.io.IOException e) {
+                return au;
+            }
         }
         return removed ? out.toByteArray() : au;
     }
