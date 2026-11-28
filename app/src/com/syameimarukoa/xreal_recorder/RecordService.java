@@ -635,9 +635,9 @@ public final class RecordService extends Service {
             muxer = fmp4Mode ? output.openFragmentedMuxer()
                     : output.openMuxer();
         } else {
-            mp4Name = hevcFile != null
-                    ? hevcFile.getName().replaceFirst("(?i)\\.hevc4?$", ".mp4")
-                    : "VID_" + ts + ".mp4";
+            // Use the published name so the converted file can be copied to
+            // the MediaStore entry created by RecordingOutput.create().
+            mp4Name = output.getFilename();
         }
         FileOutputStream hevcOut = hevcFile != null ? new FileOutputStream(hevcFile) : null;
         GlassesImuClient imu = GlassesImuClient.start(this);
