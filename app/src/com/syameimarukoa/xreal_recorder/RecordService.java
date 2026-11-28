@@ -776,6 +776,10 @@ public final class RecordService extends Service {
                                         Session rawSession = rawState.active
                                                 && rawState.session instanceof Session
                                                 ? (Session) rawState.session : null;
+                                        android.util.Log.i(TAG, "raw branch state active="
+                                                + rawState.active + " session="
+                                                + (rawSession != null) + " hevc="
+                                                + (rawSession != null && rawSession.hevcFile != null));
                                         if (rawSession != null && rawSession.hevcFile != null) {
                                             try {
                                                 List<GyroflowProto.ImuSample> imuSamples =
