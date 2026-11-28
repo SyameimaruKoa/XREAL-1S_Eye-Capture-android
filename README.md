@@ -30,7 +30,7 @@ XREAL 1S から USB-C 経由で映像ストリーム・USB オーディオ・IMU
 - **fMP4（Fragmented MP4）**: 録画中に映像・音声・`gyrf` を逐次書き込むクラッシュセーフなモードです。
 - **標準 MP4（RAW 後処理）**: 録画中は生ストリームを保存し、停止時に標準 MP4 へ変換・`gyrf` 注入を行います。
 
-> **fMP4 向け `gyro2bb` パッチについて**: 大容量の Fragmented MP4 から `gyrf` サンプルを読み取るための `telemetry-parser` / `gyro2bb` パッチを [`docs/patches/telemetry-parser-fragmented-gyrf.patch`](docs/patches/telemetry-parser-fragmented-gyrf.patch) として同梱しています（v2.2 / v2.3 リリースアセットにも添付）。
+> **fMP4 のジャイロを Gyroflow で読む場合**: fMP4 は `gyrf` を `moof/trun` フラグメントとして格納するため、標準の `gyro2bb`（`telemetry-parser`）はサンプルを読み出せません。同梱の [`docs/patches/telemetry-parser-fragmented-gyrf.patch`](docs/patches/telemetry-parser-fragmented-gyrf.patch) を `telemetry-parser` に適用してビルドした `gyro2bb` を使用してください（v2.2 / v2.3 / v2.3.1 リリースアセットにも添付）。パッチはフラグメントからのサンプル読み出し、1GB 超のファイルの検出範囲拡張、大容量 CSV の逐次書き出しを含みます。標準 MP4（RAW 後処理）はパッチ不要で `gyro2bb` が `XREAL 1S` として読み出せます。
 
 ## 動作要件
 
