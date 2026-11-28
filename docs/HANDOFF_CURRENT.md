@@ -2786,3 +2786,10 @@
 - `cargo update -p ffmpeg-next --precise 9.0.0` は成功した（Cargo.lock は 9.0.0）が、ffmpeg-sys-next は 9.1.1 のままで make が失敗。ffmpeg-sys-next 9.0.0 は registry に無い。
 - 14:10 構成（hook で TARGET versioned）で ffmpeg 静的ライブラリを再ビルドし、20:01 の so を回復済み。
 - ★v2.1 は公開済み。1600p60/fMP4 の Scudo は v2.1 にも潜在する。作業ブランチは v2 so を保留中で、UVC 通常MP4 の再確認は未完了。
+
+## ★ffmpeg 9.0 系 so に両立修正を反映（2026-11-28 20:1x〜20:2x JST）
+- `cargo update -p ffmpeg-sys-next --precise 9.0.0` が成功（bindgen も 0.73.2 → 0.72.1）。
+- sys 9.0.0 の build.rs は llvm-nm の解決にバグ（CC パスに `..` を join）があり、一時的に `parent()` を使うよう修正。bindgen 用に TARGET を versioned にする hook も継続。
+- 3分09秒で ffmpeg を再ビルドし、**ffmpeg-next 9.0.0 + aac_adtstoasc/stage/non-fragmented 修正入りの so（15,847,408 bytes、sha `f3c9f1a6...`）を生成**。
+- 作業ブランチにコミット（commit `a513176`）、CI run `46139699944` 成功。
+- これで Scudo 回避（9.0 系）と UVC RAW の bsf（自前修正）の両立を狙う。実機検証は実行中。
