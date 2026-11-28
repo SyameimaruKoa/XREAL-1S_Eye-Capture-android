@@ -2793,3 +2793,10 @@
 - 3分09秒で ffmpeg を再ビルドし、**ffmpeg-next 9.0.0 + aac_adtstoasc/stage/non-fragmented 修正入りの so（15,847,408 bytes、sha `f3c9f1a6...`）を生成**。
 - 作業ブランチにコミット（commit `a513176`）、CI run `46139699944` 成功。
 - これで Scudo 回避（9.0 系）と UVC RAW の bsf（自前修正）の両立を狙う。実機検証は実行中。
+
+## ★Scudo クラッシュの真因と修正（2026-11-28 21:3x JST）
+- 真因: 映像スレッド（`xreal-video-wri`）と音声スレッド（`xreal-audio`）が `StreamingMuxSink` 経由で FFmpeg の `AVFormatContext` を同時操作。FFmpeg はスレッドセーフでなく、`realloc` がヒープを破損して Scudo が SIGABRT。ffmpeg 9.1/9.0 の差ではない。
+- 修正（commit `39ae103`）: `StreamingMuxSink` の `addVideoTrack` / `addAudioTrack` / `writeVideo` / `writeAudio` / `writeGyrf` / `finish` に `synchronized` を付与し、ネイティブ muxer 呼び出しを直列化。
+- sc-52b / 1600p60 / fMP4 で 21:39 に 15 秒録画。**Scudo クラッシュが消え**、MP4 29,622,304 bytes を生成。tombstone も新規なし。
+- ffprobe / ffmpeg decode / gyro2bb の検証は pull 待ち。
+- ★v2.1 公開版にもこの競合が潜在する。修正は作業ブランチに保留中。
