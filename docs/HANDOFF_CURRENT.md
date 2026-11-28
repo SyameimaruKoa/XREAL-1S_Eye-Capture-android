@@ -2807,3 +2807,8 @@
 - `StreamingMuxSink.setGyrfHeader()` を配線（commit `50b7f33` / `a6268f7`）したが、pull した gyrf の先頭には field 3 が無く未解決。RecordService の gyrfFrameNumber==1 分岐と setGyrfHeader の両方が効いていない模様。
 - 通常MP4（RAW 後処理）では gyro2bb `XREAL 1S` が出ており、こちらは問題なし。
 - ★v2.1 公開版には Scudo 競合が潜在する。synchronized 修正は作業ブランチに保留中。
+
+## ★fMP4 の gyrf ヘッダー欠落の原因と修正（2026-11-28 22:1x〜22:2x JST）
+- ログで判明: `setGyrfHeader len=100` は呼ばれるが、最初の gyrf（header 入り）が `handle=0` で mux 未 open のため破棄され、2 回目以降に header を付けていた。さらに field 3 を field 4 の後ろに追加しており、gyro2bb が読めなかった。
+- 修正（commit `dc3fd84`）: protobuf の field 1/2 の後・field 4 の前に field 3（header）を挿入する。
+- CI 成功、実機 1600p60 / fMP4 で録画・停止。pull と gyro2bb 検証は実行中。
