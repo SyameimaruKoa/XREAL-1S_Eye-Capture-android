@@ -2800,3 +2800,10 @@
 - sc-52b / 1600p60 / fMP4 で 21:39 に 15 秒録画。**Scudo クラッシュが消え**、MP4 29,622,304 bytes を生成。tombstone も新規なし。
 - ffprobe / ffmpeg decode / gyro2bb の検証は pull 待ち。
 - ★v2.1 公開版にもこの競合が潜在する。修正は作業ブランチに保留中。
+
+## ★Scudo 修正の検証完了と gyrf header の残課題（2026-11-28 21:3x〜22:0x JST）
+- commit `39ae103`（StreamingMuxSink の全 muxer 呼び出しを synchronized 化）で 1600p60 / fMP4 の Scudo が消えた。sc-52b で 96.5 秒・411MB の MP4 を生成し、ffprobe で hevc 1600x1200 + aac + bin_data を確認、ffmpeg decode exit 0。
+- fMP4 の gyro2bb は `Detected camera: Gyroflow` でサンプル 0。gyrf パケットは 34 個あるが先頭に header（protobuf field 3）が無い。
+- `StreamingMuxSink.setGyrfHeader()` を配線（commit `50b7f33` / `a6268f7`）したが、pull した gyrf の先頭には field 3 が無く未解決。RecordService の gyrfFrameNumber==1 分岐と setGyrfHeader の両方が効いていない模様。
+- 通常MP4（RAW 後処理）では gyro2bb `XREAL 1S` が出ており、こちらは問題なし。
+- ★v2.1 公開版には Scudo 競合が潜在する。synchronized 修正は作業ブランチに保留中。
