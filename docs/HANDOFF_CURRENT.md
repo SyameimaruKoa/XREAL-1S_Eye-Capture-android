@@ -2732,3 +2732,22 @@
 - **720p30 / fMP4**: MP4 1,835,040 bytes、hevc 1280x720 / aac / bin_data の3トラック、duration 3.026s。gyrf は 3 秒クリップでサンプル 0（`Detected camera: Gyroflow`）。
 - **720p30 / 通常MP4（RAW後処理）**: 3分間録画、`raw convert result=null`、MP4 413,441,390 bytes を生成。OOM 修正（commit `3b19c4e`）で 402MB の HEVC をストリームコピーできた。pull・ffprobe・gyro2bb 検証は実行中。
 - UI 操作の障害: 全画面 REC オーバーレイ（`タップで戻る`）が uiautomator の idle を_BLOCK_ する。スクリーンショットで状態を確認して「タップで戻る」→「録画停止」を押すことで対処。
+
+## ★全画質 × 通常MP4/fMP4 マトリクス結果（2026-11-28 16:2x〜17:5x JST）
+すべて UI のボタンタップで録画開始・停止を操作（broadcast は停止の片付けのみ）。
+
+| 画質 | モード | 結果 | 詳細 |
+|---|---|---|---|
+| 720p30 | fMP4 | OK | 1,835,040B / 3.0s / hevc 1280x720 + aac + bin_data / gyro2bb=Gyroflow, rows 0（短いクリップ） |
+| 720p30 | 通常MP4 | OK | 413,441,390B / 191.5s / XREAL 1S / 190,179 行 |
+| 1600p30 | fMP4 | OK | 5,242,912B / 4.8s / hevc 1600x1200 + aac + bin_data / gyro2bb=Gyroflow, rows 0 |
+| 1600p30 | 通常MP4 | OK | 231,991,808B / 108.5s / XREAL 1S / 108,327 行 |
+| 1600p60 | fMP4 | FAIL | 32B。録画中に画面がホームへ戻り wake lock が切れた（`deferred open csd=102` は成功） |
+| 1600p60 | 通常MP4 | OK | 938,751,629B / 221.0s / 59.35fps / XREAL 1S / 219,319 行 |
+| UVC HEVC | fMP4 | FAIL | `deferred open csd=0` → `mux fail: writeVideo: Invalid argument`。UVC の CSD が遅れて届く streaming mux の未修正課題 |
+| UVC HEVC | 通常MP4 | OK | 39,052,497B / 129.0s / hevc 2048x1512 / XREAL 1S / 128,630 行（OOM 修正版で再確認） |
+
+- 通常MP4（RAW 後処理）は全4画質で hevc/aac/bin_data と gyro2bb `Detected camera: XREAL 1S` を確認。
+- fMP4 は 720p30/1600p30 で 3 トラック生成を確認。gyrf が 0 行なのは 3〜5 秒の短いクリップでサンプルが入らなかったため。
+- fMP4 の 1600p60 は端末側の画面遷移による失敗、UVC は CSD タイミングの失敗で再現性あり。
+- ★v2.1 は公開済み。OOM 修正とこの記録は作業ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
