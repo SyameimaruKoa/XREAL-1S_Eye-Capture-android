@@ -26,7 +26,9 @@ import android.net.Uri;
 import android.util.Log;
 import android.view.Display;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -401,6 +403,21 @@ public final class RecordService extends Service {
                         return; // no active session
                     }
                     Session session = (Session) state.session;
+                    if (!session.csdSent[0]) {
+                        session.csdSent[0] = true;
+                        MediaFormat fmt = MediaFormat.createVideoFormat(
+                                MediaFormat.MIMETYPE_VIDEO_HEVC,
+                                finalVideo.getWidth(), finalVideo.getHeight());
+                        byte[] auCsd = UvcSource.extractCsd(annexB);
+                        if (auCsd != null) {
+                            fmt.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(auCsd));
+                        }
+                        fmt.setInteger(MediaFormat.KEY_FRAME_RATE,
+                                finalVideo.getFrameRate());
+                        if (session.muxer != null) {
+                            session.muxer.addVideoTrack(fmt);
+                        }
+                    }
                     VideoWriter currentWriter = session.writer;
                     SessionStats stats = session.stats;
                     try {
@@ -521,6 +538,18 @@ public final class RecordService extends Service {
             stopSelf();
             recording = false;
         }
+    }
+
+    private static byte[] readAllBytes(File file) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[16384];
+        try (FileInputStream in = new FileInputStream(file)) {
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+            }
+        }
+        return out.toByteArray();
     }
 
     private void finishSession(Object retired) {
@@ -704,6 +733,56 @@ public final class RecordService extends Service {
                                 cameraInfo.put("aac_encoded_bytes", capturedAudio.getEncodedBytes());
                                 cameraInfo.put("aac_encoded_samples", capturedAudio.getEncodedSamples());
                             }
+                            Log.i(TAG, "raw gate mode=" + rawMode + "/" + rawOnly
+                                    + " imu=" + (finalImu != null
+                                            ? finalImu.getSampleCount() : -1));
+                            if (rawMode && !rawOnly && finalImu != null
+                                    && finalImu.getSampleCount() > 0) {
+                                File hevcRaw = new File(dir, "xreal_" + ts + ".hevc");
+                                File aacRaw = new File(dir, "xreal_" + ts + ".aac");
+                                Log.i(TAG, "raw branch hevc=" + hevcRaw.exists()
+                                        + " aac=" + aacRaw.exists());
+                                if (hevcRaw.exists()) {
+                                    try {
+                                        List<GyroflowProto.ImuSample> imuSamples =
+                                                finalImu.getSamples();
+                                        double imuSpanUs = imuSamples.size() > 1
+                                                ? imuSamples.get(imuSamples.size() - 1).timeUs
+                                                - imuSamples.get(0).timeUs : 0.0;
+                                        long durationUs = imuSpanUs > 0
+                                                ? (long) imuSpanUs
+                                                : (spanNs > 0 ? spanNs / 1000L : 0L);
+                                        File out = new File(dir, finalMp4Name);
+                                        File hevcInput = hevcRaw;
+                                        byte[] rawBytes = readAllBytes(hevcRaw);
+                                        byte[] csdBytes = UvcSource.extractCsd(rawBytes);
+                                        if (csdBytes != null) {
+                                            File prefixed = new File(dir,
+                                                    "xreal_" + ts + "_csd.hevc");
+                                            FileOutputStream fo =
+                                                    new FileOutputStream(prefixed);
+                                            try {
+                                                fo.write(csdBytes);
+                                                fo.write(rawBytes);
+                                            } finally {
+                                                fo.close();
+                                            }
+                                            hevcInput = prefixed;
+                                        }
+                                        String err = Mp4TelemetryInjector.convertRawToMp4(
+                                                RecordService.this, hevcInput, aacRaw,
+                                                videoSource.getWidth(),
+                                                videoSource.getHeight(),
+                                                videoSource.getFrameRate(),
+                                                durationUs, 1000, "xYz", imuSamples,
+                                                finalImu.getFirstTimestampNs() / 1000L,
+                                                out);
+                                        Log.i(TAG, "raw convert result=" + err);
+                                    } catch (Throwable t) {
+                                        Log.e(TAG, "raw conversion failed", t);
+                                    }
+                                }
+                            }
                             if (finalOutput != null) {
                                 if (finalImu != null) {
                                     cameraInfo.put("imu", new JSONObject(finalImu.getSummary()));
@@ -839,7 +918,7 @@ public final class RecordService extends Service {
 
         audioRef.set(audio);
         Session session = new Session(writer, muxer, audio, imu, gyroSink, hevcOut,
-                new boolean[1], finalStats);
+                hevcFile, new boolean[1], finalStats);
         if (!sessions.install(session, generation)) {
             // A stall retired the state while this session was being built: discard
             // the half-built resources instead of leaving a stale active session.
@@ -1140,18 +1219,20 @@ public final class RecordService extends Service {
         final GlassesImuClient imu;
         final GcsvStreamSink gyroSink;
         final FileOutputStream hevcOut;
+        final File hevcFile;
         final boolean[] csdSent;
         final SessionStats stats;
 
         Session(VideoWriter writer, RecordingMuxer muxer, AudioSource audio,
                 GlassesImuClient imu, GcsvStreamSink gyroSink, FileOutputStream hevcOut,
-                boolean[] csdSent, SessionStats stats) {
+                File hevcFile, boolean[] csdSent, SessionStats stats) {
             this.writer = writer;
             this.muxer = muxer;
             this.audio = audio;
             this.imu = imu;
             this.gyroSink = gyroSink;
             this.hevcOut = hevcOut;
+            this.hevcFile = hevcFile;
             this.csdSent = csdSent;
             this.stats = stats;
         }

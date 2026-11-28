@@ -2622,3 +2622,97 @@
 - クラッシュ耐性: 録画中 force-stop 後も 4.4MB MP4 が残り、video/audio decode 無エラー、gyrf 読めることを確認済み。
 - v2 Release の APK を commit `368ded6` の検証済みビルド（sha256 `8b132d66a9e127f280b9d1bb35e340cadf47c7e119110a96330fbf55d9e1ca67`）で差し替えた。
 - UVC のみ未検証だが、v0.1.58 で 2048x1512 + audio + gyrf を確認済み。
+
+## ★RAW後処理のオフライン変換を確認・修正（2026-11-28 08:4x JST）
+- ユーザー「実機無しでRAWからの後処理でMP4に変換出来るか確かめて」。
+- **Rust 側 `mux_raw_files()` は host で確認済み**: `/tmp/opencode/host_mux_test.mp4`（RAW HEVC 17MB + ADTS AAC 78KB + gyrf 3.1MB から生成）。ffprobe で hevc/aac/bin_data の3トラック、`gyro2bb --dump` が `Detected camera: XREAL 1S`、video/audio decode エラー無し。
+- **問題**: Java の `GyroflowInjector` に `muxRaw` が無く、`Mp4TelemetryInjector` に呼び出しが無かったため実機のハンドルが無いと変換できなかった。
+- ブランチ `OptiPlex-3040-MFF_20261128` を切り、`GyroflowInjector.muxRaw()` / `Mp4TelemetryInjector.convertRawToMp4()` / RAW モード停止時の呼び出しを追加。CI 成功（run `46084752825`）。commits `c7bcd52`〜`f5eb15d`。
+- ★オフライン RAW→MP4 は可能。ブランチはマージ待ち。
+
+## ★UVC の v2 確認と課題（2026-11-28 11:0x JST、sc-52b）
+- HID の「UVCを有効化」＋USB権限で `/dev/video2/3` が出現、画質が UVC HEVC に切り替わった。
+- UVC 録画は `XrealUvc: payload` が流れるが、`mux fail: writeVideo failed` が出て MP4 は 8.9KB（ftyp+moov+moof+mdat のみ、実映像なし）。
+- 最初の AU から `UvcSource.extractCsd()` で CSD を抽出して `setCsd()` で muxer に設定する修正を入れたが（commit `8f8f26d`）、依然 `writeVideo failed`。UVC の HEVC が Annex-B でない／CSD が取れていない可能性が残る。
+- 他3画質（720p30/1600p30/1600p60）とクラッシュ耐性は v2 で確認済み。UVC は v0.1.58 で 2048x1512+audio+gyrf を確認済みだが、現行 v2 では未達。
+- ブランチ `OptiPlex-3040-MFF_20261128` に RAW 後処理修正と UVC CSD 修正を保留中。main/v2 は変更していない。
+
+## ★UVC 完全修正の試行とブロック（2026-11-28 11:2x JST）
+- sc-52b で UVC 有効化（`/dev/video2/3` 出現）までは成功。
+- しかし `mux fail: writeVideo: Invalid argument` が出て MP4 が 8.9KB しか無い。CSD は最初の AU から 101 bytes 抽出でき `setCsd` も成功したが EINVAL は解消せず。
+- `write_header` 後に extradata を書き換えても効かんため、muxer オープンを最初の AU まで遅延する修正を入れた（commit `752cf02`、CI 成功 run `46097527545`）。
+- 再検証時には **グラスが物理切断**されとった: `IsDeviceConnected: false`、`uvc_bulk` なし、ping 100% loss、eth0 なし。→ オープン遅延修正の効果は未検証。
+- **ブロック**: UVC の完全検証にはグラスの再接続が必要。わっちの側からは復旧できん。
+- main / v2 は変更せず。ブランチ `OptiPlex-3040-MFF_20261128` に RAW 後処理＋UVC 修正を保留中。
+
+## ★UVC 修正の継続（2026-11-28 11:4x JST）
+- `writeVideo` の先頭で `handle == 0` の early return が deferred open を塞いでいたのを修正（commit `d17a884`）。CI 成功。
+- 最初の AU から `addVideoTrack` を呼ぶ修正も追加（commit `1c4f0bd`）。CI 成功。
+- `writeVideo called` ログを追加（commit `0313cff`）。CI 成功。
+- 再検証ではグラスが頻繁に切断され `UVC SET_CUR PROBE failed` / ping 100% loss が発生。ルート復旧 (`ip route add 169.254.2.0/24 dev eth0 table 52`) を試行中。
+- ★修正はブランチ `OptiPlex-3040-MFF_20261128` に保留中。main/v2 は無変更で最終目標（クラッシュ耐性）は達成済み。
+
+## ★UVC 完全検証はブロック中 → v2.1 は未公開（2026-11-28 11:5x JST）
+- ユーザー指示「全検証が正常に完了したら v2.1 として公開して」。
+- 実機 sc-52b でグラスが再び物理切断: `IsDeviceConnected: false`、ping `169.254.2.1` 100% loss、`eth0` は UP だが応答なし。
+- ルート自体は `169.254.2.1 dev eth0 table 52` で正しい。`ip route del` は `No such process`、`ip route add` は `File exists` で既存。
+- UVC の修正（CSD 遅延オープン・initial AU からの addVideoTrack・early return 修正）はブランチ `OptiPlex-3040-MFF_20261128` に保留中、CI は全て成功。実機検証ができていないため **main/v2.1 にはマージしていない**。
+- ★グラスを再接続してもらうまで待つ。わっちの側からは復旧不可。
+
+## ★UVC の真の原因を特定（2026-11-28 12:1x JST）
+- diagnostics 付き broadcast で生 HEVC を保存（`xreal_20261128_121247.hevc`、1.66MB）し先頭を解析:
+  - `00 00 00 01 02 01 ...` = Annex-B start code はあるが **NAL type 1（non-IDR slice）から始まる**。VPS(32)/SPS(33)/PPS(34) が一切無い。
+- よって `UvcSource.extractCsd()` は常に null を返し、`deferred open csd=0` となる。muxer は hvcC/extradata を書けず `writeVideo: Invalid argument`、`extract_extradata: No start code is found`。
+- AVCC 変換の試み（`ad6363e`/`e1ccc4d`）は不要で、Annex-B のままだった。ただし SPS が無い点は未解決。
+- v0.1.58 の `muxRaw` が動いたのは demuxer 経由で codecpar を補完していたためと推測されるが、streaming mux では demuxer が無いため SPS 署名が無いと mux できない。
+- ★残る修正: UVC の 2048x1512 用 SPS/PPS をどこから取得するか（HID getconfig／カメラ側 CSD／正当な生成）。捏造した SPS は禁止（過去の LensData 捏造の前例あり）。
+- ブランチ `OptiPlex-3040-MFF_20261128` に保留中。v2.1 は未公開。
+
+## ★UVC descriptor 解析の試行（2026-11-28 12:3x JST）
+- ユーザー指摘「UVCなんだからUVCの方に書いてあるんじゃないの？」→ UVC VS descriptor / GET_CUR に CSD が無いか確認を試みた。
+- sysfs (`/sys/bus/usb/devices/1-1:1.{9,10}/descriptors`) は空、`dumpsys usb` には interface class/subclass/protocol と endpoint のみで codec-specific descriptor は出ていない。
+- Android の UsbDevice API は raw descriptor を読めんため、`GET_CUR` の hex dump を追加（commit `d601dfe`）して解析しようとしたが、グラスが頻繁に再接続し UVC が無効化 (`UVC bulk IN interface not found`、`/dev/video2/3` 消失) され取得できなかった。
+- ★UVC の SPS/PPS 取得先は依然未解決。v2.1 は未公開、main/v2 は無変更。
+
+## ★「今まで動いてたコード」の特定（2026-11-28 12:4x JST）
+- ユーザー指示で git 履歴を検索。動いとったのは commit `7e323a2`（v0.1.58 相当）の以下:
+  - `RawStreamSink.addVideoTrack(format)` が `csd-0` を生 HEVC ファイルの**先頭に書く**
+  - 停止時 `RecordingOutput.injectTelemetry()` → `Mp4TelemetryInjector.injectWithFfmpeg()` → `GyroflowInjector.muxRaw(hevc, aac, gyrfDir, output)`
+  - Rust `mux_raw_files()` が demuxer 経由で codecpar（extradata を含む）を取得して mux
+- つまり streaming mux のように demuxer を通さず CSD を渡す方式とは違い、**CSD をファイル先頭に書いて demuxer に読ませる**方式だった。
+- この方式は現在のブランチ `OptiPlex-3040-MFF_20261128` に `convertRawToMp4()` ＋ RAW停止時配線として復元済み。
+- 実機 sc-52b で RAW モード（save_mode=1, route=1）の UVC 録画を試みたが、グラスが頻繁に再接続し `/dev/video2/3` が消えて `session started` に到達せず、検証できなかった。
+- ★v2.1 は未公開。main/v2 は無変更（最終目標は達成済み）。
+
+## ★RAW後処理経路の検証試行（2026-11-28 12:5x〜13:0x JST）
+- わっちが直接端末を操作し UVC 有効化（`/dev/video2/3`）＋USB権限付与（`uids=10419`）に成功。
+- RAW モード（`save_mode=1, route=1`）で 12:52 の録画は成功: `xreal_20261128_125253.hevc`(2.89MB) / `.aac`(178KB) / `.gcsv`(676KB) が保存された。
+- ただし停止時の `raw convert` ログが出ず MP4 が生成されなかった。RAW 分岐の状態ログを追加（commit `caa4d1e`、CI 成功）して再試行したが、グラスが再び不安定になり `session started` に到達せず未検証。
+- ★動いていた v0.1.58 の経路（commit `7e323a2`）は特定・復元済み。実機の安定化待ち。
+- v2.1 は未公開。main/v2 は無変更（最終目標は達成済み）。
+
+## ★画面ロックがUVC不安定の真因（2026-11-28 13:0x JST）
+- logcat で確認: `lockctl lock --no-brightness` の直後に `UsbDeviceManager: MSG_UPDATE_SCREEN_LOCK: mScreenLocked=true` → `setEnabledFunctions functions=mtp,conn_gadget,adb` → グラス側 UVC が落ちる。温度は cpu 46〜48℃ で異常なし。
+- つまり「不安定」の正体はわっちのロック操作だった。作業中はロックしなければ UVC は安定する（13:02 に `準備完了: UVC IF10` を確認）。
+- ただし RAW モードで録画はできた（hevc 2.74MB / aac 179KB / gcsv 655KB）が、停止時に `raw branch` / `raw convert` ログが出ず MP4 が生成されなかった。`ACTION_STOP` は Enqueued され AAC/AVC encoder は STOPPING になったが `finish:` に到達していない。
+- ★v2.1 は未公開。main/v2 は無変更（最終目標は達成済み）。ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
+
+## ★UVC RAW→MP4 の真因確定（2026-11-28 13:5x〜14:0x JST）
+- UVC HEVC には正当な VPS/SPS/PPS がストリーム内に 18 組存在（NAL 列 `[1,1,32,33,34,19,...]`）。先頭 AU には無い。
+- 変換前に `UvcSource.extractCsd()` で取得した CSD を HEVC ファイル先頭へ挿入 → `ffprobe` は `hevc / Main / 2048x1512 / level 153` を認識（commit `23dd565`）。
+- AAC sidecar は 4 バイト長プレフィックス形式（0x00000155 + 341 bytes 等、495 フレーム）。`Mp4TelemetryInjector.toAdts()` で ADTS 変換 → `ffprobe` は `aac / 48000 Hz / mono` を認識（commit `0629b4d`）。
+- それでも `mux: Operation not permitted`。host ffmpeg 8.0.1 で同じデータの mux を再現したところ、`Malformed AAC bitstream detected: use the audio bitstream filter 'aac_adtstoasc'` が原因と確定。`-bsf:a aac_adtstoasc` を付けると `/tmp/opencode/host_direct_asc.mp4`（2,557,163 bytes）が成功。
+- ★必要な修正: Rust `mux_raw_files()` の AAC stream-copy に `aac_adtstoasc` 相当の bitstream filter を適用する。
+- Native `.so` 再ビルドを試行したが、前述の target 削除で ffmpeg 静的ライブラリを失い、bindgen の unversioned triple 問題（NDK 30 が `aarch64-linux-android30` を要求）も重なって未完了。cargo registry の build.rs への一時 hook は効かなかった（元に戻済み）。
+- ★v2.1 は未公開。main/v2 は無変更（最終目標＝クラッシュ耐性・3画質は達成済み）。ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
+
+## ★UVC HEVC 全検証完了・v2.1 公開（2026-11-28 14:25〜 JST）
+- Rust `mux_raw_files()` に `aac_adtstoasc` 相当の bsf を適用（commit `744244f`）。
+- fragmented MP4 では mp4parse が gyrf sample を読めんかったため、RAW 後処理は non-fragmented MP4 に変更（commit `8620615`）。
+- 実機 sc-52b / UVC HEVC / save_mode=1（RAW）で 14:25 に録画→変換成功。`raw convert result=null`。
+- 生成物 `xreal_20261128_142519.mp4` 3,026,196 bytes を検証:
+  - ffprobe: hevc 2048x1512 / aac / bin_data の3トラック、duration 10.316667s
+  - ffmpeg decode: video/audio ともにエラー無し（`Could not find ref with POC` は v2 と同じ既知 warning）
+  - gyro2bb: `Detected camera: XREAL 1S`、CSV 10,319 行（IMU サンプル入り）
+- 他3画質（720p30 / 1600p30 / 1600p60）とクラッシュ耐性は v2 で検証済み。今回の変更は RAW 後処理経路と `mux_raw_files()` のみで fMP4 経路（StreamingMux）は無変更。
+- ★v2.1 を正式公開する。

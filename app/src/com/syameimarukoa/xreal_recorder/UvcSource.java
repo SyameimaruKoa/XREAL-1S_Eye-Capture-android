@@ -134,6 +134,11 @@ public final class UvcSource implements VideoSource {
                     + " compressionQuality=" + (negotiated.getShort(12) & 0xffff)
                     + " maxFrameBytes=" + (negotiated.getInt(18) & 0xffffffffL)
                     + " maxPayloadBytes=" + (negotiated.getInt(22) & 0xffffffffL));
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < n; i++) {
+                hex.append(String.format("%02x", current[i] & 0xff));
+            }
+            Log.i(TAG, "UVC GET_CUR hex=" + hex);
             int copy = Math.min(n, probe.length);
             System.arraycopy(current, 0, probe, 0, copy);
         }
@@ -249,7 +254,8 @@ public final class UvcSource implements VideoSource {
                         if (missingStartCodes <= 3 || missingStartCodes % 100 == 0) {
                             Log.i(TAG, "payload skipped without HEVC start code: readSeq="
                                     + sequence + " bytes=" + (n - hlen) + " count="
-                                    + missingStartCodes);
+                                    + missingStartCodes + " head="
+                                    + hexOf(buf, hlen, Math.min(32, n - hlen)));
                         }
                         lastFid = fid;
                         continue;
@@ -423,6 +429,14 @@ public final class UvcSource implements VideoSource {
             b.put((byte) 0);                    // bMaxVersion
         }
         return b.array();
+    }
+
+    private static String hexOf(byte[] b, int off, int len) {
+        StringBuilder s = new StringBuilder();
+        for (int i = 0; i < len; i++) {
+            s.append(String.format("%02x", b[off + i] & 0xff));
+        }
+        return s.toString();
     }
 
     static byte[] extractCsd(byte[] au) {

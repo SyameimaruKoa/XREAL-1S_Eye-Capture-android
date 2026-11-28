@@ -13,7 +13,9 @@ final class GyroflowInjector {
     /** Open on a duplicated fd of the final SAF uri; one continuous write. */
     static native long openMuxFd(int fd, String hevc, String aac);
 
-    static native boolean writeVideo(long handle, byte[] data, long ptsUs, boolean keyFrame);
+    static native boolean setCsd(long handle, byte[] csd);
+
+    static native String writeVideo(long handle, byte[] data, long ptsUs, boolean keyFrame);
 
     static native boolean writeAudio(long handle, byte[] data, long ptsUs);
 
@@ -28,4 +30,7 @@ final class GyroflowInjector {
     static native long lastHandle();
 
     static native boolean inject(String telemetryDir, String video, String output);
+
+    /** Convert raw HEVC + ADTS AAC + gyrf frames to an MP4 (no device needed). */
+    static native String muxRaw(String hevc, String aac, String telemetryDir, String output);
 }
