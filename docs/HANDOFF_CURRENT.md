@@ -2887,3 +2887,27 @@
 - 大容量 fMP4（235MB / moof 220 反復）でも XREAL 1S / 682,662 行、CSV 86MB、panic なし。
 - すべてのケースで hevc / aac / bin_data の 3 トラックと、gyro2bb の `Detected camera: XREAL 1S` を確認。よって v2.3 として公開する。
 - APK のバイナリは v2.2 と同一（修正は gyro2bb 側パッチとして同梱）。
+
+## ★DCIM 公開と RAW sidecar の修正、v2.3.1 公開（2026-11-29 01:3x〜02:0x JST）
+### 修正
+- `RecordingOutput.create()` が URI を生成せず app-private にしか書いとらんかった。MediaStore.Video に `RELATIVE_PATH=DCIM/100XREAL` + `IS_PENDING=1` で挿入し、`complete()` で app-private の MP4 をその URI へストリームコピーして `IS_PENDING=0` で公開するよう修正（commit `0c85d6f`）。
+- RAW モードも `RecordingOutput` を作り、変換成功時に `complete()` を呼ぶ（commit `0c85d6f`）。さらに raw 変換後のファイル名を `output.getFilename()` に統一（commit `49aef0d`）。
+- RAW_ONLY でも `gyroFile` を app-private に作り、hevc4/aac4 と同じ Android/data フォルダに gcsv を保存（commit `07d3c07`）。
+
+### 現行 APK（commit `07d3c07`）での確認
+- fMP4 720p30: DCIM/100XREAL に 6,668,334B、MediaStore 登録あり、ffprobe で hevc 1280x720 + aac + bin_data、decode OK、gyro2bb `XREAL 1S` / 2,727 行。
+- 標準MP4 720p30: DCIM に 6,121,290B、3トラック、gyro2bb `XREAL 1S` / 2,669 行。
+- fMP4 1600p30: DCIM に 5,146,049B、3トラック、`XREAL 1S` / 2,889 行。
+- fMP4 1600p60: DCIM に 7,626,989B、3トラック、`XREAL 1S` / 2,723 行。
+- RAW_ONLY 720p30: Android/data に `xreal_*.hevc4`(6,165,389B / 1280x720) + `xreal_*.aac4`(49,383B) + `xreal_*.gcsv`(195,390B / 3,204 行、GYROFLOW IMU LOG) が揃う。
+- UVC は再接続/USB 権限が不安定で現行 APK での再撮に到達できなかったが、v2.3 APK で UVC の標準/fMP4 ともに 3 トラックと `XREAL 1S` を確認済み。今回の差分は保存先のみ。
+
+### 全画質 × 出力方法（v2.3 APK で確認済みの内容＋現行 APK の保存先確認）
+| 画質 | 標準MP4 | fMP4 |
+|---|---|---|
+| 720p30 | XREAL 1S / 2,869行 | XREAL 1S / 2,780行 |
+| 1600p30 | XREAL 1S / 2,891行 | XREAL 1S / 2,939行 |
+| 1600p60 | XREAL 1S / 284,380行 | XREAL 1S / 2,526行 |
+| UVC HEVC | XREAL 1S / 3,253行 | XREAL 1S / 3,105行 |
+
+- ★v2.3.1 として公開する。
