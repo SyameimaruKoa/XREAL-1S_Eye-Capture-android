@@ -3,7 +3,9 @@ package com.syameimarukoa.xreal_recorder;
 import android.content.Context;
 
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -95,12 +97,54 @@ final class Mp4TelemetryInjector {
                 writeAll(new File(dir, String.format(java.util.Locale.US,
                         "frame_%06d.bin", i + 1)), payloads.get(i));
             }
+            File aacInput = toAdts(context, aac);
             return GyroflowInjector.muxRaw(hevc.getAbsolutePath(),
-                    aac.getAbsolutePath(), dir.getAbsolutePath(),
+                    aacInput.getAbsolutePath(), dir.getAbsolutePath(),
                     output.getAbsolutePath());
         } finally {
             deleteRecursively(dir);
         }
+    }
+
+    private static File toAdts(Context context, File aac) throws IOException {
+        byte[] data = readAll(aac);
+        if (data.length >= 2 && (data[0] & 0xff) == 0xff && (data[1] & 0xf0) == 0xf0) {
+            return aac;
+        }
+        File out = new File(context.getCacheDir(), "aac_adts_" + aac.getName());
+        try (FileOutputStream stream = new FileOutputStream(out)) {
+            int pos = 0;
+            while (pos + 4 <= data.length) {
+                int size = ((data[pos] & 0xff) << 24) | ((data[pos + 1] & 0xff) << 16)
+                        | ((data[pos + 2] & 0xff) << 8) | (data[pos + 3] & 0xff);
+                if (size <= 0 || size > data.length - pos - 4) {
+                    break;
+                }
+                int frameLength = size + 7;
+                stream.write(new byte[]{
+                        (byte) 0xff, (byte) 0xf1, (byte) 0x4c,
+                        (byte) (0x40 | ((frameLength >>> 11) & 0x07)),
+                        (byte) ((frameLength >>> 3) & 0xff),
+                        (byte) (((frameLength & 0x07) << 5) | 0x1f),
+                        (byte) 0xfc
+                });
+                stream.write(data, pos + 4, size);
+                pos += 4 + size;
+            }
+        }
+        return out;
+    }
+
+    private static byte[] readAll(File file) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[16384];
+        try (FileInputStream in = new FileInputStream(file)) {
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+            }
+        }
+        return out.toByteArray();
     }
 
     private static void deleteRecursively(File file) {
