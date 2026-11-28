@@ -29,7 +29,7 @@ final class StreamingMuxSink implements RecordingMuxer {
     }
 
     @Override
-    public void addVideoTrack(MediaFormat format) {
+    synchronized public void addVideoTrack(MediaFormat format) {
         byte[] csd = new byte[0];
         java.nio.ByteBuffer buf = format.getByteBuffer("csd-0");
         if (buf != null) {
@@ -42,11 +42,11 @@ final class StreamingMuxSink implements RecordingMuxer {
     }
 
     @Override
-    public void addAudioTrack(MediaFormat format) {
+    synchronized public void addAudioTrack(MediaFormat format) {
     }
 
     @Override
-    public void writeVideo(byte[] data, long ptsUs, boolean keyFrame) {
+    synchronized public void writeVideo(byte[] data, long ptsUs, boolean keyFrame) {
         if (!videoLogged) {
             android.util.Log.i("XrealRec", "writeVideo called handle=" + handle);
             videoLogged = true;
@@ -102,7 +102,7 @@ final class StreamingMuxSink implements RecordingMuxer {
     }
 
     @Override
-    public void writeAudio(byte[] data, long ptsUs) {
+    synchronized public void writeAudio(byte[] data, long ptsUs) {
         if (failed || handle == 0) {
             return;
         }
@@ -112,7 +112,7 @@ final class StreamingMuxSink implements RecordingMuxer {
     }
 
     @Override
-    public void writeGyrf(byte[] data, long ptsUs) {
+    synchronized public void writeGyrf(byte[] data, long ptsUs) {
         if (failed || handle == 0) {
             return;
         }
@@ -126,7 +126,7 @@ final class StreamingMuxSink implements RecordingMuxer {
     }
 
     @Override
-    public void finish() {
+    synchronized public void finish() {
     }
 
     void close() {
