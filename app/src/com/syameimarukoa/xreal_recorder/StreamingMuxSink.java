@@ -14,6 +14,8 @@ final class StreamingMuxSink implements RecordingMuxer {
     private int pendingWidth;
     private int pendingHeight;
     private byte[] pendingCsd;
+    private byte[] gyrfHeader;
+    private boolean gyrfHeaderWritten;
     private byte[] pendingFrame;
     private long pendingFramePts;
     private boolean pendingFrameKey;
@@ -26,6 +28,10 @@ final class StreamingMuxSink implements RecordingMuxer {
 
     File outputFile() {
         return output;
+    }
+
+    void setGyrfHeader(byte[] header) {
+        this.gyrfHeader = header;
     }
 
     @Override
@@ -115,6 +121,21 @@ final class StreamingMuxSink implements RecordingMuxer {
     synchronized public void writeGyrf(byte[] data, long ptsUs) {
         if (failed || handle == 0) {
             return;
+        }
+        if (gyrfHeader != null && !gyrfHeaderWritten) {
+            ByteArrayOutputStream merged = new ByteArrayOutputStream(
+                    data.length + gyrfHeader.length + 8);
+            merged.write(data, 0, data.length);
+            merged.write(0x1a);
+            int len = gyrfHeader.length;
+            while (len >= 0x80) {
+                merged.write((len & 0x7f) | 0x80);
+                len >>>= 7;
+            }
+            merged.write(len);
+            merged.write(gyrfHeader, 0, gyrfHeader.length);
+            data = merged.toByteArray();
+            gyrfHeaderWritten = true;
         }
         if (!GyroflowInjector.writeGyrf(handle, data, ptsUs)) {
             fail("writeGyrf failed");

@@ -652,11 +652,15 @@ public final class RecordService extends Service {
                 Log.w(TAG, "streamed gcsv unavailable", e);
             }
         }
-        if (muxer instanceof StreamingMuxerSink) {
+        if (muxer instanceof StreamingMuxerSink || muxer instanceof StreamingMuxSink) {
             byte[] header = GyroflowProto.header(videoSource.getWidth(),
                     videoSource.getHeight(), 60f, 0L, 1000, "xYz");
-            ((StreamingMuxerSink) muxer).setHeader(header);
-            imu.addSink(((StreamingMuxerSink) muxer).imuSink());
+            if (muxer instanceof StreamingMuxSink) {
+                ((StreamingMuxSink) muxer).setGyrfHeader(header);
+            } else {
+                ((StreamingMuxerSink) muxer).setHeader(header);
+                imu.addSink(((StreamingMuxerSink) muxer).imuSink());
+            }
         }
         final String finalMp4Name = mp4Name;
         final JSONObject cameraInfo = new JSONObject();
