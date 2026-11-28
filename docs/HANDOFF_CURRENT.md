@@ -2759,8 +2759,8 @@
   - `StreamingMuxSink` は CSD 到着まで最初の AU を保持し、CSD 取得後に extradata と AU を書く。
   - AU から VPS/SPS/PPS（type 32/33/34）を除去してから `writeVideo` に渡す。
 - 実機 UVC HEVC / fMP4 で `deferred open csd=101` の後 `mux fail` が消え、MP4 786,464 bytes を生成。ffprobe: hevc 2048x1512 / aac / bin_data、duration 3.35s。ffmpeg decode exit 0。gyro2bb `Detected camera: Gyroflow`（短いクリップでサンプル 0）。
-- 1600p60 / fMP4 は `deferred open csd=102` まで成功したが、端末が勝手にアプリをバックグラウンドへ落としてゲーム画面が前面に出たため、停止操作に到達できず 32 bytes のまま。ユーザー確認により操作はされていない。アプリ側の不具合ではないため未検証扱い。
+- 1600p60 / fMP4 は `deferred open csd=102` まで成功したが、端末が勝手にアプリをバックグラウンドへ落としてゲーム画面が前面に出たため、停止操作に到達できず 32 bytes のまま。ユーザー確認により操作はされていない。アプリが勝手に落ちる側の不具合として扱う。
 - 最終マトリクス:
   - 通常MP4（RAW 後処理）: 720p30 / 1600p30 / 1600p60 / UVC HEVC の4画質すべてで hevc+aac+bin_data と gyro2bb `XREAL 1S` を確認。
-  - fMP4: 720p30 / 1600p30 / UVC HEVC で 3 トラック生成と decode を確認。1600p60 のみ端末側のアプリ脱落で未検証。
+  - fMP4: 720p30 / 1600p30 / UVC HEVC で 3 トラック生成と decode を確認。1600p60 のみアプリが勝手に落ちて未検証（アプリ側の不具合）。
 - ★v2.1 は公開済み。上記 fMP4 修正と OOM 修正は作業ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
