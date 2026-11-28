@@ -2690,3 +2690,9 @@
 - ただし停止時の `raw convert` ログが出ず MP4 が生成されなかった。RAW 分岐の状態ログを追加（commit `caa4d1e`、CI 成功）して再試行したが、グラスが再び不安定になり `session started` に到達せず未検証。
 - ★動いていた v0.1.58 の経路（commit `7e323a2`）は特定・復元済み。実機の安定化待ち。
 - v2.1 は未公開。main/v2 は無変更（最終目標は達成済み）。
+
+## ★画面ロックがUVC不安定の真因（2026-11-28 13:0x JST）
+- logcat で確認: `lockctl lock --no-brightness` の直後に `UsbDeviceManager: MSG_UPDATE_SCREEN_LOCK: mScreenLocked=true` → `setEnabledFunctions functions=mtp,conn_gadget,adb` → グラス側 UVC が落ちる。温度は cpu 46〜48℃ で異常なし。
+- つまり「不安定」の正体はわっちのロック操作だった。作業中はロックしなければ UVC は安定する（13:02 に `準備完了: UVC IF10` を確認）。
+- ただし RAW モードで録画はできた（hevc 2.74MB / aac 179KB / gcsv 655KB）が、停止時に `raw branch` / `raw convert` ログが出ず MP4 が生成されなかった。`ACTION_STOP` は Enqueued され AAC/AVC encoder は STOPPING になったが `finish:` に到達していない。
+- ★v2.1 は未公開。main/v2 は無変更（最終目標は達成済み）。ブランチ `OptiPlex-3040-MFF_20261128` に保留中。
