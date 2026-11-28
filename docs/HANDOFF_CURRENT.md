@@ -2863,3 +2863,9 @@
 - `src/lib.rs` の detect 用ヘッダ/フッタ読み出しを 1GB 超で 40MB に拡張（大容量 MP4 の detect 対応）。
 - 検証: 修正版 gyro2bb で UVC fMP4（1,072,111B / 3.3s）が `Detected camera: XREAL 1S` かつ 3,105 行の IMU CSV を生成。2.3GB の fMP4 でも XREAL 1S を検出（検証用ファイルは容量確保のため削除済み）。
 - パッチを `docs/patches/telemetry-parser-fragmented-gyrf.patch` として repo に追加し、v2.2 Release にアセットとして添付する。
+
+## ★大容量 fMP4 の CSV 書き出し panic を修正（2026-11-29 00:1x JST）
+- `gyro2bb.rs` が IMU 行を巨大な `String` に蓄積して `std::fs::write(...).unwrap()` していたため、50 万行超で容量確保に失敗して panic していた。
+- `std::io::BufWriter` による逐次書き出しと `writeln!` に変更。ヘッダも同じ writer に書き、最後に `flush()`。
+- 検証: 235MB の fragmented MP4（fmp4_uvc の moof/mdat を 220 回繰り返したもの）で `Detected camera: XREAL 1S`、CSV 682,662 行 / 86MB、panic なし。
+- パッチを `docs/patches/telemetry-parser-fragmented-gyrf.patch` に統合し、v2.2 Release アセットを差し替える。
